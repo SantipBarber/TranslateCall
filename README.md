@@ -16,7 +16,7 @@ TranslateCall is a macOS application that enables real-time voice translation du
 - 🔄 **Bidirectional Translation** - Both parties hear each other translated
 - 🚀 **Low Latency** - ~2-3 seconds (similar to professional interpreters)
 - 🔒 **Privacy-First** - All processing happens locally using Apple frameworks
-- 🌐 **Multi-Language** - 17+ languages via Apple Translation Framework
+- 🌐 **Multi-Language** - 20+ languages via Apple Translation Framework + extensible for custom languages
 - 📱 **Universal Compatibility** - Works with Zoom, Teams, Meet, Discord, and any audio app
 - 🎙️ **Voice Cloning** *(Beta)* - Maintains speaker characteristics using DSP
 
@@ -61,6 +61,12 @@ All processing happens on-device using:
 | [VOICE_CLONING.md](VOICE_CLONING.md) | Voice analysis and style transfer |
 | [COMPATIBILITY_MATRIX.md](COMPATIBILITY_MATRIX.md) | Languages, apps, and hardware |
 | [DEVELOPMENT_SETUP.md](DEVELOPMENT_SETUP.md) | Developer setup guide |
+
+### Extending Language Support
+| Document | Description |
+|----------|-------------|
+| [CUSTOM_LANGUAGES.md](CUSTOM_LANGUAGES.md) | Adding languages not in Apple Intelligence |
+| [FINE_TUNING_GUIDE.md](FINE_TUNING_GUIDE.md) | Training custom translation models |
 
 ## 🚀 Quick Start
 
@@ -142,6 +148,7 @@ This project is in early development. Contributions welcome once MVP is complete
 
 ### Areas for Contribution
 - Translation quality improvements
+- **Custom language models** - Add support for minority/regional languages ([guide](CUSTOM_LANGUAGES.md))
 - Voice cloning algorithms
 - UI/UX enhancements
 - Testing and bug reports
