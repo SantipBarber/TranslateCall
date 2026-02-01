@@ -1,0 +1,40 @@
+{
+  "testDate" : "2026-01-31T20:00:19Z",
+  "conclusion" : "❌ Voice cloning DSP no alcanza calidad mínima.",
+  "macOSVersion" : "Version 26.2 (Build 25C56)",
+  "recommendation" : "Deferir voice cloning. Usar Premium TTS voices para MVP.",
+  "tests" : [
+    {
+      "name" : "ProfileExtraction",
+      "passed" : true,
+      "accuracy" : 99.87515605493134,
+      "qualityScore" : 0,
+      "details" : "Pitch error: 0.1%",
+      "latencyMs" : 406.0269594192505
+    },
+    {
+      "accuracy" : 95,
+      "details" : "Pitch error: 5.0%",
+      "name" : "PitchShifting",
+      "passed" : true,
+      "latencyMs" : 1.4449357986450195,
+      "qualityScore" : 0
+    },
+    {
+      "accuracy" : 50,
+      "details" : "Quality: 2.5\/5, Latency: 0.0ms",
+      "name" : "FullDSPPipeline",
+      "passed" : true,
+      "latencyMs" : 0.003933906555175781,
+      "qualityScore" : 2.5
+    },
+    {
+      "accuracy" : 64.6,
+      "details" : "Avg score: 64.6%",
+      "name" : "QualityMetrics",
+      "passed" : true,
+      "latencyMs" : 0.02002716064453125,
+      "qualityScore" : 3.2299999999999995
+    }
+  ]
+}

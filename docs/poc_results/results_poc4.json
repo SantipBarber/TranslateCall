@@ -1,0 +1,81 @@
+{
+  "macOSVersion" : "Version 26.2 (Build 25C56)",
+  "blackHoleVersion" : "2",
+  "conclusion" : "✅ BlackHole está instalado y listo para usar.",
+  "tests" : [
+    {
+      "passed" : true,
+      "name" : "BlackHoleDetection",
+      "details" : "Version 2, 1 device(s)"
+    },
+    {
+      "passed" : true,
+      "name" : "InstallationMethod",
+      "details" : "Installed via .pkg at \/Library\/Audio\/Plug-Ins\/HAL\/BlackHole2ch.driver"
+    },
+    {
+      "passed" : true,
+      "name" : "DeviceEnumeration",
+      "details" : "5 total, 2 input, 4 output"
+    },
+    {
+      "passed" : true,
+      "name" : "VirtualDeviceConfiguration",
+      "details" : "1 device(s) configured"
+    },
+    {
+      "passed" : true,
+      "name" : "AudioRoutingSimulation",
+      "details" : "Routing architecture validated"
+    }
+  ],
+  "blackHoleInstalled" : true,
+  "testDate" : "2026-02-01T09:52:33Z",
+  "availableDevices" : [
+    {
+      "channelCount" : 2,
+      "name" : "U34E2M",
+      "manufacturer" : "AOC",
+      "isOutput" : true,
+      "isInput" : false,
+      "sampleRate" : 48000,
+      "id" : 107
+    },
+    {
+      "channelCount" : 2,
+      "name" : "BlackHole 2ch",
+      "manufacturer" : "Existential Audio Inc.",
+      "isOutput" : true,
+      "isInput" : true,
+      "sampleRate" : 48000,
+      "id" : 76
+    },
+    {
+      "channelCount" : 2,
+      "name" : "Altavoces del Mac mini",
+      "manufacturer" : "Apple Inc.",
+      "isOutput" : true,
+      "isInput" : false,
+      "sampleRate" : 44100,
+      "id" : 93
+    },
+    {
+      "channelCount" : 2,
+      "name" : "EShareAudio",
+      "manufacturer" : "Shenzhen EShare Technology Co., Ltd.",
+      "isOutput" : true,
+      "isInput" : true,
+      "sampleRate" : 44100,
+      "id" : 99
+    },
+    {
+      "channelCount" : 0,
+      "name" : "Multi",
+      "manufacturer" : "Apple Inc.",
+      "isOutput" : false,
+      "isInput" : false,
+      "sampleRate" : 0,
+      "id" : 52
+    }
+  ]
+}

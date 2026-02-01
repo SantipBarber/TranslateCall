@@ -1,0 +1,44 @@
+{
+  "conclusion" : "✅ Half-duplex funciona correctamente. Previene eco de manera efectiva.",
+  "macOSVersion" : "Version 26.2 (Build 25C56)",
+  "recommendation" : "Implementar half-duplex manager en la app. Usar indicador visual para el usuario.",
+  "tests" : [
+    {
+      "latencyMs" : 612.293004989624,
+      "passed" : true,
+      "name" : "StateMachineTransitions",
+      "details" : "listening→speaking: 302.4ms, speaking→listening: 309.4ms"
+    },
+    {
+      "name" : "MicrophoneMuting",
+      "details" : "Mute latency: 303.0ms",
+      "passed" : true,
+      "latencyMs" : 302.9930591583252
+    },
+    {
+      "name" : "EchoPrevention",
+      "latencyMs" : 0,
+      "details" : "Without half-duplex: feedback, With half-duplex: no feedback",
+      "passed" : true
+    },
+    {
+      "latencyMs" : 316.0084009170532,
+      "passed" : true,
+      "name" : "TransitionTiming",
+      "details" : "Avg: 316.0ms, Expected: 300ms ±50ms"
+    },
+    {
+      "latencyMs" : 313.4080171585083,
+      "passed" : true,
+      "name" : "ConcurrentTransitions",
+      "details" : "Final state: listening"
+    },
+    {
+      "latencyMs" : 0,
+      "passed" : true,
+      "name" : "VisualIndicator",
+      "details" : "States: listening (green), speaking (red), transitioning (yellow)"
+    }
+  ],
+  "testDate" : "2026-01-31T20:01:01Z"
+}

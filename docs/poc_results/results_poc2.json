@@ -1,0 +1,35 @@
+{
+  "macOSVersion" : "Version 26.2 (Build 25C56)",
+  "tests" : [
+    {
+      "details" : "Speech: -20.3 dB, Silence: -200.0 dB",
+      "passed" : true,
+      "name" : "BasicEnergyDetection",
+      "latencyMs" : 3.877997398376465,
+      "accuracy" : 100
+    },
+    {
+      "details" : "Detected at 1.00s, expected 1.0s",
+      "passed" : true,
+      "name" : "MixedSequenceDetection",
+      "latencyMs" : 3.3229589462280273,
+      "accuracy" : 100
+    },
+    {
+      "details" : "Avg: 0.001ms, Min: 0.000ms, Max: 0.001ms",
+      "passed" : true,
+      "name" : "DetectionLatency",
+      "latencyMs" : 0.0005102157592773438,
+      "accuracy" : 100
+    },
+    {
+      "details" : "100Hz: ✓; 150Hz: ✓; 200Hz: ✓; 250Hz: ✓; 300Hz: ✓",
+      "passed" : true,
+      "name" : "FrequencyVariation",
+      "latencyMs" : 3.8698911666870117,
+      "accuracy" : 100
+    }
+  ],
+  "testDate" : "2026-01-31T19:59:53Z",
+  "conclusion" : "✅ VAD funciona correctamente. Listo para integrar."
+}

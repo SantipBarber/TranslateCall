@@ -1,0 +1,33 @@
+{
+  "testDate" : "2026-01-31T19:47:22Z",
+  "xcodeVersion" : "Unknown",
+  "conclusion" : "✅ Translation API funciona con .translationTask() en contexto minimo SwiftUI. Arquitectura valida para TranslateCall.",
+  "macOSVersion" : "Version 26.2 (Build 25C56)",
+  "swiftVersion" : "5.10",
+  "tests" : [
+    {
+      "translatedText" : "Hello, how are you?",
+      "passed" : true,
+      "name" : "TranslationViaTask",
+      "latencyMs" : 44224.015951156616
+    },
+    {
+      "translatedText" : "Good morning; Thank you for your help; Where is the library?; I like cats",
+      "passed" : true,
+      "name" : "BatchTranslation",
+      "latencyMs" : 119.3150281906128
+    },
+    {
+      "translatedText" : "avg=12.1ms, min=10.1ms, max=15.3ms",
+      "passed" : true,
+      "name" : "TranslationLatency",
+      "latencyMs" : 12.08500862121582
+    },
+    {
+      "translatedText" : "Instalados: 2\/10, Soportados: 10\/10",
+      "passed" : true,
+      "name" : "LanguageAvailability",
+      "latencyMs" : 5.146980285644531
+    }
+  ]
+}
