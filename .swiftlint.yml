@@ -1,0 +1,27 @@
+disabled_rules:
+  - trailing_whitespace # handled by SwiftFormat
+
+opt_in_rules:
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+  - prefer_self_type_over_type_of_self
+  - sorted_imports
+
+included:
+  - TranslateCall
+
+excluded:
+  - TranslateCall/.build
+  - TranslateCallTests
+
+line_length:
+  warning: 120
+  error: 160
+
+type_body_length:
+  warning: 250
+  error: 400
+
+function_body_length:
+  warning: 50
+  error: 100

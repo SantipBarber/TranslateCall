@@ -1,0 +1,14 @@
+--swiftversion 6.0
+--indent 4
+--indentcase false
+--trimwhitespace always
+--importgrouping testable-last
+--self remove
+--selfrequired
+--maxwidth 120
+--wraparguments before-first
+--wrapcollections before-first
+--closingparen same-line
+--commas always
+--semicolons never
+--header strip
