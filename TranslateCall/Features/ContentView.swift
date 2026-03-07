@@ -1,24 +1,48 @@
-//
-//  ContentView.swift
-//  TranslateCall
-//
-//  Created by Santiago Pérez Barber on 6/3/26.
-//
-
 import SwiftUI
 
 struct ContentView: View {
+    @EnvironmentObject private var viewModel: AudioViewModel
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        VStack(spacing: 20) {
+            DeviceSectionView()
+
+            Divider()
+
+            HStack {
+                StatusBadgeView(isCapturing: viewModel.isCapturing)
+                Spacer()
+            }
+
+            LevelMeterView(level: viewModel.inputLevel, isActive: viewModel.isCapturing)
+
+            CaptureButtonView()
         }
-        .padding()
+        .padding(24)
+        .frame(width: 480, height: 300)
+        .alert(item: $viewModel.errorAlert) { (alert: AlertItem) in
+            if alert.action == .openSettings {
+                let settingsURL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+                return Alert(
+                    title: Text(alert.title),
+                    message: Text(alert.message),
+                    primaryButton: .default(Text("Open Settings")) {
+                        if let url = URL(string: settingsURL) { NSWorkspace.shared.open(url) }
+                    },
+                    secondaryButton: .cancel()
+                )
+            }
+            return Alert(title: Text(alert.title), message: Text(alert.message))
+        }
     }
 }
 
-#Preview {
+#Preview("Idle") {
     ContentView()
+        .environmentObject(AudioViewModel.preview(capturing: false, level: -160))
+}
+
+#Preview("Capturing") {
+    ContentView()
+        .environmentObject(AudioViewModel.preview(capturing: true, level: -18))
 }

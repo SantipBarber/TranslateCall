@@ -36,4 +36,7 @@ extension AudioDevice {
         hasInput: true,
         hasOutput: true
     )
+
+    static let mockInputs: [AudioDevice] = [mockMic, mockBlackHole]
+    static let mockOutputs: [AudioDevice] = [mockSpeakers, mockBlackHole]
 }

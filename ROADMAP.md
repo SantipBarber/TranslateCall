@@ -1,9 +1,9 @@
 # TranslateCall - Development Roadmap
 
 > **Methodology**: Spec-Driven Development (SDD)
-> **Last Updated**: 2026-02-01
+> **Last Updated**: 2026-03-07
 > **Version**: 0.1.0-alpha
-> **Status**: Pre-Development (Planning Complete, PoCs Validated)
+> **Status**: M1 COMPLETED — Starting M2
 
 ---
 
@@ -105,7 +105,7 @@ Break design into implementable units:
 ```
 M0 ✅ PoC Validation          ── COMPLETED (2026-01-31)
  │
-M1 ○  Foundation              ── Xcode project, audio infra, basic UI
+M1 ✅ Foundation              ── COMPLETED (2026-03-07)
  │
 M2 ○  Speech Pipeline         ── VAD + STT + TTS integration
  │
@@ -154,6 +154,7 @@ M9 ○  Public Launch            ── Mac App Store, marketing, community
 
 ## M1: Foundation
 
+**Status**: COMPLETED — 2026-03-07
 **Prerequisites**: M0 (completed)
 **Spec Directory**: `specs/m1-foundation/`
 
@@ -208,11 +209,12 @@ Set up the project infrastructure, audio capture/playback system, and basic UI s
 
 ### Acceptance Gates
 
-- [ ] Project builds and runs on macOS 14.0+
-- [ ] Microphone audio is captured and can be played back through BlackHole
-- [ ] Device hot-plug is detected and UI updates accordingly
-- [ ] Audio level meters respond to real-time input
-- [ ] All unit tests pass, CI is green
+- [x] Project builds and runs on macOS 15.0+ with Swift 6.0 strict concurrency
+- [x] Microphone audio is captured and can be played back through BlackHole
+- [x] Device hot-plug is detected and UI updates accordingly
+- [x] Audio level meters respond to real-time input
+- [x] All unit tests pass, CI is green
+- [x] Basic UI Shell: device pickers, start/stop, level meter, status badge
 
 ---
 

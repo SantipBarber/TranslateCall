@@ -1,17 +1,17 @@
-//
-//  TranslateCallApp.swift
-//  TranslateCall
-//
-//  Created by Santiago Pérez Barber on 6/3/26.
-//
-
 import SwiftUI
 
 @main
 struct TranslateCallApp: App {
+    @StateObject private var audioViewModel = AudioViewModel()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ZStack {
+                ContentView()
+                TranslationBridge()
+            }
+            .environmentObject(audioViewModel)
         }
+        .windowResizability(.contentSize)
     }
 }
