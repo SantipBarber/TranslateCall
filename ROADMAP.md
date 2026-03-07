@@ -216,11 +216,21 @@ Set up the project infrastructure, audio capture/playback system, and basic UI s
 - [x] All unit tests pass, CI is green
 - [x] Basic UI Shell: device pickers, start/stop, level meter, status badge
 
+### Lessons Learned (M1)
+
+- `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` causes AVAudioEngine tap closures to inherit `@MainActor` → `_dispatch_assert_queue_fail` on audio thread. Fix: `configureEngine()` must be `nonisolated`.
+- `AVAudioConverter.convert(to:from:)` does NOT support sample rate conversion. Must use `convert(to:error:withInputFrom:)` callback API.
+- `AVAudioConverterInputBlock` is `@Sendable` in Swift 6 — use a `SyncBox<T>: @unchecked Sendable` with `nonisolated(unsafe) var` for mutable state in synchronous callbacks.
+- macOS deployment target must be **15.0** (not 14.0) — Apple Translation Framework requires 15.0.
+- `Grid(horizontalSpacing:verticalSpacing:)` — NOT `columnSpacing/rowSpacing`.
+- SwiftFormat must NOT run as a build phase (introduces typos via automated rewrites).
+
 ---
 
 ## M2: Speech Pipeline
 
-**Prerequisites**: M1
+**Status**: IN PROGRESS — started 2026-03-07
+**Prerequisites**: M1 (completed)
 **Spec Directory**: `specs/m2-speech-pipeline/`
 
 ### Scope
