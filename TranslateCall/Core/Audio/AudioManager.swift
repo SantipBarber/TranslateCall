@@ -8,6 +8,14 @@ import Foundation
 // does not mutate it after yielding. We declare this explicitly for Swift 6.
 extension AVAudioPCMBuffer: @unchecked @retroactive Sendable {}
 
+// Minimal box to pass mutable state into @Sendable callbacks that are guaranteed
+// to be called synchronously (e.g. AVAudioConverterInputBlock). Thread-safe by
+// design: the callback runs on the same thread as the caller, never concurrently.
+private final class SyncBox<T>: @unchecked Sendable {
+    nonisolated(unsafe) var value: T
+    nonisolated init(_ value: T) { self.value = value }
+}
+
 /// Central audio hub: device enumeration, capture, routing, sample-rate conversion, and metering.
 ///
 /// All public API is `@MainActor` for safe use from SwiftUI.
@@ -42,14 +50,23 @@ final class AudioManager: ObservableObject {
     nonisolated(unsafe) private var _continuation16: AsyncStream<AVAudioPCMBuffer>.Continuation?
     nonisolated(unsafe) private var _converter: AVAudioConverter?
 
-    // MARK: - Private — main-thread storage
+    // MARK: - Private — engine (nonisolated so configureEngine can be nonisolated too)
 
-    private let engine = AVAudioEngine()
+    // The engine is created on MainActor and reconfigured only from MainActor callers.
+    // nonisolated(unsafe) lets configureEngine() (nonisolated) access it without an
+    // actor hop, which is required so the tap closure does NOT inherit @MainActor.
+    nonisolated(unsafe) private let engine = AVAudioEngine()
     private let monitor = DeviceMonitor()
 
     // MARK: - Init
 
     init() {
+        // Force lazy stream init here (MainActor) so the continuations are populated
+        // before any audio thread access. configureEngine() is nonisolated and must
+        // not touch @MainActor lazy vars.
+        _ = audioStream48kHz
+        _ = audioStream16kHz
+
         monitor.onDevicesChanged = { [weak self] in
             self?.refreshDevices()
         }
@@ -130,6 +147,7 @@ final class AudioManager: ObservableObject {
         guard isCapturing else { return }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        engine.reset()      // clean state so next configureEngine() starts fresh
         isCapturing = false
         inputLevel = -160
     }
@@ -156,9 +174,17 @@ final class AudioManager: ObservableObject {
     }
 
     // MARK: - Engine configuration
+    //
+    // nonisolated is REQUIRED here. Because this function is nonisolated, any closure
+    // defined inside it (including the tap block) also has no actor isolation.
+    // If configureEngine() were @MainActor, the tap closure would inherit @MainActor,
+    // and AVAudioEngine would crash with _dispatch_assert_queue_fail when it calls the
+    // tap from the audio thread (not the main thread).
 
-    private func configureEngine() throws {
-        engine.stop()
+    nonisolated private func configureEngine() throws {
+        // Engine is already stopped by stopCapture() or was never started.
+        // Do NOT call engine.stop() here — doing so before outputFormat(forBus:) can
+        // return a zeroed-out format which causes installTap to assert internally.
         engine.inputNode.removeTap(onBus: 0)
 
         let inputNode = engine.inputNode
@@ -169,23 +195,30 @@ final class AudioManager: ObservableObject {
             sampleRate: 16_000,
             channels: 1,
             interleaved: false
-        ) else { return }
+        ) else {
+            throw AudioError.engineStartFailed(
+                NSError(domain: "AudioManager", code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "Could not create 16 kHz target format"])
+            )
+        }
 
         _converter = AVAudioConverter(from: captureFormat, to: targetFormat)
 
-        // Touch lazy streams so continuations are ready before the tap fires
-        _ = audioStream48kHz
-        _ = audioStream16kHz
+        // Streams were initialized in init() — continuations are already set.
+        // Do NOT access audioStream48kHz / audioStream16kHz (lazy @MainActor vars) here.
 
         inputNode.installTap(
             onBus: 0, bufferSize: 1024, format: captureFormat
         ) { [weak self] buffer, _ in
+            // Closure is nonisolated (defined in nonisolated context) — safe to call
+            // from AVAudioEngine's real-time audio thread without queue assertions.
             self?.handleBuffer(buffer)
         }
 
         do {
             try engine.start()
         } catch {
+            engine.inputNode.removeTap(onBus: 0)
             throw AudioError.engineStartFailed(error)
         }
     }
@@ -211,19 +244,26 @@ final class AudioManager: ObservableObject {
         guard let converter = _converter else { return nil }
 
         let ratio = converter.outputFormat.sampleRate / buffer.format.sampleRate
-        let outputFrames = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
+        let outputFrames = AVAudioFrameCount(ceil(Double(buffer.frameLength) * ratio)) + 1
 
         guard let output = AVAudioPCMBuffer(
             pcmFormat: converter.outputFormat, frameCapacity: outputFrames
         ) else { return nil }
 
-        // convert(to:from:) is synchronous PCM-to-PCM — no closure, no Sendable issues
-        do {
-            try converter.convert(to: output, from: buffer)
-            return output.frameLength > 0 ? output : nil
-        } catch {
-            return nil
+        // convert(to:from:) does NOT support sample rate conversion — use callback API.
+        // The callback is invoked synchronously (once) on the same thread as this call.
+        let provided = SyncBox(false)
+        var conversionError: NSError?
+        converter.convert(to: output, error: &conversionError) { _, outStatus in
+            guard !provided.value else {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            provided.value = true
+            outStatus.pointee = .haveData
+            return buffer
         }
+        return conversionError == nil && output.frameLength > 0 ? output : nil
     }
 
     // MARK: - Level metering (T7)
