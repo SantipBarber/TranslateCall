@@ -3,8 +3,16 @@ import AVFoundation
 import Accelerate
 @testable import TranslateCall
 
+// Thread-safe box for use in @Sendable closures (e.g. AVAudioConverterInputBlock).
+// Mirrors the SyncBox pattern in AudioManager.swift — safe for synchronous callbacks
+// that may run on CoreAudio's internal thread under load.
+private final class ConsumeBox: @unchecked Sendable {
+    nonisolated(unsafe) var consumed = false
+}
+
 // MARK: - AudioDevice Tests
 
+@MainActor
 struct AudioDeviceTests {
 
     @Test func audioDeviceIsIdentifiable() {
@@ -31,6 +39,7 @@ struct AudioDeviceTests {
 
 // MARK: - AudioError Tests
 
+@MainActor
 struct AudioErrorTests {
 
     @Test func permissionDeniedHasDescription() {
@@ -58,6 +67,7 @@ struct AudioErrorTests {
 
 // MARK: - Sample Rate Conversion Tests
 
+@Suite(.serialized)
 struct SampleRateConversionTests {
 
     /// Validates that a 1024-frame 48kHz buffer converts to the expected ~341 frames at 16kHz.
@@ -92,18 +102,19 @@ struct SampleRateConversionTests {
             return
         }
 
-        var consumed = false
+        let box = ConsumeBox()
         var error: NSError?
         converter.convert(to: output, error: &error) { _, status in
-            guard !consumed else { status.pointee = .noDataNow; return nil }
+            guard !box.consumed else { status.pointee = .noDataNow; return nil }
             status.pointee = .haveData
-            consumed = true
+            box.consumed = true
             return input
         }
 
         #expect(error == nil)
-        // Allow ±1 frame for rounding
-        #expect(output.frameLength >= expectedFrames - 1)
+        // Allow for SRC filter delay: CoreAudio resampler buffers ~16 input samples
+        // on first use, yielding up to ~6 fewer output frames. Upper bound stays +1.
+        #expect(output.frameLength >= expectedFrames - 8)
         #expect(output.frameLength <= expectedFrames + 1)
     }
 
@@ -122,6 +133,8 @@ struct SampleRateConversionTests {
 
 // MARK: - Level Metering Tests
 
+@Suite(.serialized)
+@MainActor
 struct LevelMeteringTests {
 
     @Test func silenceBufferReportsLowLevel() {

@@ -411,6 +411,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "TranslateCall needs microphone access to capture your voice for translation.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "TranslateCall uses speech recognition to transcribe your spoken words for translation.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -446,6 +447,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "TranslateCall needs microphone access to capture your voice for translation.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "TranslateCall uses speech recognition to transcribe your spoken words for translation.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

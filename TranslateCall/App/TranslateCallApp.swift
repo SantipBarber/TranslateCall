@@ -2,7 +2,7 @@ import SwiftUI
 
 @main
 struct TranslateCallApp: App {
-    @StateObject private var audioViewModel = AudioViewModel()
+    @StateObject private var container = AppContainer()
 
     var body: some Scene {
         WindowGroup {
@@ -10,7 +10,8 @@ struct TranslateCallApp: App {
                 ContentView()
                 TranslationBridge()
             }
-            .environmentObject(audioViewModel)
+            .environmentObject(container.audioViewModel)
+            .environmentObject(container.translationBridgeModel)
         }
         .windowResizability(.contentSize)
     }

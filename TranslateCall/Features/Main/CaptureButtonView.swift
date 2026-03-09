@@ -15,7 +15,10 @@ struct CaptureButtonView: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(viewModel.isCapturing ? .red : .accentColor)
-        .disabled(viewModel.isStarting)
+        .disabled(
+            viewModel.isStarting ||
+            (!viewModel.isCapturing && viewModel.languagePairManager.pairStatus == .unsupported)
+        )
     }
 }
 
