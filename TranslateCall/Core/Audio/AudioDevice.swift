@@ -11,6 +11,51 @@ struct AudioDevice: Identifiable, Hashable, Sendable {
     var isBlackHole: Bool { name.contains("BlackHole") }
 }
 
+// MARK: - CoreAudio device ID lookup
+
+extension AudioDevice {
+    /// Returns the `AudioDeviceID` for the first CoreAudio device whose name contains
+    /// `substring` (case-insensitive). Returns `nil` if no matching device is found.
+    ///
+    /// Used by `AudioCoordinator` to resolve the BlackHole device ID at session start.
+    static func deviceID(forNameContaining substring: String) -> AudioDeviceID? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var dataSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(
+            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize
+        ) == noErr else { return nil }
+
+        let count = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+        var ids = [AudioDeviceID](repeating: 0, count: count)
+        guard AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize, &ids
+        ) == noErr else { return nil }
+
+        for deviceID in ids {
+            var nameAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioObjectPropertyName,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var nameValue: CFString = "" as CFString
+            var nameSize = UInt32(MemoryLayout<CFString>.size)
+            let status = withUnsafeMutablePointer(to: &nameValue) {
+                AudioObjectGetPropertyData(deviceID, &nameAddress, 0, nil, &nameSize, $0)
+            }
+            guard status == noErr else { continue }
+
+            if (nameValue as String).localizedCaseInsensitiveContains(substring) {
+                return deviceID
+            }
+        }
+        return nil
+    }
+}
+
 // MARK: - Mock data for previews and tests
 extension AudioDevice {
     static let mockMic = AudioDevice(

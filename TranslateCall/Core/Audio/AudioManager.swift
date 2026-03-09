@@ -8,6 +8,19 @@ import Foundation
 // does not mutate it after yielding. We declare this explicitly for Swift 6.
 extension AVAudioPCMBuffer: @unchecked @retroactive Sendable {}
 
+// MARK: - AudioCapture protocol
+
+/// Minimal interface over `AudioManager` consumed by `AudioCoordinator`.
+/// Allows mock injection for unit tests without requiring real hardware.
+@MainActor
+protocol AudioCapture: AnyObject {
+    var audioStream16kHz: AsyncStream<AVAudioPCMBuffer> { get }
+    func startCapture() async throws
+    func stopCapture()
+}
+
+extension AudioManager: AudioCapture {}
+
 // Minimal box to pass mutable state into @Sendable callbacks that are guaranteed
 // to be called synchronously (e.g. AVAudioConverterInputBlock). Thread-safe by
 // design: the callback runs on the same thread as the caller, never concurrently.

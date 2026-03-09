@@ -46,6 +46,38 @@ struct STSErrorTests {
     }
 }
 
+// MARK: - T2: STSError.deviceRoutingFailed
+
+@MainActor
+struct STSErrorDeviceRoutingTests {
+    @Test func deviceRoutingFailedHasDescription() {
+        let error = STSError.deviceRoutingFailed
+        #expect(error.errorDescription != nil)
+        #expect(!(error.errorDescription ?? "").isEmpty)
+    }
+}
+
+// MARK: - T2: AVSpeechService output device routing
+
+@Suite("AVSpeechService device routing", .serialized)
+@MainActor
+struct AVSpeechServiceRoutingTests {
+    @Test("init with nil outputDeviceID succeeds (default routing)")
+    func initWithNilDeviceIDSucceeds() async throws {
+        let service = try AVSpeechService(outputDeviceID: nil)
+        await service.deactivate()
+        // No throw = pass
+    }
+
+    @Test("init with nonexistent deviceID throws deviceRoutingFailed")
+    func initWithBadDeviceIDThrows() async throws {
+        // AudioDeviceID 99999 is virtually guaranteed not to exist on any Mac
+        #expect(throws: STSError.deviceRoutingFailed) {
+            _ = try AVSpeechService(outputDeviceID: AudioDeviceID(99999))
+        }
+    }
+}
+
 // MARK: - T2 + T4: AVSpeechService
 // @Suite(.serialized) prevents multiple AVAudioEngine instances running in parallel,
 // which would otherwise cause audio hardware resource conflicts on the test machine.

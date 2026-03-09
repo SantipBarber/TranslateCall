@@ -85,8 +85,15 @@ final class TranslationBridgeModel: ObservableObject {
 /// Invisible view anchoring `.translationTask()` in the SwiftUI window hierarchy.
 /// Required by Apple Translation framework — `TranslationSession` is only available
 /// via this modifier; there is no public initializer.
+///
+/// Accepts its model via `init(model:)` so multiple instances can coexist in the same
+/// SwiftUI hierarchy (one per translation direction in the bidirectional pipeline).
 struct TranslationBridge: View {
-    @EnvironmentObject private var model: TranslationBridgeModel
+    private let model: TranslationBridgeModel
+
+    init(model: TranslationBridgeModel) {
+        self.model = model
+    }
 
     var body: some View {
         Color.clear

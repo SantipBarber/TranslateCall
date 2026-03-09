@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import os
 
 private nonisolated(unsafe) let logger = Logger(subsystem: "TranslateCall", category: "AVSpeechService")
@@ -32,7 +33,11 @@ actor AVSpeechService: SynthesisService {
 
     // MARK: - Init
 
-    init(config: SynthesisConfiguration = .default) throws {
+    /// - Parameters:
+    ///   - config: Synthesis configuration (rate, pitch, volume).
+    ///   - outputDeviceID: CoreAudio device ID to route output to. `nil` = system default.
+    ///     Used to send outgoing TTS to BlackHole (F4.1).
+    init(config: SynthesisConfiguration = .default, outputDeviceID: AudioDeviceID? = nil) throws {
         self.config = config
 
         var cont: AsyncStream<Bool>.Continuation?
@@ -48,10 +53,39 @@ actor AVSpeechService: SynthesisService {
         engine.connect(playerNode, to: mixer, format: nil)
         engine.connect(mixer, to: engine.outputNode,
                        format: engine.outputNode.outputFormat(forBus: 0))
+
+        // Route to specific output device before starting (e.g. BlackHole for outgoing TTS).
+        if let deviceID = outputDeviceID {
+            engine.prepare()
+            try Self.configureOutputDevice(deviceID, on: engine)
+        }
+
         do {
             try engine.start()
         } catch {
             throw STSError.engineStartFailed(error)
+        }
+    }
+
+    // MARK: - Output device routing
+
+    /// Sets the CoreAudio output device on the engine's output audio unit.
+    /// Must be called after `engine.prepare()` and before `engine.start()`.
+    private static func configureOutputDevice(_ deviceID: AudioDeviceID, on engine: AVAudioEngine) throws {
+        guard let audioUnit = engine.outputNode.audioUnit else {
+            throw STSError.deviceRoutingFailed
+        }
+        var id = deviceID
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &id,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+        guard status == noErr else {
+            throw STSError.deviceRoutingFailed
         }
     }
 

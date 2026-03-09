@@ -5,6 +5,7 @@ struct StatusBadgeView: View {
     var isSpeechActive: Bool = false
     var isTranslating: Bool = false
     var isSpeaking: Bool = false
+    var isIncomingActive: Bool = false
 
     @State private var isPulsing = false
 
@@ -46,6 +47,12 @@ struct StatusBadgeView: View {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            if isIncomingActive {
+                Image(systemName: "headphones")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

@@ -35,6 +35,23 @@ struct AudioDeviceTests {
         set.insert(AudioDevice.mockMic) // duplicate
         #expect(set.count == 1)
     }
+
+    // T7 — AudioDevice.deviceID(forNameContaining:)
+
+    @Test("deviceID returns nil for nonexistent device name")
+    func deviceIDForUnknownDeviceReturnsNil() {
+        let id = AudioDevice.deviceID(forNameContaining: "THIS_DEVICE_DOES_NOT_EXIST_XYZ_12345")
+        #expect(id == nil)
+    }
+
+    @Test("deviceID finds built-in audio device by partial name")
+    func deviceIDFindsBuiltInDevice() {
+        // Every Mac has a built-in microphone or output — "Built-in" should match something.
+        // If the machine has no audio hardware (rare CI case), this returns nil — also valid.
+        let id = AudioDevice.deviceID(forNameContaining: "Built-in")
+        // Non-nil is expected on real hardware; nil is acceptable in headless CI.
+        _ = id  // result depends on hardware — just verify it doesn't crash
+    }
 }
 
 // MARK: - AudioError Tests

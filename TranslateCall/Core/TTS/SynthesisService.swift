@@ -15,9 +15,10 @@ struct SynthesisConfiguration: Sendable {
 
 // MARK: - STSError
 
-enum STSError: LocalizedError {
+enum STSError: LocalizedError, Equatable {
     case voiceUnavailable(Locale)
     case engineStartFailed(Error)
+    case deviceRoutingFailed
 
     var errorDescription: String? {
         switch self {
@@ -25,6 +26,17 @@ enum STSError: LocalizedError {
             return "No voice installed for locale: \(locale.identifier)"
         case .engineStartFailed(let error):
             return "Audio engine failed to start: \(error.localizedDescription)"
+        case .deviceRoutingFailed:
+            return "Failed to route audio to the specified output device."
+        }
+    }
+
+    static func == (lhs: STSError, rhs: STSError) -> Bool {
+        switch (lhs, rhs) {
+        case (.voiceUnavailable(let lhs), .voiceUnavailable(let rhs)): return lhs == rhs
+        case (.engineStartFailed, .engineStartFailed): return true
+        case (.deviceRoutingFailed, .deviceRoutingFailed): return true
+        default: return false
         }
     }
 }

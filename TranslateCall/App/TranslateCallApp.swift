@@ -8,10 +8,11 @@ struct TranslateCallApp: App {
         WindowGroup {
             ZStack {
                 ContentView()
-                TranslationBridge()
+                TranslationBridge(model: container.outgoingBridgeModel)
+                TranslationBridge(model: container.incomingBridgeModel)
             }
             .environmentObject(container.audioViewModel)
-            .environmentObject(container.translationBridgeModel)
+            .environmentObject(container.languagePairManager)
         }
         .windowResizability(.contentSize)
     }

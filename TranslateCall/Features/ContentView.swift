@@ -16,7 +16,8 @@ struct ContentView: View {
                 StatusBadgeView(
                     isCapturing: viewModel.isCapturing,
                     isSpeechActive: viewModel.isSpeechActive,
-                    isSpeaking: viewModel.isSpeaking
+                    isSpeaking: viewModel.isSpeaking,
+                    isIncomingActive: viewModel.isIncomingActive
                 )
                 Spacer()
             }
@@ -26,13 +27,16 @@ struct ContentView: View {
             TranscriptionView(
                 text: viewModel.latestTranscription,
                 isTranscribing: false,
-                translatedText: viewModel.latestTranslation
+                translatedText: viewModel.latestTranslation,
+                incomingText: viewModel.incomingTranscription,
+                incomingTranslation: viewModel.incomingTranslation,
+                isIncomingActive: viewModel.isIncomingActive
             )
 
             CaptureButtonView()
         }
         .padding(24)
-        .frame(width: 480, height: 440)
+        .frame(width: 480, height: 520)
         .alert(item: $viewModel.errorAlert) { (alert: AlertItem) in
             if alert.action == .openSettings {
                 let settingsURL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
