@@ -157,6 +157,19 @@ final class AudioCoordinator: ObservableObject {
         await incomingSTT?.setLocale(targetLocale)
     }
 
+    /// Prepare the language pair (download translation models if needed).
+    func downloadLanguages() async {
+        do {
+            try await outgoingTranslationService.prepare(
+                source: languagePairManager.sourceLanguage,
+                target: languagePairManager.targetLanguage
+            )
+            await languagePairManager.checkAvailability()
+        } catch {
+            errorAlert = makeAlertItem(for: error)
+        }
+    }
+
     // MARK: - F4.2 hooks (no-op stubs — filled by HalfDuplexManager in F4.2)
 
     func suppressIncomingPipeline(_ suppress: Bool) {}
