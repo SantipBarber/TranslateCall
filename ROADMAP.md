@@ -111,7 +111,7 @@ M2 ✅ Speech Pipeline         ── COMPLETED (2026-03-08)
  │
 M3 ✅ Translation Core        ── COMPLETED (2026-03-08)
  │
-M4 ○  Full Pipeline           ── Bidirectional translation, echo mgmt
+M4 ◑  Full Pipeline           ── F4.1 COMPLETE (2026-03-09), F4.2-F4.3 pending
  │
 M5 ○  Beta Release            ── Testing, polish, beta distribution
  │
@@ -360,7 +360,7 @@ Enable bidirectional translation with echo management and BlackHole routing for 
 
 ### Features to Specify
 
-#### F4.1: Bidirectional Translation
+#### F4.1: Bidirectional Translation ✅ COMPLETED (2026-03-09)
 
 **Requirements (summary)**:
 - WHEN the user speaks THEN outgoing pipeline SHALL translate and output to BlackHole (for remote participant)
