@@ -15,6 +15,7 @@ struct CaptureButtonView: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(viewModel.isCapturing ? .red : .accentColor)
+        .keyboardShortcut("t", modifiers: [.command, .shift])
         .disabled(
             viewModel.isStarting ||
             (!viewModel.isCapturing && viewModel.languagePairManager.pairStatus == .unsupported)

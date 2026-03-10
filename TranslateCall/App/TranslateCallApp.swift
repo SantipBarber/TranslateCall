@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct TranslateCallApp: App {
     @StateObject private var container = AppContainer()
+    @State private var menuBarController: MenuBarController?
 
     var body: some Scene {
         WindowGroup {
@@ -14,6 +15,10 @@ struct TranslateCallApp: App {
             .environmentObject(container.audioViewModel)
             .environmentObject(container.languagePairManager)
             .environmentObject(container.setupManager)
+            .onAppear {
+                guard menuBarController == nil else { return }
+                menuBarController = MenuBarController(viewModel: container.audioViewModel)
+            }
         }
         .windowResizability(.contentSize)
     }

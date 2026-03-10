@@ -151,6 +151,23 @@ final class AudioViewModel: ObservableObject {
         await coordinator.downloadLanguages()
     }
 
+    /// Suppresses the next outgoing utterance — the user's next spoken segment is silently dropped.
+    /// Has no effect if the session is not active.
+    func muteTurn() {
+        guard isCapturing else { return }
+        coordinator.suppressNextOutgoingTurn()
+    }
+
+    // MARK: - Display helpers for menu bar
+
+    var sourceLanguageDisplay: String {
+        languagePairManager.displayName(for: languagePairManager.sourceLanguage)
+    }
+
+    var targetLanguageDisplay: String {
+        languagePairManager.displayName(for: languagePairManager.targetLanguage)
+    }
+
     // MARK: - Device selection
 
     func selectInput(_ device: AudioDevice) {

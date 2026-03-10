@@ -61,6 +61,10 @@ final class AudioCoordinator: ObservableObject {
     /// Written on @MainActor; read in handleOutgoingTranslation (also @MainActor). No races.
     private var outgoingCaptureSuppressed: Bool = false
 
+    /// When true, the next outgoing utterance from STT is silently dropped (one-shot).
+    /// Set via `suppressNextOutgoingTurn()` — resets automatically after one use.
+    private var suppressNextOutgoingTurnFlag: Bool = false
+
     /// Suppresses the incoming translation stage when outgoing TTS is speaking.
     private var incomingCaptureSuppressed: Bool = false
 
@@ -167,8 +171,17 @@ final class AudioCoordinator: ObservableObject {
         outgoingTranslation = nil
         incomingTranscription = nil
         incomingTranslation = nil
+        suppressNextOutgoingTurnFlag = false
 
         logger.info("AudioCoordinator stopped")
+    }
+
+    /// Silently drops the next outgoing utterance from STT (one-shot mute turn).
+    /// Calling this during an active session causes the very next recognized segment
+    /// to be suppressed before translation and TTS. The flag resets automatically.
+    func suppressNextOutgoingTurn() {
+        suppressNextOutgoingTurnFlag = true
+        logger.debug("Next outgoing turn will be suppressed")
     }
 
     /// Update STT locales when the language pair changes.
@@ -354,6 +367,12 @@ final class AudioCoordinator: ObservableObject {
     // MARK: - Translation handlers
 
     private func handleOutgoingTranslation(of text: String) async {
+        // One-shot mute turn: user explicitly requested to skip this utterance.
+        if suppressNextOutgoingTurnFlag {
+            suppressNextOutgoingTurnFlag = false
+            logger.debug("Suppressing next outgoing utterance (mute turn)")
+            return
+        }
         // Suppress when incoming TTS is playing on speakers — prevents mic-pickup feedback loop.
         guard !text.isEmpty, !outgoingCaptureSuppressed else { return }
         await outgoingTTS?.stopSpeaking()

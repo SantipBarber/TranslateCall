@@ -50,7 +50,15 @@ struct ContentView: View {
                 isIncomingActive: viewModel.isIncomingActive
             )
 
-            CaptureButtonView()
+            HStack(spacing: 12) {
+                CaptureButtonView()
+                Button("Mute Turn") { viewModel.muteTurn() }
+                    .keyboardShortcut("m", modifiers: [.command, .shift])
+                    .disabled(!viewModel.isCapturing)
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(24)
         .frame(width: 480, height: 560)

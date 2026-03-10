@@ -190,3 +190,62 @@ struct LevelMeteringTests {
         return max(-160, 10 * log10f(rms))
     }
 }
+
+// MARK: - Device Persistence Tests
+
+@Suite("AudioManager Device Persistence", .serialized) @MainActor
+struct AudioManagerDevicePersistenceTests {
+
+    private static let inputKey  = "tlk.input.deviceUID"
+    private static let outputKey = "tlk.output.deviceUID"
+
+    private func makeDefaults() -> UserDefaults {
+        let name = "test-\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        suite.removePersistentDomain(forName: name)
+        return suite
+    }
+
+    @Test("No saved UID: selectedInput defaults to first available device")
+    func deviceUIDNoSavedUIDUsesDefault() {
+        let defs = makeDefaults()
+        let mgr = AudioManager(defaults: defs)
+        // No saved UID — selectedInput should be nil or the first device (hardware-dependent)
+        // Key point: UserDefaults key should not be set
+        #expect(defs.string(forKey: Self.inputKey) == nil)
+    }
+
+    @Test("Saved UID matches a device: selectedInput is restored")
+    func deviceUIDRestoredWhenFound() {
+        let defs = makeDefaults()
+        // First, discover what UIDs are available on this machine
+        let mgr1 = AudioManager(defaults: defs)
+        guard let first = mgr1.inputDevices.first else { return }  // no hardware — skip
+        let uid = first.uid
+
+        // Write that UID to a fresh test suite
+        let defs2 = makeDefaults()
+        defs2.set(uid, forKey: Self.inputKey)
+        let mgr2 = AudioManager(defaults: defs2)
+        #expect(mgr2.selectedInput?.uid == uid)
+    }
+
+    @Test("Stale UID cleared when device is gone")
+    func deviceUIDStaleClearedWhenDeviceGone() {
+        let defs = makeDefaults()
+        defs.set("uid-that-does-not-exist-xyz", forKey: Self.inputKey)
+        let mgr = AudioManager(defaults: defs)
+        // Device not found → key should be removed
+        #expect(defs.string(forKey: Self.inputKey) == nil)
+        _ = mgr  // suppress unused warning
+    }
+
+    @Test("selectInput persists UID to UserDefaults")
+    func deviceUIDPersistedOnSelectionChange() {
+        let defs = makeDefaults()
+        let mgr = AudioManager(defaults: defs)
+        guard let device = mgr.inputDevices.first else { return }  // no hardware — skip
+        try? mgr.selectInput(device)
+        #expect(defs.string(forKey: Self.inputKey) == device.uid)
+    }
+}

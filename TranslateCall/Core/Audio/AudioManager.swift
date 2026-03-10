@@ -70,10 +70,17 @@ final class AudioManager: ObservableObject {
     // actor hop, which is required so the tap closure does NOT inherit @MainActor.
     nonisolated(unsafe) private let engine = AVAudioEngine()
     private let monitor = DeviceMonitor()
+    private let defaults: UserDefaults
+
+    // MARK: - UserDefaults keys
+
+    private static let inputDeviceUIDKey  = "tlk.input.deviceUID"
+    private static let outputDeviceUIDKey = "tlk.output.deviceUID"
 
     // MARK: - Init
 
-    init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         // Force lazy stream init here (MainActor) so the continuations are populated
         // before any audio thread access. configureEngine() is nonisolated and must
         // not touch @MainActor lazy vars.
@@ -174,7 +181,7 @@ final class AudioManager: ObservableObject {
         let wasCapturing = isCapturing
         if wasCapturing { stopCapture() }
         selectedInput = device
-        UserDefaults.standard.set(device.uid, forKey: "selectedInputUID")
+        defaults.set(device.uid, forKey: Self.inputDeviceUIDKey)
         if wasCapturing { Task { try await self.startCapture() } }
     }
 
@@ -183,7 +190,7 @@ final class AudioManager: ObservableObject {
             throw AudioError.deviceUnavailable(device.name)
         }
         selectedOutput = device
-        UserDefaults.standard.set(device.uid, forKey: "selectedOutputUID")
+        defaults.set(device.uid, forKey: Self.outputDeviceUIDKey)
     }
 
     // MARK: - Engine configuration
@@ -305,11 +312,19 @@ final class AudioManager: ObservableObject {
     // MARK: - UserDefaults persistence
 
     private func restoreSelection() {
-        if let uid = UserDefaults.standard.string(forKey: "selectedInputUID") {
-            selectedInput = inputDevices.first { $0.uid == uid }
+        if let uid = defaults.string(forKey: Self.inputDeviceUIDKey), !uid.isEmpty {
+            if let match = inputDevices.first(where: { $0.uid == uid }) {
+                selectedInput = match
+            } else {
+                defaults.removeObject(forKey: Self.inputDeviceUIDKey)
+            }
         }
-        if let uid = UserDefaults.standard.string(forKey: "selectedOutputUID") {
-            selectedOutput = outputDevices.first { $0.uid == uid }
+        if let uid = defaults.string(forKey: Self.outputDeviceUIDKey), !uid.isEmpty {
+            if let match = outputDevices.first(where: { $0.uid == uid }) {
+                selectedOutput = match
+            } else {
+                defaults.removeObject(forKey: Self.outputDeviceUIDKey)
+            }
         }
     }
 
