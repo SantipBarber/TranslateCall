@@ -3,26 +3,35 @@ import SwiftUI
 struct StatusBadgeView: View {
     var isCapturing: Bool
     var isSpeechActive: Bool = false
-    var isTranslating: Bool = false
-    var isSpeaking: Bool = false
+    var halfDuplexState: HalfDuplexState = .listening
     var isIncomingActive: Bool = false
 
     @State private var isPulsing = false
 
     private var badgeColor: Color {
-        if isSpeaking { return .red }
-        if isTranslating { return .blue }
-        if isSpeechActive { return .orange }
-        if isCapturing { return .green }
-        return .secondary
+        guard isCapturing else { return .secondary }
+        switch halfDuplexState {
+        case .listening:    return isSpeechActive ? .orange : .green
+        case .speaking:     return .red
+        case .transitioning: return .yellow
+        }
     }
 
     private var label: String {
-        if isSpeaking { return "Speaking" }
-        if isTranslating { return "Translating" }
-        if isSpeechActive { return "Speech detected" }
-        if isCapturing { return "Listening" }
-        return "Idle"
+        guard isCapturing else { return "Idle" }
+        switch halfDuplexState {
+        case .listening:    return isSpeechActive ? "Speech detected" : "Listening"
+        case .speaking:     return "Speaking"
+        case .transitioning: return "Transitioning…"
+        }
+    }
+
+    private var micIcon: String {
+        switch halfDuplexState {
+        case .listening:    return "mic"
+        case .speaking:     return "mic.slash"
+        case .transitioning: return "clock"
+        }
     }
 
     var body: some View {
@@ -44,9 +53,14 @@ struct StatusBadgeView: View {
                     isPulsing = isCapturing
                 }
 
+            Image(systemName: micIcon)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .animation(.default, value: label)
 
             if isIncomingActive {
                 Image(systemName: "headphones")
@@ -72,12 +86,12 @@ struct StatusBadgeView: View {
         .padding()
 }
 
-#Preview("Translating") {
-    StatusBadgeView(isCapturing: true, isTranslating: true)
+#Preview("Speaking (half-duplex)") {
+    StatusBadgeView(isCapturing: true, halfDuplexState: .speaking, isIncomingActive: true)
         .padding()
 }
 
-#Preview("Speaking") {
-    StatusBadgeView(isCapturing: true, isSpeaking: true)
+#Preview("Transitioning") {
+    StatusBadgeView(isCapturing: true, halfDuplexState: .transitioning)
         .padding()
 }

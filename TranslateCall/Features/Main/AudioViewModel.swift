@@ -45,6 +45,10 @@ final class AudioViewModel: ObservableObject {
     @Published private(set) var incomingTranslation: String?
     @Published private(set) var isIncomingActive: Bool = false
 
+    // MARK: - Half-duplex state (from coordinator)
+
+    @Published private(set) var halfDuplexState: HalfDuplexState = .listening
+
     // MARK: - Shared
 
     @Published var errorAlert: AlertItem?
@@ -117,6 +121,7 @@ final class AudioViewModel: ObservableObject {
         coordinator.$incomingTranscription.assign(to: &$incomingTranscription)
         coordinator.$incomingTranslation.assign(to: &$incomingTranslation)
         coordinator.$isIncomingActive.assign(to: &$isIncomingActive)
+        coordinator.$halfDuplexState.assign(to: &$halfDuplexState)
         coordinator.$errorAlert.assign(to: &$errorAlert)
     }
 

@@ -53,6 +53,23 @@ final class AudioCoordinator: ObservableObject {
 
     let languagePairManager: LanguagePairManager
 
+    // MARK: - Half-duplex state (F4.2)
+
+    @Published private(set) var halfDuplexState: HalfDuplexState = .listening
+
+    /// Suppresses the outgoing translation stage when incoming TTS is speaking.
+    /// Written on @MainActor; read in handleOutgoingTranslation (also @MainActor). No races.
+    private var outgoingCaptureSuppressed: Bool = false
+
+    /// Suppresses the incoming translation stage when outgoing TTS is speaking.
+    private var incomingCaptureSuppressed: Bool = false
+
+    private var halfDuplexManager: HalfDuplexManager?
+    private var halfDuplexCancellable: AnyCancellable?
+
+    /// Configurable for tests; defaults to 300ms (PoC5-validated).
+    private let halfDuplexTransitionDelay: Duration
+
     // MARK: - Active services (created at start() time, released at stop())
 
     private var outgoingVAD: (any VADService)?
@@ -80,7 +97,8 @@ final class AudioCoordinator: ObservableObject {
         incomingTranslationService: any TranslationService,
         outgoingTTSFactory: @escaping (AudioDeviceID?) throws -> any SynthesisService,
         incomingTTSFactory: @escaping (AudioDeviceID?) throws -> any SynthesisService,
-        languagePairManager: LanguagePairManager
+        languagePairManager: LanguagePairManager,
+        halfDuplexTransitionDelay: Duration = .milliseconds(300)
     ) {
         self.audioCapture = audioCapture
         self.systemCapture = systemCapture
@@ -93,6 +111,7 @@ final class AudioCoordinator: ObservableObject {
         self.outgoingTTSFactory = outgoingTTSFactory
         self.incomingTTSFactory = incomingTTSFactory
         self.languagePairManager = languagePairManager
+        self.halfDuplexTransitionDelay = halfDuplexTransitionDelay
     }
 
     // MARK: - Public actions
@@ -101,6 +120,7 @@ final class AudioCoordinator: ObservableObject {
     /// All other outgoing failures and all incoming failures are non-fatal (errorAlert set, continue).
     func start(captureApp: SCRunningApplication? = nil, blackHoleDeviceID: AudioDeviceID? = nil) async {
         guard !isOutgoingActive else { return }
+        setupHalfDuplex()
         isStarting = true
         defer { isStarting = false }
 
@@ -117,6 +137,7 @@ final class AudioCoordinator: ObservableObject {
 
     func stop() async {
         cancelAllTasks()
+        teardownHalfDuplex()
 
         // Outgoing pipeline
         await outgoingSTT?.deactivate()
@@ -141,6 +162,7 @@ final class AudioCoordinator: ObservableObject {
         isSpeechActive = false
         isOutgoingSpeaking = false
         isIncomingSpeaking = false
+        halfDuplexState = .listening
         outgoingTranscription = nil
         outgoingTranslation = nil
         incomingTranscription = nil
@@ -170,10 +192,32 @@ final class AudioCoordinator: ObservableObject {
         }
     }
 
-    // MARK: - F4.2 hooks (no-op stubs — filled by HalfDuplexManager in F4.2)
+    // MARK: - F4.2 — HalfDuplexCoordinating conformance (implemented)
 
-    func suppressIncomingPipeline(_ suppress: Bool) {}
-    func suppressOutgoingCapture(_ suppress: Bool) {}
+    func suppressOutgoingCapture(_ suppress: Bool) {
+        outgoingCaptureSuppressed = suppress
+    }
+
+    func suppressIncomingPipeline(_ suppress: Bool) {
+        incomingCaptureSuppressed = suppress
+    }
+
+    // MARK: - F4.2 — HalfDuplex lifecycle
+
+    private func setupHalfDuplex() {
+        let hdm = HalfDuplexManager(coordinator: self, transitionDelay: halfDuplexTransitionDelay)
+        halfDuplexManager = hdm
+        halfDuplexCancellable = hdm.$state
+            .sink { @MainActor [weak self] state in
+                self?.halfDuplexState = state
+            }
+    }
+
+    private func teardownHalfDuplex() {
+        halfDuplexCancellable = nil
+        halfDuplexManager?.deactivate()
+        halfDuplexManager = nil
+    }
 
     // MARK: - Private — pipeline setup
 
@@ -310,7 +354,8 @@ final class AudioCoordinator: ObservableObject {
     // MARK: - Translation handlers
 
     private func handleOutgoingTranslation(of text: String) async {
-        guard !text.isEmpty else { return }
+        // Suppress when incoming TTS is playing on speakers — prevents mic-pickup feedback loop.
+        guard !text.isEmpty, !outgoingCaptureSuppressed else { return }
         await outgoingTTS?.stopSpeaking()
         do {
             let translated = try await outgoingTranslationService.translate(
@@ -327,7 +372,8 @@ final class AudioCoordinator: ObservableObject {
     }
 
     private func handleIncomingTranslation(of text: String) async {
-        guard !text.isEmpty, !isIncomingSpeaking else { return }
+        // Suppress when outgoing TTS is active (BlackHole loopback prevention) or self is speaking.
+        guard !text.isEmpty, !incomingCaptureSuppressed, !isIncomingSpeaking else { return }
         do {
             let translated = try await incomingTranslationService.translate(
                 text: text,
@@ -365,5 +411,16 @@ final class AudioCoordinator: ObservableObject {
         default:
             return AlertItem(title: "Error", message: error.localizedDescription, action: nil)
         }
+    }
+}
+
+// MARK: - HalfDuplexCoordinating
+
+extension AudioCoordinator: HalfDuplexCoordinating {
+    var isOutgoingSpeakingPublisher: AnyPublisher<Bool, Never> {
+        $isOutgoingSpeaking.eraseToAnyPublisher()
+    }
+    var isIncomingSpeakingPublisher: AnyPublisher<Bool, Never> {
+        $isIncomingSpeaking.eraseToAnyPublisher()
     }
 }
