@@ -90,13 +90,24 @@ final class LanguagePairManager: ObservableObject {
     }
 
     private func validateOrResetLanguages() {
-        let ids = Set(supportedLanguages.map { $0.minimalIdentifier })
-        if !ids.contains(sourceLanguage.minimalIdentifier) {
+        // Match by 2-letter language code, then pin to the exact Language object from
+        // supportedLanguages so the Picker binding matches its tag (e.g. "es" → "es-419").
+        if let match = supportedLanguages.first(where: {
+            $0.languageCode?.identifier == sourceLanguage.languageCode?.identifier
+        }) {
+            sourceLanguage = match
+        } else {
             sourceLanguage = Locale.current.language
             defaults.removeObject(forKey: Self.sourceKey)
         }
-        if !ids.contains(targetLanguage.minimalIdentifier) {
-            targetLanguage = Locale.Language(identifier: "en")
+        if let match = supportedLanguages.first(where: {
+            $0.languageCode?.identifier == targetLanguage.languageCode?.identifier
+        }) {
+            targetLanguage = match
+        } else {
+            targetLanguage = supportedLanguages.first {
+                $0.languageCode?.identifier == "en"
+            } ?? Locale.Language(identifier: "en")
             defaults.removeObject(forKey: Self.targetKey)
         }
     }

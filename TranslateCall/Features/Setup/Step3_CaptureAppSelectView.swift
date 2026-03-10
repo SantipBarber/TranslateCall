@@ -1,4 +1,3 @@
-import AppKit
 @preconcurrency import ScreenCaptureKit
 import SwiftUI
 
@@ -30,9 +29,7 @@ struct CaptureAppSelectStepView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Button("Grant Screen Recording Permission") {
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-                            NSWorkspace.shared.open(url)
-                        }
+                        Task { await setupManager.requestScreenCapturePermission() }
                     }
                     .buttonStyle(.bordered)
                 }

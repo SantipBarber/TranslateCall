@@ -49,8 +49,14 @@ final class SetupManager: ObservableObject {
 
     // MARK: - Capture app loading
 
-    /// Fetches running applications via SCShareableContent and filters to known video call apps.
+    /// Fetches running applications via SCShareableContent.
+    /// Only proceeds if Screen Recording permission is already granted — never triggers the dialog
+    /// automatically. Call `requestScreenCapturePermission()` to prompt the user explicitly.
     func loadCaptureApps() async {
+        guard CGPreflightScreenCaptureAccess() else {
+            availableCaptureApps = []
+            return
+        }
         isLoadingCaptureApps = true
         defer { isLoadingCaptureApps = false }
         do {
@@ -73,6 +79,15 @@ final class SetupManager: ObservableObject {
         } catch {
             availableCaptureApps = []
         }
+    }
+
+    /// Requests Screen Recording permission (shows system dialog if not yet granted),
+    /// then loads available capture apps.
+    func requestScreenCapturePermission() async {
+        CGRequestScreenCaptureAccess()
+        // Allow time for the permission decision to propagate before checking
+        try? await Task.sleep(for: .milliseconds(500))
+        await loadCaptureApps()
     }
 
     // MARK: - Capture app selection
