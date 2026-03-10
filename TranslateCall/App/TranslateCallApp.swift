@@ -1,3 +1,4 @@
+import Darwin
 import SwiftUI
 
 @main
@@ -21,5 +22,60 @@ struct TranslateCallApp: App {
             }
         }
         .windowResizability(.contentSize)
+        .commands {
+            CommandGroup(after: .help) {
+                Button("Send Feedback…") {
+                    openFeedbackURL()
+                }
+            }
+        }
+    }
+
+    // MARK: - Feedback
+
+    private func openFeedbackURL() {
+        let version = appVersion
+        let osVersion = ProcessInfo.processInfo.operatingSystemVersionString
+        let hw = hardwareModel()
+
+        let body = """
+        **App Version**: \(version)
+        **macOS**: \(osVersion)
+        **Hardware**: \(hw)
+
+        ### Description
+        <!-- What happened? -->
+
+        ### Steps to Reproduce
+        <!-- Step by step... -->
+
+        ### Expected Behaviour
+        <!-- What should have happened? -->
+
+        ### Actual Behaviour
+        <!-- What actually happened? -->
+        """
+
+        guard let encoded = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://github.com/spbarber/TranslateCall/issues/new?body=\(encoded)") else {
+            NSWorkspace.shared.open(URL(string: "https://github.com/spbarber/TranslateCall/issues")!)
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        let build   = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
+        return "\(version) (\(build))"
+    }
+
+    private func hardwareModel() -> String {
+        var size = 0
+        sysctlbyname("hw.model", nil, &size, nil, 0)
+        guard size > 0 else { return "unknown" }
+        var model = [CChar](repeating: 0, count: size)
+        sysctlbyname("hw.model", &model, &size, nil, 0)
+        return String(cString: model)
     }
 }

@@ -3,7 +3,7 @@
 > **Methodology**: Spec-Driven Development (SDD)
 > **Last Updated**: 2026-03-10
 > **Version**: 0.5.0-beta
-> **Status**: M5 in progress — F5.1 ✅ F5.2 ✅ F5.3 pending
+> **Status**: M5 COMPLETED — Starting M6
 
 ---
 
@@ -113,7 +113,7 @@ M3 ✅ Translation Core        ── COMPLETED (2026-03-08)
  │
 M4 ✅ Full Pipeline           ── COMPLETED (2026-03-10)
  │
-M5 ◑  Beta Release            ── Testing, polish, beta distribution  [F5.1 ✅ F5.2 ✅ F5.3 pending]
+M5 ✅  Beta Release            ── Testing, polish, beta distribution  [COMPLETED 2026-03-10]
  │
 M6 ○  Enhanced STT/TTS        ── FluidAudio Parakeet, MLX-Audio Kokoro
  │
