@@ -57,15 +57,22 @@ final class AudioViewModel: ObservableObject {
 
     let coordinator: AudioCoordinator
     let languagePairManager: LanguagePairManager
+    let setupManager: SetupManager
     private let audioManager: AudioManager
     private var cancellables: Set<AnyCancellable> = []
 
     // MARK: - Designated init (used by AppContainer)
 
-    init(coordinator: AudioCoordinator, audioManager: AudioManager, languagePairManager: LanguagePairManager) {
+    init(
+        coordinator: AudioCoordinator,
+        audioManager: AudioManager,
+        languagePairManager: LanguagePairManager,
+        setupManager: SetupManager = SetupManager()
+    ) {
         self.coordinator = coordinator
         self.audioManager = audioManager
         self.languagePairManager = languagePairManager
+        self.setupManager = setupManager
         bindAudioManager()
         bindCoordinator()
     }
@@ -98,7 +105,7 @@ final class AudioViewModel: ObservableObject {
             incomingTTSFactory: { _ in try AVSpeechService(outputDeviceID: nil) },
             languagePairManager: lpm
         )
-        self.init(coordinator: coordinator, audioManager: audioManager, languagePairManager: lpm)
+        self.init(coordinator: coordinator, audioManager: audioManager, languagePairManager: lpm, setupManager: SetupManager())
     }
 
     // MARK: - Combine bindings
@@ -132,8 +139,10 @@ final class AudioViewModel: ObservableObject {
             await coordinator.stop()
         } else {
             await coordinator.start(
-                captureApp: nil,
-                blackHoleDeviceID: AudioDevice.deviceID(forNameContaining: "BlackHole")
+                captureApp: setupManager.selectedCaptureApp,
+                blackHoleDeviceID: setupManager.isBlackHolePresent
+                    ? AudioDevice.deviceID(forNameContaining: "BlackHole")
+                    : nil
             )
         }
     }

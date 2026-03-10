@@ -111,7 +111,7 @@ M2 ✅ Speech Pipeline         ── COMPLETED (2026-03-08)
  │
 M3 ✅ Translation Core        ── COMPLETED (2026-03-08)
  │
-M4 ◑  Full Pipeline           ── F4.1+F4.2 COMPLETE, F4.3 pending
+M4 ✅ Full Pipeline           ── COMPLETED (2026-03-10)
  │
 M5 ○  Beta Release            ── Testing, polish, beta distribution
  │
@@ -386,17 +386,20 @@ Enable bidirectional translation with echo management and BlackHole routing for 
 - Visual state indicator (green/red/yellow)
 - Configurable transition buffer
 
-#### F4.3: Video Call Integration
+#### F4.3: Video Call Integration ✅ COMPLETED (2026-03-10)
 
 **Requirements (summary)**:
 - WHEN BlackHole is configured as microphone in Zoom/Teams/Meet THEN the remote participant SHALL hear translated audio
 - WHEN the user sets up TranslateCall THEN a setup wizard SHALL guide device configuration
 
 **Key deliverables**:
-- Setup wizard for BlackHole + video call configuration
-- Per-app configuration guides (Zoom, Teams, Meet, Discord, FaceTime)
-- Audio routing validation (test tone through pipeline)
-- Troubleshooting diagnostics
+- `SetupManager`: BlackHole readiness check, capture app selection, UserDefaults persistence
+- `VideoCallApp` enum: per-app instructions for Zoom, Teams, Meet, Discord
+- `RouteTestService`: TTS test tone routed to BlackHole
+- 4-step setup wizard (`SetupWizardView` + `BlackHoleCheckStepView` + `VideoAppInstructionStepView` + `CaptureAppSelectStepView` + `RouteTestStepView`)
+- `SetupBannerView` + inline capture app selector in main window
+- `ContentView` integration: auto-shows wizard on first launch, re-checkable via Setup… button
+- 13 new unit tests: `VideoCallAppTests` (7) + `SetupManagerTests` (6)
 
 ### Acceptance Gates
 

@@ -13,6 +13,7 @@ struct TranslateCallApp: App {
             }
             .environmentObject(container.audioViewModel)
             .environmentObject(container.languagePairManager)
+            .environmentObject(container.setupManager)
         }
         .windowResizability(.contentSize)
     }
