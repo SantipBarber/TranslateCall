@@ -111,7 +111,7 @@ M2 ✅ Speech Pipeline         ── COMPLETED (2026-03-08)
  │
 M3 ✅ Translation Core        ── COMPLETED (2026-03-08)
  │
-M4 ◑  Full Pipeline           ── F4.1 COMPLETE (2026-03-09), F4.2-F4.3 pending
+M4 ◑  Full Pipeline           ── F4.1+F4.2 COMPLETE, F4.3 pending
  │
 M5 ○  Beta Release            ── Testing, polish, beta distribution
  │
@@ -373,7 +373,7 @@ Enable bidirectional translation with echo management and BlackHole routing for 
 - System audio capture (for incoming remote voice)
 - Audio routing matrix configuration
 
-#### F4.2: Half-Duplex Echo Management
+#### F4.2: Half-Duplex Echo Management ✅ COMPLETED (2026-03-10)
 
 **Requirements (summary)**:
 - WHILE TTS is playing on speakers THEN the microphone capture SHALL be muted
