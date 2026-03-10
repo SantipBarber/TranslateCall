@@ -54,7 +54,7 @@ struct CaptureAppSelectStepView: View {
             HStack {
                 Spacer()
                 Button("Refresh") {
-                    Task { await setupManager.loadCaptureApps() }
+                    Task { await setupManager.refreshCaptureApps() }
                 }
                 .buttonStyle(.borderless)
                 .font(.caption)

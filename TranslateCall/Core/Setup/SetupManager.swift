@@ -30,6 +30,10 @@ final class SetupManager: ObservableObject {
     // MARK: - Private storage
 
     private let defaults: UserDefaults
+    /// True once SCShareableContent has been fetched at least once this session.
+    /// Reset only by an explicit `refreshCaptureApps()` call.
+    /// Internal (not private) so unit tests can inspect and set it without calling SCKit.
+    var captureAppsLoaded: Bool = false
 
     // MARK: - Init
 
@@ -50,11 +54,17 @@ final class SetupManager: ObservableObject {
     // MARK: - Capture app loading
 
     /// Fetches running applications via SCShareableContent.
-    /// Only proceeds if Screen Recording permission is already granted — never triggers the dialog
-    /// automatically. Call `requestScreenCapturePermission()` to prompt the user explicitly.
+    /// Idempotent within a session: subsequent calls return early if already loaded.
+    /// Call `refreshCaptureApps()` to force a reload (e.g., user taps Refresh).
     func loadCaptureApps() async {
+        // Guard 1: in-flight dedup — another call is already executing
+        guard !isLoadingCaptureApps else { return }
+        // Guard 2: session cache — already fetched this session
+        guard !captureAppsLoaded else { return }
+
         guard CGPreflightScreenCaptureAccess() else {
             availableCaptureApps = []
+            captureAppsLoaded = true  // cache even on permission-not-granted to avoid retry spam
             return
         }
         isLoadingCaptureApps = true
@@ -79,6 +89,14 @@ final class SetupManager: ObservableObject {
         } catch {
             availableCaptureApps = []
         }
+        captureAppsLoaded = true
+    }
+
+    /// Discards the session cache and re-fetches capture apps from SCShareableContent.
+    /// Use for explicit user-initiated refreshes (e.g., "Refresh" button in wizard Step 3).
+    func refreshCaptureApps() async {
+        captureAppsLoaded = false
+        await loadCaptureApps()
     }
 
     /// Requests Screen Recording permission (shows system dialog if not yet granted),
@@ -87,6 +105,7 @@ final class SetupManager: ObservableObject {
         CGRequestScreenCaptureAccess()
         // Allow time for the permission decision to propagate before checking
         try? await Task.sleep(for: .milliseconds(500))
+        captureAppsLoaded = false  // force re-fetch after permission decision
         await loadCaptureApps()
     }
 

@@ -21,11 +21,15 @@ final class LanguagePairManager: ObservableObject {
     @Published private(set) var supportedLanguages: [Locale.Language] = []
     @Published private(set) var isCheckingAvailability = false
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
+    private let languageLoader: (() async -> [Locale.Language])?
     private static let sourceKey = "tlk.source.language"
     private static let targetKey = "tlk.target.language"
 
-    init() {
+    init(defaults: UserDefaults = .standard, languageLoader: (() async -> [Locale.Language])? = nil) {
+        self.defaults = defaults
+        self.languageLoader = languageLoader
+
         let currentLang = Locale.current.language
         let isCurrentEnglish = currentLang.languageCode?.identifier == "en"
         let defaultTarget = Locale.Language(identifier: isCurrentEnglish ? "es" : "en")
@@ -81,8 +85,12 @@ final class LanguagePairManager: ObservableObject {
     // MARK: - Private
 
     private func loadSupportedLanguages() async {
-        let availability = LanguageAvailability()
-        let langs = await availability.supportedLanguages
+        let langs: [Locale.Language]
+        if let loader = languageLoader {
+            langs = await loader()
+        } else {
+            langs = await LanguageAvailability().supportedLanguages
+        }
         supportedLanguages = langs.sorted { displayName(for: $0) < displayName(for: $1) }
         if !supportedLanguages.isEmpty {
             validateOrResetLanguages()
@@ -90,19 +98,16 @@ final class LanguagePairManager: ObservableObject {
     }
 
     private func validateOrResetLanguages() {
-        // Match by 2-letter language code, then pin to the exact Language object from
-        // supportedLanguages so the Picker binding matches its tag (e.g. "es" → "es-419").
-        if let match = supportedLanguages.first(where: {
-            $0.languageCode?.identifier == sourceLanguage.languageCode?.identifier
-        }) {
+        // Pin to the exact Language object from supportedLanguages so the Picker binding
+        // matches its tag. Try exact minimalIdentifier first (preserves pt-BR vs pt-PT),
+        // then fall back to language-code match (e.g. "es" → "es-419").
+        if let match = resolveLanguage(sourceLanguage, in: supportedLanguages) {
             sourceLanguage = match
         } else {
             sourceLanguage = Locale.current.language
             defaults.removeObject(forKey: Self.sourceKey)
         }
-        if let match = supportedLanguages.first(where: {
-            $0.languageCode?.identifier == targetLanguage.languageCode?.identifier
-        }) {
+        if let match = resolveLanguage(targetLanguage, in: supportedLanguages) {
             targetLanguage = match
         } else {
             targetLanguage = supportedLanguages.first {
@@ -110,6 +115,16 @@ final class LanguagePairManager: ObservableObject {
             } ?? Locale.Language(identifier: "en")
             defaults.removeObject(forKey: Self.targetKey)
         }
+    }
+
+    /// Returns the best match for `language` in `candidates`.
+    /// Prefers exact `minimalIdentifier` match; falls back to language-code match.
+    private func resolveLanguage(
+        _ language: Locale.Language,
+        in candidates: [Locale.Language]
+    ) -> Locale.Language? {
+        candidates.first { $0.minimalIdentifier == language.minimalIdentifier }
+            ?? candidates.first { $0.languageCode?.identifier == language.languageCode?.identifier }
     }
 }
 

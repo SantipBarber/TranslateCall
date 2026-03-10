@@ -28,6 +28,39 @@ struct LanguagePairManagerTests {
         UserDefaults.standard.removeObject(forKey: Self.targetKey)
     }
 
+    /// Isolated UserDefaults for a single test — avoids polluting .standard.
+    private func makeDefaults() -> UserDefaults {
+        let suiteName = "test-\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: suiteName)!
+        suite.removePersistentDomain(forName: suiteName)
+        return suite
+    }
+
+    /// Fake language loader — avoids calling LanguageAvailability (slow, real network/disk).
+    /// nonisolated(unsafe) is safe here: immutable let, only read from @MainActor tests.
+    nonisolated(unsafe) private static let fakeLanguages: [Locale.Language] = [
+        Locale.Language(identifier: "es-419"),
+        Locale.Language(identifier: "en-US"),
+        Locale.Language(identifier: "fr-FR"),
+        Locale.Language(identifier: "pt-BR"),
+        Locale.Language(identifier: "pt-PT"),
+        Locale.Language(identifier: "de"),
+    ]
+
+    private func makeIsolatedManager(
+        defaults: UserDefaults,
+        languages: [Locale.Language] = fakeLanguages
+    ) async -> LanguagePairManager {
+        let manager = LanguagePairManager(
+            defaults: defaults,
+            languageLoader: { languages }
+        )
+        // languageLoader is synchronous so one yield is enough for init Task to complete.
+        await Task.yield()
+        await Task.yield()
+        return manager
+    }
+
     /// Wait for the init Task (loadSupportedLanguages + checkAvailability) to settle.
     private func makeManager() async -> LanguagePairManager {
         let manager = LanguagePairManager()
@@ -104,5 +137,71 @@ struct LanguagePairManagerTests {
         await manager.checkAvailability()
         #expect(manager.pairStatus != .unknown)
         clearDefaults()
+    }
+
+    // MARK: - B2 fix: language restoration with isolated defaults + languageLoader
+
+    @Test func savedSourceLanguageRestoredExact() async {
+        // "es-419" should restore to Locale.Language("es-419") not just any Spanish
+        let defs = makeDefaults()
+        defs.set("es-419", forKey: Self.sourceKey)
+        let manager = await makeIsolatedManager(defaults: defs)
+        #expect(manager.sourceLanguage.minimalIdentifier == Locale.Language(identifier: "es-419").minimalIdentifier)
+    }
+
+    @Test func savedTargetLanguageRestoredExact() async {
+        let defs = makeDefaults()
+        defs.set("en-US", forKey: Self.targetKey)
+        let manager = await makeIsolatedManager(defaults: defs)
+        #expect(manager.targetLanguage.minimalIdentifier == Locale.Language(identifier: "en-US").minimalIdentifier)
+    }
+
+    @Test func savedSourceLanguageRestoredByCodeFallback() async {
+        // "es" (no region) falls back to code match → "es-419" (first Spanish in fake list)
+        let defs = makeDefaults()
+        defs.set("es", forKey: Self.sourceKey)
+        let manager = await makeIsolatedManager(defaults: defs)
+        #expect(manager.sourceLanguage.languageCode?.identifier == "es")
+    }
+
+    @Test func ptBRRestoredToPtBRNotPtPT() async {
+        // Exact match must return pt-BR, not pt-PT — validates the fix for the variant bug
+        let defs = makeDefaults()
+        defs.set(Locale.Language(identifier: "pt-BR").minimalIdentifier, forKey: Self.sourceKey)
+        let manager = await makeIsolatedManager(defaults: defs)
+        #expect(manager.sourceLanguage.minimalIdentifier == Locale.Language(identifier: "pt-BR").minimalIdentifier)
+    }
+
+    @Test func ptPTRestoredToPtPTNotPtBR() async {
+        let defs = makeDefaults()
+        defs.set(Locale.Language(identifier: "pt-PT").minimalIdentifier, forKey: Self.sourceKey)
+        let manager = await makeIsolatedManager(defaults: defs)
+        #expect(manager.sourceLanguage.minimalIdentifier == Locale.Language(identifier: "pt-PT").minimalIdentifier)
+    }
+
+    @Test func unknownSavedLanguageFallsBackToDefault() async {
+        let defs = makeDefaults()
+        defs.set("xx", forKey: Self.sourceKey)  // "xx" not in fake language list
+        let manager = await makeIsolatedManager(defaults: defs)
+        // Falls back to Locale.current.language — just verify no crash and languageCode is set
+        #expect(manager.sourceLanguage.languageCode != nil)
+        // UserDefaults key should be cleared
+        #expect(defs.string(forKey: Self.sourceKey) == nil)
+    }
+
+    @Test func noSavedLanguageUsesDefaultsAfterLoad() async {
+        let defs = makeDefaults()  // no keys set
+        let manager = await makeIsolatedManager(defaults: defs)
+        // With our fake list there's no "es" entry, but "es-419" exists and is code-matched
+        #expect(manager.sourceLanguage.languageCode != nil)
+        #expect(manager.targetLanguage.languageCode != nil)
+        #expect(manager.sourceLanguage != manager.targetLanguage)
+    }
+
+    @Test func setSourceLanguageUsesInjectedDefaults() async {
+        let defs = makeDefaults()
+        let manager = await makeIsolatedManager(defaults: defs)
+        await manager.setSourceLanguage(Locale.Language(identifier: "fr-FR"))
+        #expect(defs.string(forKey: Self.sourceKey) == Locale.Language(identifier: "fr-FR").minimalIdentifier)
     }
 }
