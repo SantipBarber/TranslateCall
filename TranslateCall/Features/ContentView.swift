@@ -6,6 +6,7 @@ struct ContentView: View {
     @EnvironmentObject private var setupManager: SetupManager
 
     @State private var showSetupWizard: Bool = false
+    @State private var showParakeetDownload: Bool = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -50,6 +51,9 @@ struct ContentView: View {
                 isIncomingActive: viewModel.isIncomingActive
             )
 
+            STTMetricsView()
+                .padding(.horizontal, 2)
+
             HStack(spacing: 12) {
                 CaptureButtonView()
                 Button("Mute Turn") { viewModel.muteTurn() }
@@ -61,7 +65,7 @@ struct ContentView: View {
             }
         }
         .padding(24)
-        .frame(width: 480, height: 560)
+        .frame(width: 480, height: 620)
         .alert(item: $viewModel.errorAlert) { (alert: AlertItem) in
             if alert.action == .openSettings {
                 let settingsURL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
@@ -78,6 +82,12 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showSetupWizard) {
             SetupWizardView(setupManager: setupManager, isPresented: $showSetupWizard)
+        }
+        .sheet(isPresented: $showParakeetDownload) {
+            parakeetDownloadSheet
+        }
+        .onChange(of: viewModel.engineSelector.isDownloading) { _, downloading in
+            showParakeetDownload = downloading
         }
         .onAppear {
             setupManager.checkBlackHole()
@@ -111,6 +121,29 @@ struct ContentView: View {
 
             Spacer()
         }
+    }
+
+    // MARK: - Parakeet download sheet
+
+    private var parakeetDownloadSheet: some View {
+        VStack(spacing: 16) {
+            Text("Downloading Parakeet Model")
+                .font(.headline)
+            Text("≈ 800 MB · One-time download\nAll transcription runs on-device.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            ProgressView()
+                .scaleEffect(1.2)
+            Button("Cancel") {
+                viewModel.engineSelector.setPreferredEngine(.appleSpeech)
+                viewModel.engineSelector.unloadParakeetModel()
+                showParakeetDownload = false
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(32)
+        .frame(width: 280)
     }
 
     private var captureAppBinding: Binding<SCRunningApplication?> {

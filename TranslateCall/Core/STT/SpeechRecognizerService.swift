@@ -2,6 +2,23 @@ import AVFoundation
 import Foundation
 import Speech
 
+// MARK: - AVAudioPCMBuffer helpers
+
+extension AVAudioPCMBuffer {
+    /// Extracts channel 0 as a `[Float]` array.
+    ///
+    /// Returns an empty array if the buffer has no float channel data (e.g. non-Float32 format).
+    /// Used by `ParakeetSpeechService` to convert a `SpeechSegment` to the flat array
+    /// that `AsrManager.transcribe` expects.
+    ///
+    /// `nonisolated`: called from actor context (ParakeetSpeechService);
+    /// `AVAudioPCMBuffer: @unchecked Sendable` — safe under actor isolation.
+    nonisolated func toFloatSamples() -> [Float] {
+        guard let channelData = floatChannelData else { return [] }
+        return Array(UnsafeBufferPointer(start: channelData[0], count: Int(frameLength)))
+    }
+}
+
 // MARK: - TranscriptionResult
 
 /// A finalized speech recognition result for one utterance.

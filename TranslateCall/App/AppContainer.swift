@@ -29,13 +29,14 @@ final class AppContainer: ObservableObject {
         let outTranslation = AppleTranslationService(model: outBridge)
         let inTranslation = AppleTranslationService(model: inBridge)
 
+        let selector = STTEngineSelector()
         let coordinator = AudioCoordinator(
             audioCapture: audioManager,
             systemCapture: SystemAudioCaptureService(),
             outgoingVADFactory: { EnergyVADService() },
             incomingVADFactory: { EnergyVADService() },
-            outgoingSTTFactory: { AppleSpeechService(locale: $0) },
-            incomingSTTFactory: { AppleSpeechService(locale: $0) },
+            outgoingSTTFactory: { selector.makeOutgoingService(for: $0) },
+            incomingSTTFactory: { selector.makeIncomingService(for: $0) },
             outgoingTranslationService: outTranslation,
             incomingTranslationService: inTranslation,
             outgoingTTSFactory: { try AVSpeechService(outputDeviceID: $0) },
@@ -52,7 +53,8 @@ final class AppContainer: ObservableObject {
             coordinator: coordinator,
             audioManager: audioManager,
             languagePairManager: lpm,
-            setupManager: setup
+            setupManager: setup,
+            engineSelector: selector
         )
     }
 }

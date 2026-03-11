@@ -4,41 +4,93 @@ struct LanguagePairView: View {
     @EnvironmentObject private var viewModel: AudioViewModel
 
     private var manager: LanguagePairManager { viewModel.languagePairManager }
+    private var selector: STTEngineSelector { viewModel.engineSelector }
 
     var body: some View {
-        HStack(spacing: 8) {
-            languagePicker(
-                selection: manager.sourceLanguage,
-                onChange: { lang in Task { await manager.setSourceLanguage(lang) } }
-            )
+        VStack(alignment: .leading, spacing: 6) {
+            // Language pair row
+            HStack(spacing: 8) {
+                languagePicker(
+                    selection: manager.sourceLanguage,
+                    onChange: { lang in Task { await manager.setSourceLanguage(lang) } }
+                )
 
-            Button {
-                Task { await manager.swapLanguages() }
-            } label: {
-                Image(systemName: "arrow.left.arrow.right")
-            }
-            .buttonStyle(.plain)
-            .help("Swap languages")
-
-            languagePicker(
-                selection: manager.targetLanguage,
-                onChange: { lang in Task { await manager.setTargetLanguage(lang) } }
-            )
-
-            pairStatusIndicator
-
-            if manager.pairStatus == .supported {
-                Button("Download") {
-                    Task { await viewModel.downloadLanguages() }
+                Button {
+                    Task { await manager.swapLanguages() }
+                } label: {
+                    Image(systemName: "arrow.left.arrow.right")
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(.plain)
+                .help("Swap languages")
+
+                languagePicker(
+                    selection: manager.targetLanguage,
+                    onChange: { lang in Task { await manager.setTargetLanguage(lang) } }
+                )
+
+                pairStatusIndicator
+
+                if manager.pairStatus == .supported {
+                    Button("Download") {
+                        Task { await viewModel.downloadLanguages() }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
             }
+
+            // STT engine selector row
+            engineSelectorRow
         }
         .disabled(viewModel.isCapturing)
     }
 
-    // MARK: - Subviews
+    // MARK: - STT engine row
+
+    private var engineSelectorRow: some View {
+        HStack(spacing: 8) {
+            Text("STT:")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Picker("STT Engine", selection: Binding(
+                get: { selector.preferredEngine },
+                set: { selector.setPreferredEngine($0) }
+            )) {
+                ForEach(STTEngine.allCases, id: \.self) { engine in
+                    Text(engine.displayName).tag(engine)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 220)
+            .help(enginePickerHelp)
+
+            if selector.isDownloading {
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .help("Downloading Parakeet model…")
+            }
+
+            if selector.usingFallback {
+                Label("English only — using Apple Speech", systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+        }
+    }
+
+    private var enginePickerHelp: String {
+        if !selector.parakeetAvailable && selector.preferredEngine == .parakeet {
+            return "Parakeet model not yet downloaded. Select to begin download."
+        }
+        return "Apple Speech supports all languages. Parakeet provides higher accuracy for English."
+    }
+
+    // MARK: - Language pair subviews
 
     private var pairStatusIndicator: some View {
         Group {

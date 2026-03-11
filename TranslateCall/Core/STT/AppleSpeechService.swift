@@ -95,6 +95,7 @@ actor AppleSpeechService: SpeechRecognizerService {
     private func transcribeSegment(_ segment: SpeechSegment) async -> TranscriptionResult? {
         guard let recognizer else { return nil }
 
+        let startDate = Date()
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = false
         if recognizer.supportsOnDeviceRecognition && config.preferOnDevice {
@@ -126,6 +127,24 @@ actor AppleSpeechService: SpeechRecognizerService {
             activeRecognitionTask = nil
             let confidence = partial.confidences.isEmpty ? 0 :
                 partial.confidences.reduce(0, +) / Float(partial.confidences.count)
+
+            let latencyMs = Int(Date().timeIntervalSince(startDate) * 1000)
+            let segmentDurationMs = Int(
+                Double(segment.audio.frameLength) / segment.audio.format.sampleRate * 1000
+            )
+            Task {
+                await STTMetricsCollector.shared.record(
+                    STTMetrics(
+                        engine: .appleSpeech,
+                        segmentDurationMs: segmentDurationMs,
+                        transcriptionLatencyMs: latencyMs,
+                        confidence: confidence,
+                        textLength: partial.text.count,
+                        timestamp: .now
+                    )
+                )
+            }
+
             guard confidence >= config.minimumConfidence else {
                 logger.debug("Discarding low-confidence result: \(confidence)")
                 return nil

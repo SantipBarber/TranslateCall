@@ -58,6 +58,8 @@ final class AudioViewModel: ObservableObject {
     let coordinator: AudioCoordinator
     let languagePairManager: LanguagePairManager
     let setupManager: SetupManager
+    /// Manages which STT engine (Apple Speech / Parakeet) is active.
+    let engineSelector: STTEngineSelector
     private let audioManager: AudioManager
     private var cancellables: Set<AnyCancellable> = []
 
@@ -67,12 +69,14 @@ final class AudioViewModel: ObservableObject {
         coordinator: AudioCoordinator,
         audioManager: AudioManager,
         languagePairManager: LanguagePairManager,
-        setupManager: SetupManager = SetupManager()
+        setupManager: SetupManager = SetupManager(),
+        engineSelector: STTEngineSelector = STTEngineSelector()
     ) {
         self.coordinator = coordinator
         self.audioManager = audioManager
         self.languagePairManager = languagePairManager
         self.setupManager = setupManager
+        self.engineSelector = engineSelector
         bindAudioManager()
         bindCoordinator()
     }
@@ -92,20 +96,27 @@ final class AudioViewModel: ObservableObject {
         let lpm = languagePairManager
         let outgoing: any TranslationService = translationService ?? PassthroughTranslationService()
         let incoming: any TranslationService = incomingTranslationService ?? PassthroughTranslationService()
+        let selector = STTEngineSelector()
         let coordinator = AudioCoordinator(
             audioCapture: audioManager,
             systemCapture: SystemAudioCaptureService(),
             outgoingVADFactory: { EnergyVADService() },
             incomingVADFactory: { EnergyVADService() },
-            outgoingSTTFactory: { AppleSpeechService(locale: $0) },
-            incomingSTTFactory: { AppleSpeechService(locale: $0) },
+            outgoingSTTFactory: { selector.makeOutgoingService(for: $0) },
+            incomingSTTFactory: { selector.makeIncomingService(for: $0) },
             outgoingTranslationService: outgoing,
             incomingTranslationService: incoming,
             outgoingTTSFactory: { try AVSpeechService(outputDeviceID: $0) },
             incomingTTSFactory: { _ in try AVSpeechService(outputDeviceID: nil) },
             languagePairManager: lpm
         )
-        self.init(coordinator: coordinator, audioManager: audioManager, languagePairManager: lpm, setupManager: SetupManager())
+        self.init(
+            coordinator: coordinator,
+            audioManager: audioManager,
+            languagePairManager: lpm,
+            setupManager: SetupManager(),
+            engineSelector: selector
+        )
     }
 
     // MARK: - Combine bindings
