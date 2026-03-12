@@ -5,7 +5,10 @@ struct ContentView: View {
     @EnvironmentObject private var viewModel: AudioViewModel
     @EnvironmentObject private var setupManager: SetupManager
 
+    @EnvironmentObject private var voiceProfileManager: VoiceProfileManager
+
     @State private var showSetupWizard: Bool = false
+    @State private var showVoiceProfiles: Bool = false
     @State private var showParakeetDownload: Bool = false
     @State private var showKokoroDownload: Bool = false
     @Environment(\.scenePhase) private var scenePhase
@@ -58,6 +61,9 @@ struct ContentView: View {
             TTSMetricsView()
                 .padding(.horizontal, 2)
 
+            // Voice profile row
+            voiceProfileRow
+
             HStack(spacing: 12) {
                 CaptureButtonView()
                 Button("Mute Turn") { viewModel.muteTurn() }
@@ -87,6 +93,13 @@ struct ContentView: View {
         .sheet(isPresented: $showSetupWizard) {
             SetupWizardView(setupManager: setupManager, isPresented: $showSetupWizard)
         }
+        .sheet(isPresented: $showVoiceProfiles) {
+            NavigationStack {
+                VoiceProfileListView()
+                    .environmentObject(voiceProfileManager)
+            }
+            .frame(minWidth: 440, minHeight: 400)
+        }
         .sheet(isPresented: $showParakeetDownload) {
             parakeetDownloadSheet
         }
@@ -109,6 +122,33 @@ struct ContentView: View {
             if newPhase == .active {
                 setupManager.checkBlackHole()
             }
+        }
+    }
+
+    // MARK: - Voice profile row
+
+    private var voiceProfileRow: some View {
+        HStack(spacing: 8) {
+            if let activeProfile = voiceProfileManager.activeProfile {
+                Image(systemName: "person.wave.2.fill")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+                Text(activeProfile.name)
+                    .font(.caption)
+                    .lineLimit(1)
+            } else {
+                Image(systemName: "person.wave.2")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("No voice profile")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Voice Profiles…") { showVoiceProfiles = true }
+                .buttonStyle(.borderless)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -191,10 +231,12 @@ struct ContentView: View {
     ContentView()
         .environmentObject(AudioViewModel.preview(capturing: false, level: -160))
         .environmentObject(SetupManager())
+        .environmentObject(VoiceProfileManager())
 }
 
 #Preview("Capturing") {
     ContentView()
         .environmentObject(AudioViewModel.preview(capturing: true, level: -18))
         .environmentObject(SetupManager())
+        .environmentObject(VoiceProfileManager())
 }

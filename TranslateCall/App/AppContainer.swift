@@ -19,6 +19,7 @@ final class AppContainer: ObservableObject {
     let audioViewModel: AudioViewModel
     let languagePairManager: LanguagePairManager
     let setupManager: SetupManager
+    let voiceProfileManager: VoiceProfileManager
 
     init() {
         let lpm = LanguagePairManager()
@@ -49,10 +50,18 @@ final class AppContainer: ObservableObject {
             languagePairManager: lpm
         )
 
+        let voiceRecorder = VoiceProfileRecorder()
+        let voiceProfiles = VoiceProfileManager(
+            store: VoiceProfileStore(),
+            recorder: voiceRecorder,
+            isSessionActive: { audioManager.isCapturing }
+        )
+
         outgoingBridgeModel = outBridge
         incomingBridgeModel = inBridge
         languagePairManager = lpm
         setupManager = setup
+        voiceProfileManager = voiceProfiles
         audioCoordinator = coordinator
         audioViewModel = AudioViewModel(
             coordinator: coordinator,

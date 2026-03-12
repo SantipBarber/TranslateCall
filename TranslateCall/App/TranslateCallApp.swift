@@ -16,6 +16,7 @@ struct TranslateCallApp: App {
             .environmentObject(container.audioViewModel)
             .environmentObject(container.languagePairManager)
             .environmentObject(container.setupManager)
+            .environmentObject(container.voiceProfileManager)
             .onAppear {
                 guard menuBarController == nil else { return }
                 menuBarController = MenuBarController(viewModel: container.audioViewModel)
