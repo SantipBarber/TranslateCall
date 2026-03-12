@@ -32,8 +32,8 @@ private func makeCoordinator(_ mocks: CoordinatorMocks) -> AudioCoordinator {
         incomingSTTFactory: { _ in mocks.mockIncomingSTT },
         outgoingTranslationService: mocks.mockOutgoingTranslation,
         incomingTranslationService: mocks.mockIncomingTranslation,
-        outgoingTTSFactory: { _ in mocks.mockOutgoingTTS },
-        incomingTTSFactory: { _ in mocks.mockIncomingTTS },
+        outgoingTTSFactory: { _, _ in mocks.mockOutgoingTTS },
+        incomingTTSFactory: { _, _ in mocks.mockIncomingTTS },
         languagePairManager: mocks.languagePairManager
     )
 }

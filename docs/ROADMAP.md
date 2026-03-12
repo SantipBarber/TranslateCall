@@ -1,6 +1,14 @@
-# TranslateCall - Development Roadmap
+# TranslateCall - Development Roadmap (LEGACY — Pre-SDD Planning Document)
 
-## 🎯 Project Timeline Overview
+> ⚠️ **This document is the original pre-development planning roadmap (December 2025).**
+> The authoritative, up-to-date roadmap is at **`/ROADMAP.md`** (project root), which follows
+> the Spec-Driven Development (SDD) methodology with actual implementation status.
+>
+> **Current status as of 2026-03-12**: M6 COMPLETED — Starting M7 (Neural Voice Cloning).
+
+---
+
+## 🎯 Project Timeline Overview (Original Estimates — for historical reference)
 
 **Total Estimated Duration**: 6-9 months (full-time development)
 **Start Date**: TBD

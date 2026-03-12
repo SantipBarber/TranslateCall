@@ -1,0 +1,25 @@
+import Foundation
+
+// MARK: - TTSMetrics
+
+/// Synthesis performance record for one utterance.
+struct TTSMetrics: Sendable {
+    let engine: TTSEngine
+    /// Wall-clock milliseconds from `speak()` call to first audio sample scheduled.
+    let synthesisLatencyMs: Int
+    /// Character count of the input text.
+    let textLength: Int
+    let locale: Locale
+    let timestamp: Date
+}
+
+// MARK: - TTSMetricsSummary
+
+/// Aggregated TTS performance summary for one engine.
+struct TTSMetricsSummary: Sendable, Equatable {
+    let avgLatencyMs: Double
+    let count: Int
+
+    // nonisolated(unsafe): immutable Sendable value; safe under SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor
+    nonisolated(unsafe) static let empty = TTSMetricsSummary(avgLatencyMs: 0, count: 0)
+}

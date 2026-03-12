@@ -48,8 +48,8 @@ final class AudioCoordinator: ObservableObject {
     private let incomingSTTFactory: (Locale) -> any SpeechRecognizerService
     private let outgoingTranslationService: any TranslationService
     private let incomingTranslationService: any TranslationService
-    private let outgoingTTSFactory: (AudioDeviceID?) throws -> any SynthesisService
-    private let incomingTTSFactory: (AudioDeviceID?) throws -> any SynthesisService
+    private let outgoingTTSFactory: (Locale, AudioDeviceID?) throws -> any SynthesisService
+    private let incomingTTSFactory: (Locale, AudioDeviceID?) throws -> any SynthesisService
 
     let languagePairManager: LanguagePairManager
 
@@ -99,8 +99,8 @@ final class AudioCoordinator: ObservableObject {
         incomingSTTFactory: @escaping (Locale) -> any SpeechRecognizerService,
         outgoingTranslationService: any TranslationService,
         incomingTranslationService: any TranslationService,
-        outgoingTTSFactory: @escaping (AudioDeviceID?) throws -> any SynthesisService,
-        incomingTTSFactory: @escaping (AudioDeviceID?) throws -> any SynthesisService,
+        outgoingTTSFactory: @escaping (Locale, AudioDeviceID?) throws -> any SynthesisService,
+        incomingTTSFactory: @escaping (Locale, AudioDeviceID?) throws -> any SynthesisService,
         languagePairManager: LanguagePairManager,
         halfDuplexTransitionDelay: Duration = .milliseconds(300)
     ) {
@@ -268,8 +268,9 @@ final class AudioCoordinator: ObservableObject {
         }
 
         // TTS (non-fatal)
+        let targetLocaleForTTS = Locale(identifier: languagePairManager.targetLanguage.minimalIdentifier)
         do {
-            let tts = try outgoingTTSFactory(blackHoleDeviceID)
+            let tts = try outgoingTTSFactory(targetLocaleForTTS, blackHoleDeviceID)
             outgoingTTS = tts
             observeTTSState(tts, onSpeakingChange: { [weak self] speaking in
                 self?.isOutgoingSpeaking = speaking
@@ -300,7 +301,8 @@ final class AudioCoordinator: ObservableObject {
             observeIncomingTranscriptions(stt)
             logger.info("Incoming: STT activated for \(targetLocale.identifier)")
 
-            let tts = try incomingTTSFactory(nil)
+            let sourceLocaleForTTS = Locale(identifier: languagePairManager.sourceLanguage.minimalIdentifier)
+            let tts = try incomingTTSFactory(sourceLocaleForTTS, nil)
             incomingTTS = tts
             observeTTSState(tts, onSpeakingChange: { [weak self] speaking in
                 self?.isIncomingSpeaking = speaking

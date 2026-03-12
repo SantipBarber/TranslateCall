@@ -30,6 +30,7 @@ final class AppContainer: ObservableObject {
         let inTranslation = AppleTranslationService(model: inBridge)
 
         let selector = STTEngineSelector()
+        let ttsSelector = TTSEngineSelector()
         let coordinator = AudioCoordinator(
             audioCapture: audioManager,
             systemCapture: SystemAudioCaptureService(),
@@ -39,8 +40,12 @@ final class AppContainer: ObservableObject {
             incomingSTTFactory: { selector.makeIncomingService(for: $0) },
             outgoingTranslationService: outTranslation,
             incomingTranslationService: inTranslation,
-            outgoingTTSFactory: { try AVSpeechService(outputDeviceID: $0) },
-            incomingTTSFactory: { _ in try AVSpeechService(outputDeviceID: nil) },
+            outgoingTTSFactory: { [ttsSelector] locale, deviceID in
+                try ttsSelector.makeOutgoingService(for: locale, deviceID: deviceID)
+            },
+            incomingTTSFactory: { [ttsSelector] locale, deviceID in
+                try ttsSelector.makeIncomingService(for: locale, deviceID: deviceID)
+            },
             languagePairManager: lpm
         )
 
@@ -54,7 +59,8 @@ final class AppContainer: ObservableObject {
             audioManager: audioManager,
             languagePairManager: lpm,
             setupManager: setup,
-            engineSelector: selector
+            engineSelector: selector,
+            ttsEngineSelector: ttsSelector
         )
     }
 }

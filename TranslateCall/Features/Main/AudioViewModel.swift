@@ -60,6 +60,8 @@ final class AudioViewModel: ObservableObject {
     let setupManager: SetupManager
     /// Manages which STT engine (Apple Speech / Parakeet) is active.
     let engineSelector: STTEngineSelector
+    /// Manages which TTS engine (AVSpeech / Kokoro) is active.
+    let ttsEngineSelector: TTSEngineSelector
     private let audioManager: AudioManager
     private var cancellables: Set<AnyCancellable> = []
 
@@ -70,13 +72,15 @@ final class AudioViewModel: ObservableObject {
         audioManager: AudioManager,
         languagePairManager: LanguagePairManager,
         setupManager: SetupManager = SetupManager(),
-        engineSelector: STTEngineSelector = STTEngineSelector()
+        engineSelector: STTEngineSelector = STTEngineSelector(),
+        ttsEngineSelector: TTSEngineSelector = TTSEngineSelector()
     ) {
         self.coordinator = coordinator
         self.audioManager = audioManager
         self.languagePairManager = languagePairManager
         self.setupManager = setupManager
         self.engineSelector = engineSelector
+        self.ttsEngineSelector = ttsEngineSelector
         bindAudioManager()
         bindCoordinator()
     }
@@ -97,6 +101,7 @@ final class AudioViewModel: ObservableObject {
         let outgoing: any TranslationService = translationService ?? PassthroughTranslationService()
         let incoming: any TranslationService = incomingTranslationService ?? PassthroughTranslationService()
         let selector = STTEngineSelector()
+        let ttsSelector = TTSEngineSelector()
         let coordinator = AudioCoordinator(
             audioCapture: audioManager,
             systemCapture: SystemAudioCaptureService(),
@@ -106,8 +111,12 @@ final class AudioViewModel: ObservableObject {
             incomingSTTFactory: { selector.makeIncomingService(for: $0) },
             outgoingTranslationService: outgoing,
             incomingTranslationService: incoming,
-            outgoingTTSFactory: { try AVSpeechService(outputDeviceID: $0) },
-            incomingTTSFactory: { _ in try AVSpeechService(outputDeviceID: nil) },
+            outgoingTTSFactory: { [ttsSelector] locale, deviceID in
+                try ttsSelector.makeOutgoingService(for: locale, deviceID: deviceID)
+            },
+            incomingTTSFactory: { [ttsSelector] locale, deviceID in
+                try ttsSelector.makeIncomingService(for: locale, deviceID: deviceID)
+            },
             languagePairManager: lpm
         )
         self.init(
@@ -115,7 +124,8 @@ final class AudioViewModel: ObservableObject {
             audioManager: audioManager,
             languagePairManager: lpm,
             setupManager: SetupManager(),
-            engineSelector: selector
+            engineSelector: selector,
+            ttsEngineSelector: ttsSelector
         )
     }
 

@@ -7,6 +7,7 @@ struct ContentView: View {
 
     @State private var showSetupWizard: Bool = false
     @State private var showParakeetDownload: Bool = false
+    @State private var showKokoroDownload: Bool = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -54,6 +55,9 @@ struct ContentView: View {
             STTMetricsView()
                 .padding(.horizontal, 2)
 
+            TTSMetricsView()
+                .padding(.horizontal, 2)
+
             HStack(spacing: 12) {
                 CaptureButtonView()
                 Button("Mute Turn") { viewModel.muteTurn() }
@@ -65,7 +69,7 @@ struct ContentView: View {
             }
         }
         .padding(24)
-        .frame(width: 480, height: 620)
+        .frame(width: 480, height: 680)
         .alert(item: $viewModel.errorAlert) { (alert: AlertItem) in
             if alert.action == .openSettings {
                 let settingsURL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
@@ -86,8 +90,14 @@ struct ContentView: View {
         .sheet(isPresented: $showParakeetDownload) {
             parakeetDownloadSheet
         }
+        .sheet(isPresented: $showKokoroDownload) {
+            kokoroDownloadSheet
+        }
         .onChange(of: viewModel.engineSelector.isDownloading) { _, downloading in
             showParakeetDownload = downloading
+        }
+        .onChange(of: viewModel.ttsEngineSelector.isDownloading) { _, downloading in
+            showKokoroDownload = downloading
         }
         .onAppear {
             setupManager.checkBlackHole()
@@ -139,6 +149,29 @@ struct ContentView: View {
                 viewModel.engineSelector.setPreferredEngine(.appleSpeech)
                 viewModel.engineSelector.unloadParakeetModel()
                 showParakeetDownload = false
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(32)
+        .frame(width: 280)
+    }
+
+    // MARK: - Kokoro download sheet
+
+    private var kokoroDownloadSheet: some View {
+        VStack(spacing: 16) {
+            Text("Downloading Kokoro Model")
+                .font(.headline)
+            Text("≈ 300 MB · One-time download\nAll synthesis runs on-device.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            ProgressView()
+                .scaleEffect(1.2)
+            Button("Cancel") {
+                viewModel.ttsEngineSelector.setPreferredEngine(.avSpeech)
+                viewModel.ttsEngineSelector.unloadKokoroModel()
+                showKokoroDownload = false
             }
             .buttonStyle(.bordered)
         }

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		6D6720362F5B70990023D811 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 6D6720352F5B70990023D811 /* FluidAudio */; };
+		6D6720372F5B70990023D811 /* FluidAudioEspeak in Frameworks */ = {isa = PBXBuildFile; productRef = 6D6720382F5B70990023D811 /* FluidAudioEspeak */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -51,6 +52,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6D6720362F5B70990023D811 /* FluidAudio in Frameworks */,
+				6D6720372F5B70990023D811 /* FluidAudioEspeak in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -120,6 +122,7 @@
 			name = TranslateCall;
 			packageProductDependencies = (
 				6D6720352F5B70990023D811 /* FluidAudio */,
+				6D6720382F5B70990023D811 /* FluidAudioEspeak */,
 			);
 			productName = TranslateCall;
 			productReference = 6DC120F02F5B66B800211F41 /* TranslateCall.app */;
@@ -514,6 +517,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 6D6720342F5B70990023D811 /* XCRemoteSwiftPackageReference "FluidAudio" */;
 			productName = FluidAudio;
+		};
+		6D6720382F5B70990023D811 /* FluidAudioEspeak */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6D6720342F5B70990023D811 /* XCRemoteSwiftPackageReference "FluidAudio" */;
+			productName = FluidAudioEspeak;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

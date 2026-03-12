@@ -5,6 +5,7 @@ struct LanguagePairView: View {
 
     private var manager: LanguagePairManager { viewModel.languagePairManager }
     private var selector: STTEngineSelector { viewModel.engineSelector }
+    private var ttsSelector: TTSEngineSelector { viewModel.ttsEngineSelector }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -41,6 +42,9 @@ struct LanguagePairView: View {
 
             // STT engine selector row
             engineSelectorRow
+
+            // TTS engine selector row
+            ttsEngineSelectorRow
         }
         .disabled(viewModel.isCapturing)
     }
@@ -82,6 +86,74 @@ struct LanguagePairView: View {
             Spacer()
         }
     }
+
+    // MARK: - TTS engine row
+
+    @AppStorage(KokoroConfiguration.voiceDefaultsKey) private var kokoroVoice: String = ""
+
+    private static let kokoroVoices: [(id: String, label: String)] = [
+        ("", "Default (af_heart)"),
+        ("af_heart", "af_heart"),
+        ("af_bella", "af_bella"),
+        ("am_adam", "am_adam"),
+        ("am_michael", "am_michael"),
+    ]
+
+    private var ttsEngineSelectorRow: some View {
+        HStack(spacing: 8) {
+            Text("TTS:")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Picker("TTS Engine", selection: Binding(
+                get: { ttsSelector.preferredEngine },
+                set: { ttsSelector.setPreferredEngine($0) }
+            )) {
+                ForEach(TTSEngine.allCases, id: \.self) { engine in
+                    Text(engine.displayName).tag(engine)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 180)
+            .help(ttsEnginePickerHelp)
+
+            if ttsSelector.isDownloading {
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .help("Downloading Kokoro model…")
+            }
+
+            if ttsSelector.preferredEngine == .kokoro, ttsSelector.kokoroAvailable {
+                Picker("Voice", selection: $kokoroVoice) {
+                    ForEach(Self.kokoroVoices, id: \.id) { voice in
+                        Text(voice.label).tag(voice.id)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 150)
+                .help("Kokoro voice variant")
+            }
+
+            if ttsSelector.usingFallback {
+                Label("English only — using AVSpeech", systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+        }
+    }
+
+    private var ttsEnginePickerHelp: String {
+        if !ttsSelector.kokoroAvailable && ttsSelector.preferredEngine == .kokoro {
+            return "Kokoro model not yet downloaded. Select to begin download."
+        }
+        return "AVSpeech supports all languages. Kokoro provides higher quality for English (on-device)."
+    }
+
+    // MARK: - STT engine picker help
 
     private var enginePickerHelp: String {
         if !selector.parakeetAvailable && selector.preferredEngine == .parakeet {
