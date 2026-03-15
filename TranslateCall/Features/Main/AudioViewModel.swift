@@ -60,8 +60,9 @@ final class AudioViewModel: ObservableObject {
     let setupManager: SetupManager
     /// Manages which STT engine (Apple Speech / Parakeet) is active.
     let engineSelector: STTEngineSelector
-    /// Manages which TTS engine (AVSpeech / Kokoro) is active.
+    /// Manages which TTS engine (AVSpeech / Kokoro / Voice Clone) is active.
     let ttsEngineSelector: TTSEngineSelector
+    let voiceProfileManager: VoiceProfileManager
     private let audioManager: AudioManager
     private var cancellables: Set<AnyCancellable> = []
 
@@ -73,7 +74,8 @@ final class AudioViewModel: ObservableObject {
         languagePairManager: LanguagePairManager,
         setupManager: SetupManager = SetupManager(),
         engineSelector: STTEngineSelector = STTEngineSelector(),
-        ttsEngineSelector: TTSEngineSelector = TTSEngineSelector()
+        ttsEngineSelector: TTSEngineSelector = TTSEngineSelector(),
+        voiceProfileManager: VoiceProfileManager = VoiceProfileManager()
     ) {
         self.coordinator = coordinator
         self.audioManager = audioManager
@@ -81,8 +83,10 @@ final class AudioViewModel: ObservableObject {
         self.setupManager = setupManager
         self.engineSelector = engineSelector
         self.ttsEngineSelector = ttsEngineSelector
+        self.voiceProfileManager = voiceProfileManager
         bindAudioManager()
         bindCoordinator()
+        bindVoiceProfileManager()
     }
 
     // MARK: - Convenience init (used by previews and legacy tests)
@@ -94,7 +98,8 @@ final class AudioViewModel: ObservableObject {
     convenience init(
         translationService: (any TranslationService)? = nil,
         incomingTranslationService: (any TranslationService)? = nil,
-        languagePairManager: LanguagePairManager = LanguagePairManager()
+        languagePairManager: LanguagePairManager = LanguagePairManager(),
+        voiceProfileManager: VoiceProfileManager = VoiceProfileManager()
     ) {
         let audioManager = AudioManager()
         let lpm = languagePairManager
@@ -125,7 +130,8 @@ final class AudioViewModel: ObservableObject {
             languagePairManager: lpm,
             setupManager: SetupManager(),
             engineSelector: selector,
-            ttsEngineSelector: ttsSelector
+            ttsEngineSelector: ttsSelector,
+            voiceProfileManager: voiceProfileManager
         )
     }
 
@@ -151,6 +157,18 @@ final class AudioViewModel: ObservableObject {
         coordinator.$isIncomingActive.assign(to: &$isIncomingActive)
         coordinator.$halfDuplexState.assign(to: &$halfDuplexState)
         coordinator.$errorAlert.assign(to: &$errorAlert)
+    }
+
+    private func bindVoiceProfileManager() {
+        // Wire active profile changes → TTSEngineSelector
+        voiceProfileManager.$activeProfileId
+            .sink { [weak self] profileId in
+                self?.ttsEngineSelector.activeVoiceProfileId = profileId
+            }
+            .store(in: &cancellables)
+
+        // Provide the profile store to the TTS engine selector for voice clone factory
+        ttsEngineSelector.setProfileStore(voiceProfileManager.profileStore)
     }
 
     // MARK: - Actions

@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var showVoiceProfiles: Bool = false
     @State private var showParakeetDownload: Bool = false
     @State private var showKokoroDownload: Bool = false
+    @State private var showVoiceCloneDownload: Bool = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -97,6 +98,11 @@ struct ContentView: View {
             NavigationStack {
                 VoiceProfileListView()
                     .environmentObject(voiceProfileManager)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showVoiceProfiles = false }
+                        }
+                    }
             }
             .frame(minWidth: 440, minHeight: 400)
         }
@@ -106,11 +112,17 @@ struct ContentView: View {
         .sheet(isPresented: $showKokoroDownload) {
             kokoroDownloadSheet
         }
+        .sheet(isPresented: $showVoiceCloneDownload) {
+            voiceCloneDownloadSheet
+        }
         .onChange(of: viewModel.engineSelector.isDownloading) { _, downloading in
             showParakeetDownload = downloading
         }
         .onChange(of: viewModel.ttsEngineSelector.isDownloading) { _, downloading in
             showKokoroDownload = downloading
+        }
+        .onChange(of: viewModel.ttsEngineSelector.isVoiceCloneDownloading) { _, downloading in
+            showVoiceCloneDownload = downloading
         }
         .onAppear {
             setupManager.checkBlackHole()
@@ -136,6 +148,16 @@ struct ContentView: View {
                 Text(activeProfile.name)
                     .font(.caption)
                     .lineLimit(1)
+                if viewModel.ttsEngineSelector.voiceCloningActive {
+                    Text("Cloning ON")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.green.opacity(0.15))
+                        .foregroundStyle(.green)
+                        .clipShape(Capsule())
+                }
             } else {
                 Image(systemName: "person.wave.2")
                     .font(.caption)
@@ -212,6 +234,28 @@ struct ContentView: View {
                 viewModel.ttsEngineSelector.setPreferredEngine(.avSpeech)
                 viewModel.ttsEngineSelector.unloadKokoroModel()
                 showKokoroDownload = false
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(32)
+        .frame(width: 280)
+    }
+
+    // MARK: - Voice Clone download sheet
+
+    private var voiceCloneDownloadSheet: some View {
+        VStack(spacing: 16) {
+            Text("Downloading Voice Clone Model")
+                .font(.headline)
+            Text("~2 GB · one-time download\nAll synthesis runs on-device.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            ProgressView()
+                .scaleEffect(1.2)
+            Button("Cancel") {
+                viewModel.ttsEngineSelector.disableVoiceCloning()
+                showVoiceCloneDownload = false
             }
             .buttonStyle(.bordered)
         }

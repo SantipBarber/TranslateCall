@@ -49,6 +49,13 @@ struct TTSEngineTests {
         }
     }
 
+    // MARK: - Voice Clone
+
+    @Test("Voice Clone supports en-US")
+    func voiceCloneSupportsEnglishUS() {
+        #expect(TTSEngine.voiceClone.supports(locale: Locale(identifier: "en-US")))
+    }
+
     // MARK: - Codable / rawValue
 
     @Test("rawValue round-trip: avSpeech")
@@ -61,14 +68,19 @@ struct TTSEngineTests {
         #expect(TTSEngine(rawValue: "kokoro") == .kokoro)
     }
 
+    @Test("rawValue round-trip: voiceClone")
+    func rawValueRoundTripVoiceClone() {
+        #expect(TTSEngine(rawValue: "voiceClone") == .voiceClone)
+    }
+
     @Test("Unknown rawValue returns nil")
     func unknownRawValueReturnsNil() {
         #expect(TTSEngine(rawValue: "unknown") == nil)
     }
 
-    @Test("CaseIterable covers both cases")
+    @Test("CaseIterable covers all cases")
     func allCasesCount() {
-        #expect(TTSEngine.allCases.count == 2)
+        #expect(TTSEngine.allCases.count == 3)
     }
 
     @Test("displayName is non-empty for all cases")
@@ -76,5 +88,10 @@ struct TTSEngineTests {
         for engine in TTSEngine.allCases {
             #expect(!engine.displayName.isEmpty, "\(engine) has empty displayName")
         }
+    }
+
+    @Test("voiceClone displayName is Voice Clone")
+    func voiceCloneDisplayName() {
+        #expect(TTSEngine.voiceClone.displayName == "Voice Clone")
     }
 }

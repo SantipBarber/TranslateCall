@@ -55,7 +55,8 @@ final class VoiceProfileManager: ObservableObject {
 
     // MARK: - Dependencies (injectable)
 
-    private let store: any VoiceProfileStoring
+    /// Exposed for `TTSEngineSelector` voice clone factory injection.
+    let profileStore: any VoiceProfileStoring
     let recorder: VoiceProfileRecorder
     private let defaults: UserDefaults
     private let isSessionActive: () -> Bool
@@ -75,7 +76,7 @@ final class VoiceProfileManager: ObservableObject {
         defaults: UserDefaults = .standard,
         isSessionActive: @escaping () -> Bool = { false }
     ) {
-        self.store = store
+        self.profileStore = store
         self.recorder = recorder
         self.defaults = defaults
         self.isSessionActive = isSessionActive
@@ -93,7 +94,7 @@ final class VoiceProfileManager: ObservableObject {
 
     func loadProfiles() async {
         do {
-            profiles = try await store.enumerateHeaders()
+            profiles = try await profileStore.enumerateHeaders()
                 .sorted { $0.createdAt > $1.createdAt }
             // Validate active profile still exists
             if let id = activeProfileId, !profiles.contains(where: { $0.id == id }) {
@@ -164,7 +165,7 @@ final class VoiceProfileManager: ObservableObject {
             transcript: trimmed
         )
         do {
-            try await store.save(profile: profile)
+            try await profileStore.save(profile: profile)
             await loadProfiles()
             recordingState = .idle
             logger.info("Saved voice profile '\(name)' (\(id))")
@@ -181,7 +182,7 @@ final class VoiceProfileManager: ObservableObject {
     // MARK: - Management
 
     func delete(id: UUID) async throws {
-        try await store.delete(id: id)
+        try await profileStore.delete(id: id)
         if activeProfileId == id {
             setActiveProfile(nil)
         }
@@ -189,7 +190,7 @@ final class VoiceProfileManager: ObservableObject {
     }
 
     func rename(id: UUID, newName: String) async throws {
-        try await store.updateName(newName, for: id)
+        try await profileStore.updateName(newName, for: id)
         await loadProfiles()
     }
 
@@ -207,7 +208,7 @@ final class VoiceProfileManager: ObservableObject {
     // MARK: - Load full profile (for F7.2 inference)
 
     func loadFullProfile(id: UUID) async throws -> VoiceProfile {
-        try await store.load(id: id)
+        try await profileStore.load(id: id)
     }
 
     // MARK: - Private: Elapsed Timer

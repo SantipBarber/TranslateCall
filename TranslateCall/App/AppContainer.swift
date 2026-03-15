@@ -69,7 +69,8 @@ final class AppContainer: ObservableObject {
             languagePairManager: lpm,
             setupManager: setup,
             engineSelector: selector,
-            ttsEngineSelector: ttsSelector
+            ttsEngineSelector: ttsSelector,
+            voiceProfileManager: voiceProfiles
         )
     }
 }

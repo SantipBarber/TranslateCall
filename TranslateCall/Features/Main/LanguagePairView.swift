@@ -107,7 +107,14 @@ struct LanguagePairView: View {
 
             Picker("TTS Engine", selection: Binding(
                 get: { ttsSelector.preferredEngine },
-                set: { ttsSelector.setPreferredEngine($0) }
+                set: { engine in
+                    ttsSelector.setPreferredEngine(engine)
+                    if engine == .voiceClone {
+                        ttsSelector.enableVoiceCloning()
+                    } else if ttsSelector.voiceCloningEnabled {
+                        ttsSelector.disableVoiceCloning()
+                    }
+                }
             )) {
                 ForEach(TTSEngine.allCases, id: \.self) { engine in
                     Text(engine.displayName).tag(engine)
