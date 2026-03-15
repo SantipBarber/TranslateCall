@@ -85,6 +85,17 @@ final class TTSEngineSelector: ObservableObject {
         voiceCloningEnabled = defaults.bool(forKey: QwenCloneConfiguration.voiceCloningEnabledKey)
         observeModelManager()
         observeQwenCloneModelManager()
+
+        // REQ-VC-04: auto-load voice clone model on relaunch if previously enabled
+        if voiceCloningEnabled {
+            Task {
+                do {
+                    try await QwenCloneModelManager.shared.ensureReady()
+                } catch {
+                    logger.info("Voice clone auto-load skipped: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     // MARK: - Public API

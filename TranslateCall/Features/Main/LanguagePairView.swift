@@ -52,10 +52,11 @@ struct LanguagePairView: View {
     // MARK: - STT engine row
 
     private var engineSelectorRow: some View {
-        HStack(spacing: 8) {
-            Text("STT:")
+        HStack(spacing: 6) {
+            Text("STT")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(width: 24, alignment: .trailing)
 
             Picker("STT Engine", selection: Binding(
                 get: { selector.preferredEngine },
@@ -67,7 +68,6 @@ struct LanguagePairView: View {
             }
             .labelsHidden()
             .pickerStyle(.segmented)
-            .frame(maxWidth: 220)
             .help(enginePickerHelp)
 
             if selector.isDownloading {
@@ -77,13 +77,11 @@ struct LanguagePairView: View {
             }
 
             if selector.usingFallback {
-                Label("English only — using Apple Speech", systemImage: "info.circle")
-                    .font(.caption)
+                Label("English only", systemImage: "info.circle")
+                    .font(.caption2)
                     .foregroundStyle(.orange)
                     .lineLimit(1)
             }
-
-            Spacer()
         }
     }
 
@@ -100,10 +98,11 @@ struct LanguagePairView: View {
     ]
 
     private var ttsEngineSelectorRow: some View {
-        HStack(spacing: 8) {
-            Text("TTS:")
+        HStack(spacing: 6) {
+            Text("TTS")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(width: 24, alignment: .trailing)
 
             Picker("TTS Engine", selection: Binding(
                 get: { ttsSelector.preferredEngine },
@@ -122,7 +121,6 @@ struct LanguagePairView: View {
             }
             .labelsHidden()
             .pickerStyle(.segmented)
-            .frame(maxWidth: 180)
             .help(ttsEnginePickerHelp)
 
             if ttsSelector.isDownloading {
@@ -138,18 +136,16 @@ struct LanguagePairView: View {
                     }
                 }
                 .labelsHidden()
-                .frame(maxWidth: 150)
+                .frame(maxWidth: 140)
                 .help("Kokoro voice variant")
             }
 
             if ttsSelector.usingFallback {
-                Label("English only — using AVSpeech", systemImage: "info.circle")
-                    .font(.caption)
+                Label("English only", systemImage: "info.circle")
+                    .font(.caption2)
                     .foregroundStyle(.orange)
                     .lineLimit(1)
             }
-
-            Spacer()
         }
     }
 

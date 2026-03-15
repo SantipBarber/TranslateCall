@@ -13,6 +13,7 @@ struct TTSMetricsView: View {
 
     @State private var avSpeechSummary: TTSMetricsSummary = .empty
     @State private var kokoroSummary: TTSMetricsSummary = .empty
+    @State private var voiceCloneSummary: TTSMetricsSummary = .empty
     @State private var isExpanded: Bool = false
 
     // MARK: - Body
@@ -36,22 +37,29 @@ struct TTSMetricsView: View {
     // MARK: - Subviews
 
     private var metricsGrid: some View {
-        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
+        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
             GridRow {
                 Text("").gridColumnAlignment(.leading)
-                Text("AVSpeech").font(.caption).bold().gridColumnAlignment(.center)
-                Text("Kokoro").font(.caption).bold().gridColumnAlignment(.center)
+                Text("AVSpeech").font(.caption2).bold().gridColumnAlignment(.center)
+                Text("Kokoro").font(.caption2).bold().gridColumnAlignment(.center)
+                Text("Voice Clone").font(.caption2).bold().gridColumnAlignment(.center)
             }
             Divider()
             metricRow(
                 label: "Avg latency",
-                avValue: avSpeechSummary.count == 0 ? "—" : "\(Int(avSpeechSummary.avgLatencyMs)) ms",
-                kokoroValue: kokoroSummary.count == 0 ? "—" : "\(Int(kokoroSummary.avgLatencyMs)) ms"
+                values: [
+                    formatLatency(avSpeechSummary),
+                    formatLatency(kokoroSummary),
+                    formatLatency(voiceCloneSummary)
+                ]
             )
             metricRow(
                 label: "Utterances",
-                avValue: "\(avSpeechSummary.count)",
-                kokoroValue: "\(kokoroSummary.count)"
+                values: [
+                    "\(avSpeechSummary.count)",
+                    "\(kokoroSummary.count)",
+                    "\(voiceCloneSummary.count)"
+                ]
             )
         }
         .padding(.top, 4)
@@ -59,12 +67,17 @@ struct TTSMetricsView: View {
     }
 
     @ViewBuilder
-    private func metricRow(label: String, avValue: String, kokoroValue: String) -> some View {
+    private func metricRow(label: String, values: [String]) -> some View {
         GridRow {
             Text(label).foregroundStyle(.secondary)
-            Text(avValue).monospacedDigit()
-            Text(kokoroValue).monospacedDigit()
+            ForEach(Array(values.enumerated()), id: \.offset) { _, value in
+                Text(value).monospacedDigit()
+            }
         }
+    }
+
+    private func formatLatency(_ summary: TTSMetricsSummary) -> String {
+        summary.count == 0 ? "—" : "\(Int(summary.avgLatencyMs)) ms"
     }
 
     // MARK: - Data refresh
@@ -72,6 +85,7 @@ struct TTSMetricsView: View {
     private func refreshMetrics() async {
         avSpeechSummary = await TTSMetricsCollector.shared.summary(for: .avSpeech)
         kokoroSummary = await TTSMetricsCollector.shared.summary(for: .kokoro)
+        voiceCloneSummary = await TTSMetricsCollector.shared.summary(for: .voiceClone)
     }
 }
 

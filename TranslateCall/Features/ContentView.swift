@@ -124,6 +124,9 @@ struct ContentView: View {
         .onChange(of: viewModel.ttsEngineSelector.isVoiceCloneDownloading) { _, downloading in
             showVoiceCloneDownload = downloading
         }
+        // Force re-render when voice clone availability changes (nested ObservableObject)
+        .onChange(of: viewModel.ttsEngineSelector.voiceCloneAvailable) { _, _ in }
+        .onChange(of: viewModel.ttsEngineSelector.voiceCloningEnabled) { _, _ in }
         .onAppear {
             setupManager.checkBlackHole()
             if !setupManager.isSetupCompleted {
