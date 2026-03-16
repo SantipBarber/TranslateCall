@@ -10,7 +10,7 @@ struct SynthesisConfiguration: Sendable {
     /// Volume (0.0 – 1.0). Default: 1.0.
     var volume: Float = 1.0
 
-    nonisolated(unsafe) static let `default` = SynthesisConfiguration()
+    nonisolated static let `default` = SynthesisConfiguration()
 }
 
 // MARK: - STSError

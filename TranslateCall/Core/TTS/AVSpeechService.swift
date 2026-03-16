@@ -2,7 +2,7 @@ import AVFoundation
 import CoreAudio
 import os
 
-private nonisolated(unsafe) let logger = Logger(subsystem: "TranslateCall", category: "AVSpeechService")
+private nonisolated let logger = Logger(subsystem: "TranslateCall", category: "AVSpeechService")
 
 // MARK: - AVSpeechService
 

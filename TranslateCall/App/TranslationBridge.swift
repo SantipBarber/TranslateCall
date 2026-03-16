@@ -89,10 +89,10 @@ final class TranslationBridgeModel: ObservableObject {
 /// Accepts its model via `init(model:)` so multiple instances can coexist in the same
 /// SwiftUI hierarchy (one per translation direction in the bidirectional pipeline).
 struct TranslationBridge: View {
-    private let model: TranslationBridgeModel
+    @ObservedObject private var model: TranslationBridgeModel
 
     init(model: TranslationBridgeModel) {
-        self.model = model
+        _model = ObservedObject(wrappedValue: model)
     }
 
     var body: some View {

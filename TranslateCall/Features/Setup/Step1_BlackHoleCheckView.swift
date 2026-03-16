@@ -10,7 +10,10 @@ struct BlackHoleCheckStepView: View {
             VStack(spacing: 4) {
                 Text("BlackHole Virtual Audio")
                     .font(.headline)
-                Text("TranslateCall routes translated speech through BlackHole so your video call app hears it as a microphone.")
+                Text(
+                    "TranslateCall routes translated speech through BlackHole "
+                        + "so your video call app hears it as a microphone."
+                )
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -83,7 +86,10 @@ struct BlackHoleCheckStepView: View {
 
             Spacer()
 
-            Text("Tip: You can continue to step 2 even without BlackHole — incoming translation will be unavailable until it is installed.")
+            Text(
+                "Tip: You can continue to step 2 even without BlackHole "
+                    + "— incoming translation will be unavailable until it is installed."
+            )
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

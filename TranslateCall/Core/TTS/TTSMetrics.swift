@@ -20,6 +20,5 @@ struct TTSMetricsSummary: Sendable, Equatable {
     let avgLatencyMs: Double
     let count: Int
 
-    // nonisolated(unsafe): immutable Sendable value; safe under SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor
-    nonisolated(unsafe) static let empty = TTSMetricsSummary(avgLatencyMs: 0, count: 0)
+    nonisolated static let empty = TTSMetricsSummary(avgLatencyMs: 0, count: 0)
 }

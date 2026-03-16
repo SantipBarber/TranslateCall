@@ -60,7 +60,10 @@ struct VideoAppInstructionStepView: View {
 
             Spacer(minLength: 0)
 
-            Text("Estimated time: \(displayedApp.estimatedMinutes) minute\(displayedApp.estimatedMinutes == 1 ? "" : "s")")
+            Text(
+                "Estimated time: \(displayedApp.estimatedMinutes) "
+                    + "minute\(displayedApp.estimatedMinutes == 1 ? "" : "s")"
+            )
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

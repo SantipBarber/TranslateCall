@@ -74,7 +74,11 @@ final class MenuBarController: NSObject {
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Open Main Window", action: #selector(openMainWindow), keyEquivalent: ""))
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit TranslateCall", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(
+            title: "Quit TranslateCall",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        ))
 
         for item in menu.items { item.target = self }
 

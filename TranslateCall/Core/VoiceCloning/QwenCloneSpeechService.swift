@@ -3,7 +3,7 @@ import CoreAudio
 import Foundation
 import OSLog
 
-nonisolated(unsafe) private let logger = Logger(
+nonisolated private let logger = Logger(
     subsystem: "com.spbarber.TranslateCall",
     category: "QwenCloneSpeechService"
 )

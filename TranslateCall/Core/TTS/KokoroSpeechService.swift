@@ -4,8 +4,10 @@ import FluidAudioEspeak
 import Foundation
 import OSLog
 
-// nonisolated(unsafe): file-level logger used from actor context; Logger is Sendable — safe
-nonisolated(unsafe) private let kokoroServiceLogger = Logger(subsystem: "com.spbarber.TranslateCall", category: "KokoroSpeechService")
+nonisolated private let kokoroServiceLogger = Logger(
+    subsystem: "com.spbarber.TranslateCall",
+    category: "KokoroSpeechService"
+)
 
 // MARK: - KokoroSpeechService
 
@@ -86,7 +88,9 @@ actor KokoroSpeechService: SynthesisService {
         if text.count > 500 {
             let truncated = String(text.prefix(500))
             inputText = truncated.components(separatedBy: " ").dropLast().joined(separator: " ")
-            kokoroServiceLogger.warning("KokoroSpeechService: text truncated from \(text.count) to \(inputText.count) chars")
+            kokoroServiceLogger.warning(
+                "KokoroSpeechService: text truncated from \(text.count) to \(inputText.count) chars"
+            )
         } else {
             inputText = text
         }

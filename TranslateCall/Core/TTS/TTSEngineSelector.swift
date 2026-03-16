@@ -59,8 +59,8 @@ final class TTSEngineSelector: ObservableObject {
     var kokoroFactory: (AudioDeviceID?, KokoroConfiguration) throws -> any SynthesisService = { deviceID, config in
         try KokoroSpeechService(outputDeviceID: deviceID, configuration: config)
     }
-    var voiceCloneFactory: (AudioDeviceID?, UUID, any VoiceProfileStoring) throws -> any SynthesisService = {
-        deviceID, profileId, store in
+    // swiftlint:disable:next line_length
+    var voiceCloneFactory: (AudioDeviceID?, UUID, any VoiceProfileStoring) throws -> any SynthesisService = { deviceID, profileId, store in
         let inferrer = try QwenCloneModelManager.shared.getInferrerSync()
         return try QwenCloneSpeechService(
             outputDeviceID: deviceID,

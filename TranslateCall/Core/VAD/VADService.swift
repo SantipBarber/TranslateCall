@@ -40,8 +40,7 @@ struct VADConfiguration: Sendable {
     /// Pre-speech context padding prepended to each utterance via the history buffer.
     var speechPadding: TimeInterval = 0.1
 
-    // nonisolated(unsafe): immutable Sendable value; safe under SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor
-    nonisolated(unsafe) static let `default` = VADConfiguration()
+    nonisolated static let `default` = VADConfiguration()
 
     // MARK: - FluidAudio adapters (internal — insulates callers from library types)
 

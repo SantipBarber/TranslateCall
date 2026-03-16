@@ -6,7 +6,7 @@ import os
 // boundaries for read-only use (we only pass it to configure an SCContentFilter).
 extension SCRunningApplication: @unchecked @retroactive Sendable {}
 
-private nonisolated(unsafe) let logger = Logger(subsystem: "TranslateCall", category: "SystemAudioCapture")
+private nonisolated let logger = Logger(subsystem: "TranslateCall", category: "SystemAudioCapture")
 
 // MARK: - Error
 
@@ -18,7 +18,8 @@ enum SystemAudioCaptureError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .permissionDenied:
-            return "Screen Recording permission is required to capture remote audio. Enable it in System Settings > Privacy > Screen Recording."
+            return "Screen Recording permission is required to capture remote audio. "
+                + "Enable it in System Settings > Privacy > Screen Recording."
         case .noDisplayAvailable:
             return "No display available for audio capture."
         case .streamFailed(let error):

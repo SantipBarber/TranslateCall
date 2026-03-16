@@ -8,8 +8,8 @@ struct TranscriptionView: View {
     var isTranslating: Bool = false
 
     // MARK: - Incoming pipeline (shown when isIncomingActive)
-    var incomingText: String? = nil
-    var incomingTranslation: String? = nil
+    var incomingText: String?
+    var incomingTranslation: String?
     var isIncomingActive: Bool = false
 
     var body: some View {

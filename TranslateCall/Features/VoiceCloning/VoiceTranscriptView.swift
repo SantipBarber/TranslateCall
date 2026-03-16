@@ -151,7 +151,8 @@ struct VoiceTranscriptView: View {
     private var qualityWarnings: some View {
         if isQualityBlocked {
             warningBanner(
-                "Insufficient speech detected (\(String(format: "%.0f", result.quality.voicedDurationSeconds))s voiced). "
+                "Insufficient speech detected "
+                    + "(\(String(format: "%.0f", result.quality.voicedDurationSeconds))s voiced). "
                     + "Please re-record with more speech.",
                 severity: .critical
             )

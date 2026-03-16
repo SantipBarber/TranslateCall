@@ -2,9 +2,7 @@ import AVFoundation
 import Foundation
 import OSLog
 
-// nonisolated(unsafe): Logger is immutable and thread-safe; top-level let is @MainActor
-// under SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor.
-nonisolated(unsafe) private let parakeetLogger = Logger(
+nonisolated private let parakeetLogger = Logger(
     subsystem: "com.spbarber.TranslateCall",
     category: "ParakeetSpeechService"
 )

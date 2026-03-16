@@ -12,7 +12,7 @@ nonisolated struct QwenCloneConfiguration: Sendable {
     var inferenceTimeoutSeconds: Int = 10
     var textTruncationLimit: Int = 200
 
-    nonisolated(unsafe) static let `default` = QwenCloneConfiguration()
+    nonisolated static let `default` = QwenCloneConfiguration()
 
     static let voiceCloningEnabledKey = "tlk.voiceCloning.enabled"
 

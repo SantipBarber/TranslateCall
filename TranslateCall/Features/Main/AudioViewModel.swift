@@ -242,6 +242,8 @@ final class AudioViewModel: ObservableObject {
 
 /// No-op translation service used when no real service is provided (previews, lightweight tests).
 private final class PassthroughTranslationService: TranslationService {
-    func translate(text: String, from: Locale.Language, to: Locale.Language) async throws -> String { text }
+    func translate(
+        text: String, from source: Locale.Language, to target: Locale.Language
+    ) async throws -> String { text }
     func prepare(source: Locale.Language, target: Locale.Language) async throws {}
 }

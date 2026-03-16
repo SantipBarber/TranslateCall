@@ -2,8 +2,10 @@ import FluidAudioEspeak
 import Foundation
 import OSLog
 
-// nonisolated(unsafe): file-level logger used from actor context; Logger is Sendable — safe
-nonisolated(unsafe) private let kokoroModelLogger = Logger(subsystem: "com.spbarber.TranslateCall", category: "KokoroModelManager")
+nonisolated private let kokoroModelLogger = Logger(
+    subsystem: "com.spbarber.TranslateCall",
+    category: "KokoroModelManager"
+)
 
 // MARK: - KokoroModelManager
 

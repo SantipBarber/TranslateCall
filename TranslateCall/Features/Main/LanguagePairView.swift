@@ -94,7 +94,7 @@ struct LanguagePairView: View {
         ("af_heart", "af_heart"),
         ("af_bella", "af_bella"),
         ("am_adam", "am_adam"),
-        ("am_michael", "am_michael"),
+        ("am_michael", "am_michael")
     ]
 
     private var ttsEngineSelectorRow: some View {

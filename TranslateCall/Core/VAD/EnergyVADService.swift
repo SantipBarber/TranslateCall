@@ -3,7 +3,7 @@ import AVFoundation
 import Foundation
 import OSLog
 
-nonisolated(unsafe) private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "EnergyVADService")
+nonisolated private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "EnergyVADService")
 
 // MARK: - EnergyVADService
 

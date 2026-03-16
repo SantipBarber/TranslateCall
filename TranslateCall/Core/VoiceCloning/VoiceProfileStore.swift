@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 import OSLog
 
-private nonisolated(unsafe) let logger = Logger(
+private nonisolated let logger = Logger(
     subsystem: "com.spbarber.TranslateCall",
     category: "VoiceProfileStore"
 )
@@ -304,8 +304,9 @@ actor VoiceProfileStore: VoiceProfileStoring {
         guard data.count >= offset + sampleBytes + 4 else { throw VoiceProfileError.corruptFile }
 
         let samples: [Float] = data[offset ..< (offset + sampleBytes)].withUnsafeBytes {
-            Array(UnsafeBufferPointer(
-                start: $0.baseAddress!.assumingMemoryBound(to: Float.self),
+            guard let baseAddress = $0.baseAddress else { return [] }
+            return Array(UnsafeBufferPointer(
+                start: baseAddress.assumingMemoryBound(to: Float.self),
                 count: sampleCount
             ))
         }

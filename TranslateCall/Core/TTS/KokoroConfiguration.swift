@@ -11,6 +11,5 @@ struct KokoroConfiguration: Sendable {
     /// UserDefaults key for persisting voice selection.
     static let voiceDefaultsKey = "tlk.tts.kokoro.voice"
 
-    // nonisolated(unsafe): immutable Sendable value; safe under SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor
-    nonisolated(unsafe) static let `default` = KokoroConfiguration()
+    nonisolated static let `default` = KokoroConfiguration()
 }

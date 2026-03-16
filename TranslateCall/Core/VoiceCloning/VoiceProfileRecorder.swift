@@ -3,7 +3,7 @@ import AVFoundation
 import Foundation
 import OSLog
 
-private nonisolated(unsafe) let logger = Logger(
+private nonisolated let logger = Logger(
     subsystem: "com.spbarber.TranslateCall",
     category: "VoiceProfileRecorder"
 )

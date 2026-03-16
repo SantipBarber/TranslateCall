@@ -115,9 +115,9 @@ final class STTEngineSelector: ObservableObject {
             return parakeetFactory(locale)
         }
         if preferredEngine == .parakeet {
-            selectorLogger.debug(
-                "Outgoing: Parakeet preferred but unavailable (locale=\(locale.identifier), available=\(self.parakeetAvailable)); using Apple Speech"
-            )
+            let avail = self.parakeetAvailable
+            // swiftlint:disable:next line_length
+            selectorLogger.debug("Parakeet unavailable for outgoing (locale=\(locale.identifier), avail=\(avail)); using Apple Speech")
         }
         return appleSpeechFactory(locale)
     }
@@ -145,7 +145,9 @@ final class STTEngineSelector: ObservableObject {
                 do {
                     try await ParakeetModelManager.shared.ensureReady()
                 } catch {
-                    selectorLogger.error("Parakeet model load failed after preference change: \(error.localizedDescription)")
+                    selectorLogger.error(
+                        "Parakeet model load failed after preference change: \(error.localizedDescription)"
+                    )
                 }
             }
         }

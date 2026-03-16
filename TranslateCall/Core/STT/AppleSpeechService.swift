@@ -3,9 +3,7 @@ import Foundation
 import OSLog
 import Speech
 
-// nonisolated(unsafe): top-level let is @MainActor under SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor;
-// Logger is immutable and thread-safe, so unsafe access is fine here.
-nonisolated(unsafe) private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "AppleSpeechService")
+nonisolated private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "AppleSpeechService")
 
 // MARK: - AppleSpeechService
 

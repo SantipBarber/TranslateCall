@@ -46,8 +46,8 @@ final class RouteTestService: ObservableObject {
         do {
             let tts = try AVSpeechService(outputDeviceID: deviceID)
             await tts.speak(text: testPhrase, locale: Locale(identifier: "en-US"))
-            for await speaking in tts.isSpeakingStream {
-                if !speaking { break }
+            for await speaking in tts.isSpeakingStream where !speaking {
+                break
             }
             await tts.deactivate()
             state = .succeeded

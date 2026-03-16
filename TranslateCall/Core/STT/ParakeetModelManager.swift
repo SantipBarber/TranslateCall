@@ -3,9 +3,7 @@ import FluidAudio
 import Foundation
 import OSLog
 
-// nonisolated(unsafe): Logger is immutable and thread-safe; top-level let is @MainActor
-// under SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor.
-nonisolated(unsafe) private let modelLogger = Logger(
+nonisolated private let modelLogger = Logger(
     subsystem: "com.spbarber.TranslateCall",
     category: "ParakeetModelManager"
 )
@@ -66,7 +64,8 @@ actor ParakeetModelManager {
     // MARK: - Init
 
     init(
-        managerFactory: @escaping @Sendable (ParakeetConfiguration) async throws -> any AsrTranscriber = ParakeetModelManager.defaultFactory
+        managerFactory: @escaping @Sendable (ParakeetConfiguration) async throws
+            -> any AsrTranscriber = ParakeetModelManager.defaultFactory
     ) {
         self.managerFactory = managerFactory
         var cont: AsyncStream<ModelState>.Continuation?
@@ -158,7 +157,8 @@ actor ParakeetModelManager {
     // MARK: - Default factory
 
     /// Tries to load from cache; falls back to download.
-    nonisolated static let defaultFactory: @Sendable (ParakeetConfiguration) async throws -> any AsrTranscriber = { config in
+    nonisolated static let defaultFactory: @Sendable (ParakeetConfiguration) async throws
+        -> any AsrTranscriber = { config in
         let mlConfig = MLModelConfiguration()
         mlConfig.computeUnits = config.preferANE ? .all : .cpuAndGPU
 

@@ -43,7 +43,10 @@ struct CaptureAppSelectStepView: View {
                         }
 
                         ForEach(setupManager.availableCaptureApps, id: \.processID) { app in
-                            appRow(name: app.applicationName, isSelected: setupManager.selectedCaptureApp?.processID == app.processID) {
+                            appRow(
+                                name: app.applicationName,
+                                isSelected: setupManager.selectedCaptureApp?.processID == app.processID
+                            ) {
                                 setupManager.selectCaptureApp(app)
                             }
                         }

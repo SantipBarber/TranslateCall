@@ -62,8 +62,7 @@ struct STTConfiguration: Sendable {
     /// Prefer on-device recognition when the locale supports it. Default: true.
     var preferOnDevice: Bool = true
 
-    // nonisolated(unsafe): immutable Sendable value; safe under SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor
-    nonisolated(unsafe) static let `default` = STTConfiguration()
+    nonisolated static let `default` = STTConfiguration()
 }
 
 // MARK: - SpeechRecognizerService

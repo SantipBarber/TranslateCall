@@ -2,7 +2,7 @@ import Foundation
 import MLXAudioTTS
 import OSLog
 
-nonisolated(unsafe) private let logger = Logger(
+nonisolated private let logger = Logger(
     subsystem: "com.spbarber.TranslateCall",
     category: "QwenCloneModelManager"
 )

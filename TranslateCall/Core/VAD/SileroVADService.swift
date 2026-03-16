@@ -3,7 +3,7 @@ import FluidAudio
 import Foundation
 import OSLog
 
-nonisolated(unsafe) private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "SileroVADService")
+nonisolated private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "SileroVADService")
 
 // MARK: - SileroVADService
 

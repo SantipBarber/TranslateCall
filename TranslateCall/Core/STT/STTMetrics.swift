@@ -9,9 +9,7 @@ struct STTMetricsSummary {
     let count: Int
 
     /// Convenience constant for "no data" state.
-    ///
-    /// nonisolated(unsafe): immutable Sendable value; safe under SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor.
-    nonisolated(unsafe) static let empty = STTMetricsSummary(avgLatencyMs: 0, avgConfidence: 0, count: 0)
+    nonisolated static let empty = STTMetricsSummary(avgLatencyMs: 0, avgConfidence: 0, count: 0)
 }
 
 // MARK: - STTMetrics

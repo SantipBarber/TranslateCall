@@ -1,8 +1,10 @@
 import Foundation
 import OSLog
 
-// nonisolated(unsafe): file-level logger used from actor context; Logger is Sendable — safe
-nonisolated(unsafe) private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "TTSMetricsCollector")
+nonisolated private let logger = Logger(
+    subsystem: "com.spbarber.TranslateCall",
+    category: "TTSMetricsCollector"
+)
 
 // MARK: - TTSMetricsCollector
 

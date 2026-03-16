@@ -3,9 +3,7 @@ import Combine
 import OSLog
 @preconcurrency import ScreenCaptureKit
 
-// nonisolated(unsafe): top-level let is @MainActor under SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor;
-// Logger is immutable and thread-safe, so unsafe access is fine here.
-nonisolated(unsafe) private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "AudioCoordinator")
+nonisolated private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "AudioCoordinator")
 
 /// Owns and manages both the outgoing (mic → BlackHole) and incoming (SCStream → speakers) pipelines.
 ///
@@ -426,13 +424,22 @@ final class AudioCoordinator: ObservableObject {
         case SystemAudioCaptureError.permissionDenied:
             return AlertItem(
                 title: "Screen Recording Required",
-                message: "TranslateCall needs Screen Recording permission to capture incoming audio. Enable it in System Settings.",
+                message: "TranslateCall needs Screen Recording permission to capture incoming audio. "
+                    + "Enable it in System Settings.",
                 action: .openSettings
             )
         case TranslationError.bridgeUnavailable:
-            return AlertItem(title: "Translation Unavailable", message: "Translation bridge unavailable. Restart the app.", action: nil)
+            return AlertItem(
+                title: "Translation Unavailable",
+                message: "Translation bridge unavailable. Restart the app.",
+                action: nil
+            )
         case TranslationError.unsupportedPair(_, _):
-            return AlertItem(title: "Language Pair Unsupported", message: "This language pair is not supported.", action: nil)
+            return AlertItem(
+                title: "Language Pair Unsupported",
+                message: "This language pair is not supported.",
+                action: nil
+            )
         default:
             return AlertItem(title: "Error", message: error.localizedDescription, action: nil)
         }

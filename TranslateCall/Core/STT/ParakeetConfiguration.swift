@@ -10,6 +10,5 @@ struct ParakeetConfiguration: Sendable {
     /// Prefer Apple Neural Engine for inference. Yields fastest on-device latency on M1+.
     var preferANE: Bool = true
 
-    // nonisolated(unsafe): immutable Sendable value; safe under SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor
-    nonisolated(unsafe) static let `default` = ParakeetConfiguration()
+    nonisolated static let `default` = ParakeetConfiguration()
 }

@@ -37,12 +37,12 @@ struct TranslateCallApp: App {
     private func openFeedbackURL() {
         let version = appVersion
         let osVersion = ProcessInfo.processInfo.operatingSystemVersionString
-        let hw = hardwareModel()
+        let model = hardwareModel()
 
         let body = """
         **App Version**: \(version)
         **macOS**: \(osVersion)
-        **Hardware**: \(hw)
+        **Hardware**: \(model)
 
         ### Description
         <!-- What happened? -->
@@ -59,7 +59,9 @@ struct TranslateCallApp: App {
 
         guard let encoded = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let url = URL(string: "https://github.com/spbarber/TranslateCall/issues/new?body=\(encoded)") else {
-            NSWorkspace.shared.open(URL(string: "https://github.com/spbarber/TranslateCall/issues")!)
+            if let fallbackURL = URL(string: "https://github.com/spbarber/TranslateCall/issues") {
+                NSWorkspace.shared.open(fallbackURL)
+            }
             return
         }
         NSWorkspace.shared.open(url)
