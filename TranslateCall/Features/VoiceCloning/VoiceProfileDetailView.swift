@@ -2,11 +2,13 @@ import SwiftUI
 
 struct VoiceProfileDetailView: View {
     let header: VoiceProfileHeader
+    var isSessionActive: Bool = false
 
     @EnvironmentObject private var profileManager: VoiceProfileManager
     @State private var editedName: String = ""
     @State private var showDeleteConfirmation = false
     @State private var isEditing = false
+    @State private var previewService: VoicePreviewService?
 
     private var isActive: Bool {
         profileManager.activeProfileId == header.id
@@ -19,6 +21,17 @@ struct VoiceProfileDetailView: View {
 
             Divider()
 
+            // Voice preview section
+            if let service = previewService {
+                VoicePreviewSection(
+                    profileId: header.id,
+                    previewService: service,
+                    isSessionActive: isSessionActive
+                )
+
+                Divider()
+            }
+
             // Quality metrics grid
             qualityGrid
 
@@ -29,7 +42,12 @@ struct VoiceProfileDetailView: View {
         }
         .padding(24)
         .frame(minWidth: 350)
-        .onAppear { editedName = header.name }
+        .onAppear {
+            editedName = header.name
+            if previewService == nil {
+                previewService = try? VoicePreviewService(profileStore: profileManager.profileStore)
+            }
+        }
         .confirmationDialog(
             "Delete Profile",
             isPresented: $showDeleteConfirmation

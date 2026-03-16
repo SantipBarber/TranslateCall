@@ -160,6 +160,17 @@ struct ContentView: View {
                         .background(.green.opacity(0.15))
                         .foregroundStyle(.green)
                         .clipShape(Capsule())
+                } else if viewModel.ttsEngineSelector.voiceCloningEnabled,
+                          !QwenCloneConfiguration.supportsLocale(
+                              viewModel.ttsEngineSelector.currentTargetLocale
+                          ) {
+                    Text("Fallback")
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.orange.opacity(0.15))
+                        .foregroundStyle(.orange)
+                        .clipShape(Capsule())
                 }
             } else {
                 Image(systemName: "person.wave.2")

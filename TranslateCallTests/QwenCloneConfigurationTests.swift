@@ -46,4 +46,26 @@ struct QwenCloneConfigurationTests {
     func allSupportedLanguagesCount() {
         #expect(QwenCloneConfiguration.supportedLanguageCount == 10)
     }
+
+    // MARK: - Demo text (T2)
+
+    @Test("Demo text English is not empty")
+    func demoTextEnglishIsNotEmpty() {
+        let text = QwenCloneConfiguration.demoText(for: "english")
+        #expect(!text.isEmpty)
+        #expect(text.contains("preview") || text.contains("voice"))
+    }
+
+    @Test("Demo text all languages non-empty")
+    func demoTextAllLanguagesNonEmpty() {
+        for lang in QwenCloneConfiguration.supportedLanguageList {
+            let text = QwenCloneConfiguration.demoText(for: lang.key)
+            #expect(!text.isEmpty, "Demo text for \(lang.key) is empty")
+        }
+    }
+
+    @Test("Supported language list has 10 entries")
+    func supportedLanguageListHas10Entries() {
+        #expect(QwenCloneConfiguration.supportedLanguageList.count == 10)
+    }
 }

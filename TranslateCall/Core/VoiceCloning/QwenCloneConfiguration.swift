@@ -46,6 +46,41 @@ nonisolated struct QwenCloneConfiguration: Sendable {
     static var supportedLanguageCount: Int {
         languageMap.count
     }
+
+    // MARK: - Language list for UI
+
+    /// Language entries for picker UI: (key: Qwen language string, label: display name).
+    static let supportedLanguageList: [(key: String, label: String)] = [
+        ("english", "English"),
+        ("spanish", "Spanish"),
+        ("french", "French"),
+        ("german", "German"),
+        ("italian", "Italian"),
+        ("portuguese", "Portuguese"),
+        ("russian", "Russian"),
+        ("chinese", "Chinese"),
+        ("japanese", "Japanese"),
+        ("korean", "Korean")
+    ]
+
+    // MARK: - Demo text
+
+    /// Localized demo sentence for voice preview.
+    static func demoText(for language: String) -> String {
+        switch language {
+        case "english":    return "Hello, this is a preview of my cloned voice."
+        case "spanish":    return "Hola, esta es una vista previa de mi voz clonada."
+        case "french":     return "Bonjour, ceci est un aperçu de ma voix clonée."
+        case "german":     return "Hallo, dies ist eine Vorschau meiner geklonten Stimme."
+        case "italian":    return "Ciao, questa è un'anteprima della mia voce clonata."
+        case "portuguese": return "Olá, esta é uma prévia da minha voz clonada."
+        case "russian":    return "Здравствуйте, это предварительный просмотр моего клонированного голоса."
+        case "chinese":    return "你好，这是我克隆声音的预览。"
+        case "japanese":   return "こんにちは、これは私のクローン音声のプレビューです。"
+        case "korean":     return "안녕하세요, 제 복제된 목소리의 미리보기입니다."
+        default:           return "Hello, this is a preview of my cloned voice."
+        }
+    }
 }
 
 // MARK: - QwenCloneError
