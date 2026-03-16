@@ -285,6 +285,10 @@ final class AudioCoordinator: ObservableObject {
     /// Starts the incoming pipeline. All failures are non-fatal — errorAlert is set
     /// and `isIncomingActive` remains false if activation fails.
     private func startIncomingPipeline(captureApp: SCRunningApplication?) async {
+        guard captureApp != nil else {
+            logger.info("Incoming: skipped — no capture app selected")
+            return
+        }
         do {
             try await systemCapture.activate(app: captureApp)
             logger.info("Incoming: system audio capture started")
