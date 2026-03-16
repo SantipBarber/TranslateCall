@@ -1,9 +1,9 @@
 # TranslateCall - Development Roadmap
 
 > **Methodology**: Spec-Driven Development (SDD)
-> **Last Updated**: 2026-03-12
-> **Version**: 0.6.0-dev
-> **Status**: M6 COMPLETED — Starting M7
+> **Last Updated**: 2026-03-16
+> **Version**: 0.7.0
+> **Status**: M7 COMPLETED — Starting M8
 
 ---
 
