@@ -1,20 +1,21 @@
 import Combine
 import Foundation
 
-/// Owns and wires the full M4 object graph.
+/// Owns and wires the full M8 object graph.
 ///
 /// Dependency order:
 /// 1. `LanguagePairManager` (no deps)
 /// 2. `AudioManager` (no deps)
 /// 3. `SetupManager` (no deps)
 /// 4. `TranslationBridgeModel` × 2 (outgoing + incoming, no deps)
-/// 5. `AppleTranslationService` × 2 (depend on bridge models)
+/// 5. `TranslationEngineSelector` (depends on bridge models)
 /// 6. `AudioCoordinator` (depends on audio manager + translation services + language pair manager)
 /// 7. `AudioViewModel` (depends on coordinator + audio manager + language pair manager + setup manager)
 @MainActor
 final class AppContainer: ObservableObject {
     let outgoingBridgeModel: TranslationBridgeModel
     let incomingBridgeModel: TranslationBridgeModel
+    let translationSelector: TranslationEngineSelector
     let audioCoordinator: AudioCoordinator
     let audioViewModel: AudioViewModel
     let languagePairManager: LanguagePairManager
@@ -27,9 +28,9 @@ final class AppContainer: ObservableObject {
         let setup = SetupManager()
         let outBridge = TranslationBridgeModel()
         let inBridge = TranslationBridgeModel()
-        let outTranslation = AppleTranslationService(model: outBridge)
-        let inTranslation = AppleTranslationService(model: inBridge)
-
+        let translationSel = TranslationEngineSelector(
+            outgoingBridge: outBridge, incomingBridge: inBridge
+        )
         let selector = STTEngineSelector()
         let ttsSelector = TTSEngineSelector()
         let coordinator = AudioCoordinator(
@@ -39,8 +40,8 @@ final class AppContainer: ObservableObject {
             incomingVADFactory: { EnergyVADService() },
             outgoingSTTFactory: { selector.makeOutgoingService(for: $0) },
             incomingSTTFactory: { selector.makeIncomingService(for: $0) },
-            outgoingTranslationService: outTranslation,
-            incomingTranslationService: inTranslation,
+            outgoingTranslationService: translationSel.makeOutgoingService(),
+            incomingTranslationService: translationSel.makeIncomingService(),
             outgoingTTSFactory: { [ttsSelector] locale, deviceID in
                 try ttsSelector.makeOutgoingService(for: locale, deviceID: deviceID)
             },
@@ -50,15 +51,14 @@ final class AppContainer: ObservableObject {
             languagePairManager: lpm
         )
 
-        let voiceRecorder = VoiceProfileRecorder()
         let voiceProfiles = VoiceProfileManager(
             store: VoiceProfileStore(),
-            recorder: voiceRecorder,
+            recorder: VoiceProfileRecorder(),
             isSessionActive: { audioManager.isCapturing }
         )
-
         outgoingBridgeModel = outBridge
         incomingBridgeModel = inBridge
+        translationSelector = translationSel
         languagePairManager = lpm
         setupManager = setup
         voiceProfileManager = voiceProfiles

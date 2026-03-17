@@ -14,6 +14,8 @@ actor AppleTranslationService: TranslationService {
 
     // MARK: - TranslationService
 
+    nonisolated var engineName: String { "Apple Translation" }
+
     func translate(text: String, from source: Locale.Language, to target: Locale.Language) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
             let capturedModel = model
