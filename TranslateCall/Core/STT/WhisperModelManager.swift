@@ -85,6 +85,11 @@ actor WhisperModelManager {
         return result
     }
 
+    /// Loads the model if not ready. Does not return the pipe (avoids Sendable issues).
+    func loadIfNeeded(config: WhisperConfiguration = .default) async throws {
+        _ = try await ensureReady(config: config)
+    }
+
     /// Releases the model from memory.
     func unloadModel() {
         pipe = nil

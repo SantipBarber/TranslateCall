@@ -70,17 +70,22 @@ struct LanguagePairView: View {
             .pickerStyle(.segmented)
             .help(enginePickerHelp)
 
-            if selector.isDownloading {
+            if selector.isDownloading || selector.isWhisperDownloading {
                 ProgressView()
                     .scaleEffect(0.6)
-                    .help("Downloading Parakeet model…")
+                    .help(selector.isWhisperDownloading
+                        ? "Downloading Whisper model…"
+                        : "Downloading Parakeet model…")
             }
 
             if selector.usingFallback {
-                Label("English only", systemImage: "info.circle")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-                    .lineLimit(1)
+                Label(
+                    fallbackLabel,
+                    systemImage: "info.circle"
+                )
+                .font(.caption2)
+                .foregroundStyle(.orange)
+                .lineLimit(1)
             }
         }
     }
@@ -158,11 +163,23 @@ struct LanguagePairView: View {
 
     // MARK: - STT engine picker help
 
-    private var enginePickerHelp: String {
-        if !selector.parakeetAvailable && selector.preferredEngine == .parakeet {
-            return "Parakeet model not yet downloaded. Select to begin download."
+    private var fallbackLabel: String {
+        switch selector.preferredEngine {
+        case .parakeet: return "English only"
+        case .whisper:  return "Using Apple Speech"
+        case .appleSpeech: return ""
         }
-        return "Apple Speech supports all languages. Parakeet provides higher accuracy for English."
+    }
+
+    private var enginePickerHelp: String {
+        switch selector.preferredEngine {
+        case .parakeet where !selector.parakeetAvailable:
+            return "Parakeet model not yet downloaded."
+        case .whisper where !selector.whisperAvailable:
+            return "Whisper model not yet downloaded."
+        default:
+            return "Apple Speech: all languages. Parakeet: English. Whisper: 99+ languages (on-device)."
+        }
     }
 
     // MARK: - Language pair subviews

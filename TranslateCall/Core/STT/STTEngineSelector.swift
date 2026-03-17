@@ -170,7 +170,23 @@ final class STTEngineSelector: ObservableObject {
                     _ = try await ParakeetModelManager.shared.ensureReady()
                 } catch {
                     selectorLogger.error(
-                        "Parakeet model load failed after preference change: \(error.localizedDescription)"
+                        "Parakeet model load failed: \(error.localizedDescription)"
+                    )
+                }
+            }
+        }
+
+        if engine == .whisper, !whisperAvailable {
+            isWhisperDownloading = true
+            Task {
+                do {
+                    try await WhisperModelManager.shared.loadIfNeeded()
+                    self.whisperAvailable = true
+                    self.isWhisperDownloading = false
+                } catch {
+                    self.isWhisperDownloading = false
+                    selectorLogger.error(
+                        "Whisper model load failed: \(error.localizedDescription)"
                     )
                 }
             }
@@ -194,6 +210,14 @@ final class STTEngineSelector: ObservableObject {
     func unloadParakeetModel() {
         Task {
             await ParakeetModelManager.shared.unload()
+        }
+    }
+
+    /// Releases the Whisper model from memory.
+    func unloadWhisperModel() {
+        Task {
+            await WhisperModelManager.shared.unloadModel()
+            whisperAvailable = false
         }
     }
 }

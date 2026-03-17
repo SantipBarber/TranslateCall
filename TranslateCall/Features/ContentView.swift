@@ -2,16 +2,17 @@
 import SwiftUI
 
 struct ContentView: View {
-    @EnvironmentObject private var viewModel: AudioViewModel
+    @EnvironmentObject var viewModel: AudioViewModel
     @EnvironmentObject private var setupManager: SetupManager
-
     @EnvironmentObject private var voiceProfileManager: VoiceProfileManager
 
     @State private var showSetupWizard: Bool = false
     @State private var showVoiceProfiles: Bool = false
-    @State private var showParakeetDownload: Bool = false
-    @State private var showKokoroDownload: Bool = false
-    @State private var showVoiceCloneDownload: Bool = false
+    @State var showParakeetDownload: Bool = false
+    @State var showKokoroDownload: Bool = false
+    @State var showVoiceCloneDownload: Bool = false
+    @State var showWhisperDownload: Bool = false
+    @State var whisperModelSize: WhisperModelSize = .base
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -115,8 +116,14 @@ struct ContentView: View {
         .sheet(isPresented: $showVoiceCloneDownload) {
             voiceCloneDownloadSheet
         }
+        .sheet(isPresented: $showWhisperDownload) {
+            whisperDownloadSheet
+        }
         .onChange(of: viewModel.engineSelector.isDownloading) { _, downloading in
             showParakeetDownload = downloading
+        }
+        .onChange(of: viewModel.engineSelector.isWhisperDownloading) { _, downloading in
+            if downloading { showWhisperDownload = true }
         }
         .onChange(of: viewModel.ttsEngineSelector.isDownloading) { _, downloading in
             showKokoroDownload = downloading
@@ -207,74 +214,6 @@ struct ContentView: View {
 
             Spacer()
         }
-    }
-
-    // MARK: - Parakeet download sheet
-
-    private var parakeetDownloadSheet: some View {
-        VStack(spacing: 16) {
-            Text("Downloading Parakeet Model")
-                .font(.headline)
-            Text("≈ 800 MB · One-time download\nAll transcription runs on-device.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            ProgressView()
-                .scaleEffect(1.2)
-            Button("Cancel") {
-                viewModel.engineSelector.setPreferredEngine(.appleSpeech)
-                viewModel.engineSelector.unloadParakeetModel()
-                showParakeetDownload = false
-            }
-            .buttonStyle(.bordered)
-        }
-        .padding(32)
-        .frame(width: 280)
-    }
-
-    // MARK: - Kokoro download sheet
-
-    private var kokoroDownloadSheet: some View {
-        VStack(spacing: 16) {
-            Text("Downloading Kokoro Model")
-                .font(.headline)
-            Text("≈ 300 MB · One-time download\nAll synthesis runs on-device.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            ProgressView()
-                .scaleEffect(1.2)
-            Button("Cancel") {
-                viewModel.ttsEngineSelector.setPreferredEngine(.avSpeech)
-                viewModel.ttsEngineSelector.unloadKokoroModel()
-                showKokoroDownload = false
-            }
-            .buttonStyle(.bordered)
-        }
-        .padding(32)
-        .frame(width: 280)
-    }
-
-    // MARK: - Voice Clone download sheet
-
-    private var voiceCloneDownloadSheet: some View {
-        VStack(spacing: 16) {
-            Text("Downloading Voice Clone Model")
-                .font(.headline)
-            Text("~2 GB · one-time download\nAll synthesis runs on-device.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            ProgressView()
-                .scaleEffect(1.2)
-            Button("Cancel") {
-                viewModel.ttsEngineSelector.disableVoiceCloning()
-                showVoiceCloneDownload = false
-            }
-            .buttonStyle(.bordered)
-        }
-        .padding(32)
-        .frame(width: 280)
     }
 
     private var captureAppBinding: Binding<SCRunningApplication?> {
