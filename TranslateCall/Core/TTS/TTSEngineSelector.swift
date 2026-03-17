@@ -118,11 +118,20 @@ final class TTSEngineSelector: ObservableObject {
     }
 
     /// Creates the outgoing TTS service for `locale` routed to `deviceID`.
-    /// Priority: Voice Clone > Kokoro > AVSpeech > Edge TTS (cloud fallback).
+    /// If user explicitly selected Edge TTS, use it directly.
+    /// Otherwise: Voice Clone > Kokoro > AVSpeech > Edge TTS (auto fallback).
     func makeOutgoingService(
         for locale: Locale, deviceID: AudioDeviceID?
     ) throws -> any SynthesisService {
         currentTargetLocale = locale
+
+        // User explicitly selected Edge TTS
+        if preferredEngine == .edgeTTS,
+           let voice = EdgeTTSVoiceCatalog.defaultVoice(for: locale) {
+            return try EdgeTTSService(
+                outputDeviceID: deviceID, voiceName: voice.shortName
+            )
+        }
 
         // Priority 1: Voice Clone (10 supported languages)
         if voiceCloningActive,
@@ -134,17 +143,19 @@ final class TTSEngineSelector: ObservableObject {
 
         // Priority 2: Kokoro (English only)
         if preferredEngine == .kokoro, kokoroAvailable, locale.isEnglish {
-            let voiceID = defaults.string(forKey: KokoroConfiguration.voiceDefaultsKey) ?? ""
+            let voiceID = defaults.string(
+                forKey: KokoroConfiguration.voiceDefaultsKey
+            ) ?? ""
             let config = KokoroConfiguration(voiceIdentifier: voiceID)
             return try kokoroFactory(deviceID, config)
         }
 
-        // Priority 3: AVSpeech (if voice exists)
+        // Priority 3: AVSpeech (if usable voice exists)
         if AVSpeechService.hasVoice(for: locale) {
             return try avSpeechFactory(deviceID)
         }
 
-        // Priority 4: Edge TTS (cloud fallback, consent required)
+        // Priority 4: Edge TTS (auto fallback, consent required)
         if EdgeTTSConsentManager.consentGiven,
            let voice = EdgeTTSVoiceCatalog.defaultVoice(for: locale) {
             return try EdgeTTSService(
@@ -152,15 +163,21 @@ final class TTSEngineSelector: ObservableObject {
             )
         }
 
-        // Last resort: AVSpeech anyway (will be silent)
+        // Last resort: AVSpeech (may be silent)
         return try avSpeechFactory(deviceID)
     }
 
     /// Creates the incoming TTS service.
-    /// Uses Edge TTS fallback if AVSpeech has no voice and consent is given.
+    /// Uses Edge TTS if explicitly selected or as fallback when no AVSpeech voice.
     func makeIncomingService(
         for locale: Locale, deviceID: AudioDeviceID?
     ) throws -> any SynthesisService {
+        if preferredEngine == .edgeTTS,
+           let voice = EdgeTTSVoiceCatalog.defaultVoice(for: locale) {
+            return try EdgeTTSService(
+                outputDeviceID: deviceID, voiceName: voice.shortName
+            )
+        }
         if AVSpeechService.hasVoice(for: locale) {
             return try avSpeechFactory(deviceID)
         }
