@@ -47,8 +47,7 @@ actor QwenCloneModelManager {
 
     typealias ModelLoader = @Sendable (String) async throws -> QwenCloneClient
 
-    // Default loader: downloads and loads model via TTS.loadModel(), wraps in QwenCloneClient
-    nonisolated(unsafe) static let defaultLoader: ModelLoader = { modelRepo in
+    nonisolated static let defaultLoader: ModelLoader = { modelRepo in
         let model = try await TTS.loadModel(modelRepo: modelRepo)
         return QwenCloneClient(model: model)
     }
@@ -64,9 +63,10 @@ actor QwenCloneModelManager {
     ) {
         self.config = config
         self.modelLoader = modelLoader
-        var cont: AsyncStream<ModelState>.Continuation!
+        var cont: AsyncStream<ModelState>.Continuation?
         stateStream = AsyncStream { cont = $0 }
-        stateContinuation = cont
+        // swiftlint:disable:next force_unwrapping
+        stateContinuation = cont!
     }
 
     // MARK: - Public API

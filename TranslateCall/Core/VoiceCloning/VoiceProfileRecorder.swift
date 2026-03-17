@@ -29,9 +29,10 @@ actor VoiceProfileRecorder {
 
     init(isSessionActive: @escaping @Sendable () -> Bool = { false }) {
         self.isSessionActive = isSessionActive
-        var cont: AsyncStream<Float>.Continuation!
+        var cont: AsyncStream<Float>.Continuation?
         levelStream = AsyncStream { cont = $0 }
-        levelContinuation = cont
+        // swiftlint:disable:next force_unwrapping
+        levelContinuation = cont!
     }
 
     // MARK: - Public API

@@ -112,20 +112,7 @@ actor SystemAudioCaptureService: SystemAudioCapture {
             throw SystemAudioCaptureError.noDisplayAvailable
         }
 
-        let filter: SCContentFilter
-        if let app {
-            filter = SCContentFilter(display: display,
-                                     including: [app],
-                                     exceptingWindows: [])
-        } else {
-            let selfApp = content.applications.first {
-                $0.bundleIdentifier == Bundle.main.bundleIdentifier
-            }
-            let excluded = selfApp.map { [$0] } ?? []
-            filter = SCContentFilter(display: display,
-                                     excludingApplications: excluded,
-                                     exceptingWindows: [])
-        }
+        let filter = buildContentFilter(display: display, app: app, content: content)
 
         // Audio-only stream configuration (minimal video footprint)
         let config = SCStreamConfiguration()
@@ -166,6 +153,25 @@ actor SystemAudioCaptureService: SystemAudioCapture {
         captureStream = stream
         isActive = true
         logger.info("System audio capture activated (app: \(app?.applicationName ?? "all"))")
+    }
+
+    private func buildContentFilter(
+        display: SCDisplay,
+        app: SCRunningApplication?,
+        content: SCShareableContent
+    ) -> SCContentFilter {
+        if let app {
+            return SCContentFilter(display: display,
+                                   including: [app],
+                                   exceptingWindows: [])
+        }
+        let selfApp = content.applications.first {
+            $0.bundleIdentifier == Bundle.main.bundleIdentifier
+        }
+        let excluded = selfApp.map { [$0] } ?? []
+        return SCContentFilter(display: display,
+                               excludingApplications: excluded,
+                               exceptingWindows: [])
     }
 
     // MARK: - Deactivation

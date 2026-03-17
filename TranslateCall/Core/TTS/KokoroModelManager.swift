@@ -42,9 +42,7 @@ actor KokoroModelManager {
 
     typealias ManagerFactory = @Sendable (KokoroConfiguration) async throws -> any KokoroTtsManaging
 
-    // nonisolated(unsafe): closure references FluidAudioEspeak types;
-    // safe — only called from actor context inside startLoading()
-    nonisolated(unsafe) static let defaultFactory: ManagerFactory = { config in
+    nonisolated static let defaultFactory: ManagerFactory = { config in
         let voice = config.voiceIdentifier.isEmpty ? nil : config.voiceIdentifier
         let manager = KokoroTtsManager(defaultVoice: voice ?? "af_heart")
         try await manager.initialize()
@@ -57,9 +55,10 @@ actor KokoroModelManager {
 
     init(managerFactory: @escaping ManagerFactory = KokoroModelManager.defaultFactory) {
         self.managerFactory = managerFactory
-        var cont: AsyncStream<ModelState>.Continuation!
+        var cont: AsyncStream<ModelState>.Continuation?
         stateStream = AsyncStream { cont = $0 }
-        stateContinuation = cont
+        // swiftlint:disable:next force_unwrapping
+        stateContinuation = cont!
     }
 
     // MARK: - Public API

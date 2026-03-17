@@ -48,9 +48,10 @@ actor KokoroSpeechService: SynthesisService {
         self.configuration = configuration
         self.modelManager = modelManager
 
-        var cont: AsyncStream<Bool>.Continuation!
+        var cont: AsyncStream<Bool>.Continuation?
         isSpeakingStream = AsyncStream { cont = $0 }
-        speakingContinuation = cont
+        // swiftlint:disable:next force_unwrapping
+        speakingContinuation = cont!
 
         try setupAudioEngineNonisolated(outputDeviceID: outputDeviceID)
     }
@@ -192,7 +193,7 @@ actor KokoroSpeechService: SynthesisService {
             return nil
         }
 
-        var inputConsumed = false
+        nonisolated(unsafe) var inputConsumed = false
         let status = converter.convert(to: outBuf, error: nil) { _, outStatus in
             if inputConsumed {
                 outStatus.pointee = .noDataNow

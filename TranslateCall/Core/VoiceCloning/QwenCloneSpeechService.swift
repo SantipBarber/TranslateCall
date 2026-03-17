@@ -52,9 +52,10 @@ actor QwenCloneSpeechService: SynthesisService {
         self.inferrer = inferrer
         self.config = config
 
-        var cont: AsyncStream<Bool>.Continuation!
+        var cont: AsyncStream<Bool>.Continuation?
         isSpeakingStream = AsyncStream { cont = $0 }
-        speakingContinuation = cont
+        // swiftlint:disable:next force_unwrapping
+        speakingContinuation = cont!
 
         try setupAudioEngineNonisolated(outputDeviceID: outputDeviceID)
     }

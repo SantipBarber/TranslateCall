@@ -55,9 +55,10 @@ actor VoicePreviewService {
     init(profileStore: any VoiceProfileStoring) throws {
         self.profileStore = profileStore
 
-        var cont: AsyncStream<PreviewState>.Continuation!
+        var cont: AsyncStream<PreviewState>.Continuation?
         stateStream = AsyncStream { cont = $0 }
-        stateContinuation = cont
+        // swiftlint:disable:next force_unwrapping
+        stateContinuation = cont!
 
         try setupAudioEngine()
     }
@@ -317,7 +318,7 @@ actor VoicePreviewService {
             return nil
         }
 
-        var inputConsumed = false
+        nonisolated(unsafe) var inputConsumed = false
         let status = converter.convert(to: outBuf, error: nil) { _, outStatus in
             if inputConsumed {
                 outStatus.pointee = .noDataNow

@@ -175,19 +175,20 @@ struct VoicePreviewSection: View {
 
     // MARK: - Helpers
 
+    private static let languageLocaleMap: [String: String] = [
+        "english": "en-US",
+        "spanish": "es-ES",
+        "french": "fr-FR",
+        "german": "de-DE",
+        "italian": "it-IT",
+        "portuguese": "pt-BR",
+        "russian": "ru-RU",
+        "chinese": "zh-CN",
+        "japanese": "ja-JP",
+        "korean": "ko-KR"
+    ]
+
     private func localeForLanguage(_ language: String) -> Locale {
-        switch language {
-        case "english":    return Locale(identifier: "en-US")
-        case "spanish":    return Locale(identifier: "es-ES")
-        case "french":     return Locale(identifier: "fr-FR")
-        case "german":     return Locale(identifier: "de-DE")
-        case "italian":    return Locale(identifier: "it-IT")
-        case "portuguese": return Locale(identifier: "pt-BR")
-        case "russian":    return Locale(identifier: "ru-RU")
-        case "chinese":    return Locale(identifier: "zh-CN")
-        case "japanese":   return Locale(identifier: "ja-JP")
-        case "korean":     return Locale(identifier: "ko-KR")
-        default:           return Locale(identifier: "en-US")
-        }
+        Locale(identifier: Self.languageLocaleMap[language] ?? "en-US")
     }
 }

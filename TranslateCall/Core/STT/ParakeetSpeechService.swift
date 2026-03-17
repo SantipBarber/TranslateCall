@@ -119,25 +119,8 @@ actor ParakeetSpeechService: SpeechRecognizerService {
         }
 
         let startDate = Date()
-
-        // Extract 16kHz Float32 samples from the VAD-produced buffer.
-        let samples = segment.audio.toFloatSamples()
-        guard !samples.isEmpty else {
-            parakeetLogger.warning("Empty audio buffer in speech segment — skipping")
-            return nil
-        }
-
-        // Parakeet max capacity: 15 s × 16 000 samples/s = 240 000 samples.
-        let maxSamples = 240_000
-        let inputSamples: [Float]
-        if samples.count > maxSamples {
-            parakeetLogger.warning(
-                "Segment too long (\(samples.count) samples); truncating to \(maxSamples)"
-            )
-            inputSamples = Array(samples.prefix(maxSamples))
-        } else {
-            inputSamples = samples
-        }
+        let inputSamples = prepareInputSamples(from: segment)
+        guard let inputSamples else { return nil }
 
         do {
             let output = try await transcriber.transcribeAudio(inputSamples)
@@ -179,5 +162,24 @@ actor ParakeetSpeechService: SpeechRecognizerService {
             parakeetLogger.error("Parakeet transcription error: \(error.localizedDescription)")
             return nil
         }
+    }
+
+    /// Extracts and validates input samples from a speech segment, truncating if needed.
+    private func prepareInputSamples(from segment: SpeechSegment) -> [Float]? {
+        let samples = segment.audio.toFloatSamples()
+        guard !samples.isEmpty else {
+            parakeetLogger.warning("Empty audio buffer in speech segment — skipping")
+            return nil
+        }
+
+        // Parakeet max capacity: 15 s × 16 000 samples/s = 240 000 samples.
+        let maxSamples = 240_000
+        if samples.count > maxSamples {
+            parakeetLogger.warning(
+                "Segment too long (\(samples.count) samples); truncating to \(maxSamples)"
+            )
+            return Array(samples.prefix(maxSamples))
+        }
+        return samples
     }
 }

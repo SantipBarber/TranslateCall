@@ -126,22 +126,10 @@ actor AppleSpeechService: SpeechRecognizerService {
             let confidence = partial.confidences.isEmpty ? 0 :
                 partial.confidences.reduce(0, +) / Float(partial.confidences.count)
 
-            let latencyMs = Int(Date().timeIntervalSince(startDate) * 1000)
-            let segmentDurationMs = Int(
-                Double(segment.audio.frameLength) / segment.audio.format.sampleRate * 1000
+            recordSTTMetrics(
+                segment: segment, startDate: startDate,
+                confidence: confidence, textLength: partial.text.count
             )
-            Task {
-                await STTMetricsCollector.shared.record(
-                    STTMetrics(
-                        engine: .appleSpeech,
-                        segmentDurationMs: segmentDurationMs,
-                        transcriptionLatencyMs: latencyMs,
-                        confidence: confidence,
-                        textLength: partial.text.count,
-                        timestamp: .now
-                    )
-                )
-            }
 
             guard confidence >= config.minimumConfidence else {
                 logger.debug("Discarding low-confidence result: \(confidence)")
@@ -160,6 +148,25 @@ actor AppleSpeechService: SpeechRecognizerService {
             activeRecognitionTask = nil
             logger.error("Recognition failed: \(error.localizedDescription)")
             return nil
+        }
+    }
+
+    private func recordSTTMetrics(segment: SpeechSegment, startDate: Date, confidence: Float, textLength: Int) {
+        let latencyMs = Int(Date().timeIntervalSince(startDate) * 1000)
+        let segmentDurationMs = Int(
+            Double(segment.audio.frameLength) / segment.audio.format.sampleRate * 1000
+        )
+        Task {
+            await STTMetricsCollector.shared.record(
+                STTMetrics(
+                    engine: .appleSpeech,
+                    segmentDurationMs: segmentDurationMs,
+                    transcriptionLatencyMs: latencyMs,
+                    confidence: confidence,
+                    textLength: textLength,
+                    timestamp: .now
+                )
+            )
         }
     }
 
