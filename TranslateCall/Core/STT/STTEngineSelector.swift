@@ -110,6 +110,23 @@ final class STTEngineSelector: ObservableObject {
                 }
             }
         }
+
+        // Auto-load Whisper model on relaunch if previously selected
+        if preferredEngine == .whisper {
+            isWhisperDownloading = true
+            Task { @MainActor [weak self] in
+                do {
+                    try await WhisperModelManager.shared.loadIfNeeded()
+                    self?.whisperAvailable = true
+                    self?.isWhisperDownloading = false
+                } catch {
+                    self?.isWhisperDownloading = false
+                    selectorLogger.info(
+                        "Whisper auto-load skipped: \(error.localizedDescription)"
+                    )
+                }
+            }
+        }
     }
 
     deinit {
