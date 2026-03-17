@@ -185,20 +185,15 @@ actor AVSpeechService: SynthesisService {
 // MARK: - Voice availability
 
 extension AVSpeechService {
-    /// Returns true if AVSpeechSynthesizer has a *usable* voice for the locale.
-    /// Checks that at least one premium or enhanced quality voice exists.
-    /// System-listed voices that are not downloaded produce no audio.
+    /// Returns true if AVSpeechSynthesizer has at least one voice for the locale.
     nonisolated static func hasVoice(for locale: Locale) -> Bool {
         guard let code = locale.language.languageCode?.identifier,
               !code.isEmpty else { return false }
-        let matching = AVSpeechSynthesisVoice.speechVoices().filter { voice in
+        return AVSpeechSynthesisVoice.speechVoices().contains { voice in
             let voiceLang = voice.language
                 .components(separatedBy: "-").first ?? ""
             return voiceLang == code
         }
-        // Require at least one non-default quality voice (premium or enhanced).
-        // Default-quality voices for some languages are stubs that produce no audio.
-        return matching.contains { $0.quality != .default }
     }
 
     /// Exposed for unit tests only.
