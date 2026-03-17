@@ -39,10 +39,24 @@ final class STTEngineSelector: ObservableObject {
     /// `@Published` flag that could get out of sync.
     @Published private(set) var currentSourceLocale: Locale = Locale(identifier: "en-US")
 
-    /// `true` when Parakeet is preferred but Apple Speech is being used instead
-    /// (either because the source locale is not English, or the model is not yet available).
+    /// `true` when the Whisper CoreML model is loaded and ready.
+    @Published var whisperAvailable: Bool = false
+
+    /// `true` while the Whisper model is being downloaded or loaded.
+    @Published private(set) var isWhisperDownloading: Bool = false
+
+    /// `true` when the preferred engine is not usable for the current locale,
+    /// causing a fallback to Apple Speech.
     var usingFallback: Bool {
-        preferredEngine == .parakeet && (!currentSourceLocale.isEnglish || !parakeetAvailable)
+        switch preferredEngine {
+        case .parakeet:
+            return !parakeetAvailable || !currentSourceLocale.isEnglish
+        case .whisper:
+            return !whisperAvailable
+                || !STTEngine.whisper.supports(locale: currentSourceLocale)
+        case .appleSpeech:
+            return false
+        }
     }
 
     // MARK: - Private
@@ -54,6 +68,8 @@ final class STTEngineSelector: ObservableObject {
     private let appleSpeechFactory: (Locale) -> any SpeechRecognizerService
     /// Creates a `ParakeetSpeechService` for the given locale.
     private let parakeetFactory: (Locale) -> any SpeechRecognizerService
+    /// Creates a `WhisperSpeechService` for the given locale.
+    private let whisperFactory: (Locale) -> any SpeechRecognizerService
 
     /// Observes `ParakeetModelManager.stateStream` to update `parakeetAvailable`.
     private var stateObservationTask: Task<Void, Never>?
@@ -63,11 +79,13 @@ final class STTEngineSelector: ObservableObject {
     init(
         defaults: UserDefaults = .standard,
         appleSpeechFactory: @escaping (Locale) -> any SpeechRecognizerService = { AppleSpeechService(locale: $0) },
-        parakeetFactory: @escaping (Locale) -> any SpeechRecognizerService = { ParakeetSpeechService(locale: $0) }
+        parakeetFactory: @escaping (Locale) -> any SpeechRecognizerService = { ParakeetSpeechService(locale: $0) },
+        whisperFactory: @escaping (Locale) -> any SpeechRecognizerService = { WhisperSpeechService(locale: $0) }
     ) {
         self.defaults = defaults
         self.appleSpeechFactory = appleSpeechFactory
         self.parakeetFactory = parakeetFactory
+        self.whisperFactory = whisperFactory
 
         let raw = defaults.string(forKey: STTEngineSelector.defaultsKey) ?? ""
         self.preferredEngine = STTEngine(rawValue: raw) ?? .appleSpeech
@@ -110,24 +128,30 @@ final class STTEngineSelector: ObservableObject {
     /// Otherwise falls back to Apple Speech. Updates `currentSourceLocale` as a side effect.
     func makeOutgoingService(for locale: Locale) -> any SpeechRecognizerService {
         currentSourceLocale = locale
+        // Whisper: 99+ languages, both directions
+        if preferredEngine == .whisper, whisperAvailable,
+           STTEngine.whisper.supports(locale: locale) {
+            selectorLogger.debug("Outgoing: using Whisper for \(locale.identifier)")
+            return whisperFactory(locale)
+        }
+        // Parakeet: English only
         if preferredEngine == .parakeet, parakeetAvailable, locale.isEnglish {
             selectorLogger.debug("Outgoing: using Parakeet for \(locale.identifier)")
             return parakeetFactory(locale)
         }
-        if preferredEngine == .parakeet {
-            let avail = self.parakeetAvailable
-            // swiftlint:disable:next line_length
-            selectorLogger.debug("Parakeet unavailable for outgoing (locale=\(locale.identifier), avail=\(avail)); using Apple Speech")
-        }
         return appleSpeechFactory(locale)
     }
 
-    /// Returns Apple Speech for the incoming pipeline.
+    /// Returns the appropriate STT service for the incoming pipeline.
     ///
-    /// The remote speaker's language is the target language (typically non-English),
-    /// and speaker-matching is irrelevant for the incoming direction.
+    /// Unlike Parakeet (English-only outgoing), Whisper can serve incoming too.
     func makeIncomingService(for locale: Locale) -> any SpeechRecognizerService {
-        appleSpeechFactory(locale)
+        if preferredEngine == .whisper, whisperAvailable,
+           STTEngine.whisper.supports(locale: locale) {
+            selectorLogger.debug("Incoming: using Whisper for \(locale.identifier)")
+            return whisperFactory(locale)
+        }
+        return appleSpeechFactory(locale)
     }
 
     // MARK: - Preference management

@@ -8,12 +8,15 @@ enum STTEngine: String, Codable, Sendable, CaseIterable {
     case appleSpeech
     /// FluidAudio Parakeet TDT v3 — English only, higher accuracy on-device.
     case parakeet
+    /// WhisperKit (CoreML) — 99+ languages, on-device.
+    case whisper
 
     /// nonisolated: pure computed value, no shared mutable state.
     nonisolated var displayName: String {
         switch self {
         case .appleSpeech: "Apple Speech"
         case .parakeet:    "Parakeet (Enhanced)"
+        case .whisper:     "Whisper"
         }
     }
 
@@ -21,12 +24,14 @@ enum STTEngine: String, Codable, Sendable, CaseIterable {
     ///
     /// `appleSpeech` returns `true` for every locale (availability is checked at runtime
     /// via `SFSpeechRecognizer.isAvailable`). `parakeet` only supports `en-*` locales.
+    /// `whisper` supports 99 languages.
     ///
     /// `nonisolated`: pure function, called from actor contexts and test bodies.
     nonisolated func supports(locale: Locale) -> Bool {
         switch self {
         case .appleSpeech: true
         case .parakeet:    locale.isEnglish
+        case .whisper:     WhisperLanguages.supports(locale)
         }
     }
 }

@@ -11,6 +11,7 @@
 		6D6720372F5B70990023D811 /* FluidAudioEspeak in Frameworks */ = {isa = PBXBuildFile; productRef = 6D6720382F5B70990023D811 /* FluidAudioEspeak */; };
 		6D67203D2F5E70990023D811 /* MLXAudioTTS in Frameworks */ = {isa = PBXBuildFile; productRef = 6D67203B2F5E70990023D811 /* MLXAudioTTS */; };
 		6D67203E2F5E70990023D811 /* MLXAudioCore in Frameworks */ = {isa = PBXBuildFile; productRef = 6D67203C2F5E70990023D811 /* MLXAudioCore */; };
+		6DAA036A2F69392600A49B15 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 6DAA03692F69392600A49B15 /* WhisperKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -55,6 +56,7 @@
 			files = (
 				6D6720362F5B70990023D811 /* FluidAudio in Frameworks */,
 				6D6720372F5B70990023D811 /* FluidAudioEspeak in Frameworks */,
+				6DAA036A2F69392600A49B15 /* WhisperKit in Frameworks */,
 				6D67203D2F5E70990023D811 /* MLXAudioTTS in Frameworks */,
 				6D67203E2F5E70990023D811 /* MLXAudioCore in Frameworks */,
 			);
@@ -129,6 +131,7 @@
 				6D6720382F5B70990023D811 /* FluidAudioEspeak */,
 				6D67203B2F5E70990023D811 /* MLXAudioTTS */,
 				6D67203C2F5E70990023D811 /* MLXAudioCore */,
+				6DAA03692F69392600A49B15 /* WhisperKit */,
 			);
 			productName = TranslateCall;
 			productReference = 6DC120F02F5B66B800211F41 /* TranslateCall.app */;
@@ -165,6 +168,7 @@
 			packageReferences = (
 				6D6720342F5B70990023D811 /* XCRemoteSwiftPackageReference "FluidAudio" */,
 				6D67203A2F5E70990023D811 /* XCRemoteSwiftPackageReference "mlx-audio-swift" */,
+				6DAA03682F69392600A49B15 /* XCRemoteSwiftPackageReference "WhisperKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 6DC120F12F5B66B800211F41 /* Products */;
@@ -525,6 +529,15 @@
 				minimumVersion = 0.1.2;
 			};
 		};
+		6DAA03682F69392600A49B15 /* XCRemoteSwiftPackageReference "WhisperKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/argmaxinc/WhisperKit";
+			requirement = {
+				kind = versionRange;
+				maximumVersion = 0.18.0;
+				minimumVersion = 0.17.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -547,6 +560,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 6D67203A2F5E70990023D811 /* XCRemoteSwiftPackageReference "mlx-audio-swift" */;
 			productName = MLXAudioCore;
+		};
+		6DAA03692F69392600A49B15 /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6DAA03682F69392600A49B15 /* XCRemoteSwiftPackageReference "WhisperKit" */;
+			productName = WhisperKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
