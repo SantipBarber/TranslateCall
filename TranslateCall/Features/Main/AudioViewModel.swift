@@ -180,16 +180,21 @@ final class AudioViewModel: ObservableObject {
         if isCapturing {
             await coordinator.stop()
         } else {
+            // Check Edge TTS consent BEFORE starting (based on selected language pair)
+            let targetLocale = Locale(
+                identifier: languagePairManager.targetLanguage.minimalIdentifier
+            )
+            if !AVSpeechService.hasVoice(for: targetLocale),
+               !EdgeTTSConsentManager.consentGiven {
+                showEdgeTTSConsent = true
+            }
+
             await coordinator.start(
                 captureApp: setupManager.selectedCaptureApp,
                 blackHoleDeviceID: setupManager.isBlackHolePresent
                     ? AudioDevice.deviceID(forNameContaining: "BlackHole")
                     : nil
             )
-            // Check if Edge TTS consent is needed after pipeline starts
-            if ttsEngineSelector.needsEdgeTTSConsent {
-                showEdgeTTSConsent = true
-            }
         }
     }
 
