@@ -2,8 +2,8 @@ import SwiftUI
 
 struct LanguagePairView: View {
     @EnvironmentObject private var viewModel: AudioViewModel
+    @EnvironmentObject private var manager: LanguagePairManager
 
-    private var manager: LanguagePairManager { viewModel.languagePairManager }
     private var selector: STTEngineSelector { viewModel.engineSelector }
     private var ttsSelector: TTSEngineSelector { viewModel.ttsEngineSelector }
 
