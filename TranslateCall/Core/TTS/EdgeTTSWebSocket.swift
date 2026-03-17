@@ -44,23 +44,17 @@ actor EdgeTTSWebSocket {
             throw EdgeTTSError.invalidURL
         }
 
-        var request = URLRequest(url: url)
-        request.setValue(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0",
-            forHTTPHeaderField: "User-Agent"
-        )
-        request.setValue("no-cache", forHTTPHeaderField: "Pragma")
-        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
-        request.setValue(
-            "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold",
-            forHTTPHeaderField: "Origin"
-        )
-        request.setValue(
-            "en-US,en;q=0.9",
-            forHTTPHeaderField: "Accept-Language"
-        )
-
-        let task = session.webSocketTask(with: request)
+        // Use URLSessionConfiguration with custom headers since
+        // URLSessionWebSocketTask may strip some headers (like Origin).
+        let config = URLSessionConfiguration.default
+        config.httpAdditionalHeaders = [
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0",
+            "Origin": "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold",
+            "Pragma": "no-cache",
+            "Cache-Control": "no-cache"
+        ]
+        let customSession = URLSession(configuration: config)
+        let task = customSession.webSocketTask(with: url)
         task.resume()
         self.webSocket = task
 
