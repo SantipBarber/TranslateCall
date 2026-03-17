@@ -64,7 +64,7 @@ actor EnergyVADService: VADService {
     func deactivate() async {
         processingTask?.cancel()
         processingTask = nil
-        await flush()
+        flush()
     }
 
     // MARK: - Private

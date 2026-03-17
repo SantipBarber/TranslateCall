@@ -143,7 +143,7 @@ final class STTEngineSelector: ObservableObject {
         if engine == .parakeet, !parakeetAvailable {
             Task {
                 do {
-                    try await ParakeetModelManager.shared.ensureReady()
+                    _ = try await ParakeetModelManager.shared.ensureReady()
                 } catch {
                     selectorLogger.error(
                         "Parakeet model load failed after preference change: \(error.localizedDescription)"

@@ -244,7 +244,7 @@ actor QwenCloneSpeechService: SynthesisService {
             return nil
         }
 
-        var inputConsumed = false
+        nonisolated(unsafe) var inputConsumed = false
         let status = converter.convert(to: outBuf, error: nil) { _, outStatus in
             if inputConsumed {
                 outStatus.pointee = .noDataNow

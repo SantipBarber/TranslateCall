@@ -74,14 +74,14 @@ final class SetupManager: ObservableObject {
             let all = content.applications
             let known = all.filter { app in
                 VideoCallApp.matching(
-                    bundleID: app.bundleIdentifier ?? "",
+                    bundleID: app.bundleIdentifier,
                     displayName: app.applicationName
                 ) != .generic
             }
             availableCaptureApps = known.isEmpty ? all : known
             detectedVideoCallApp = known.first.map {
                 VideoCallApp.matching(
-                    bundleID: $0.bundleIdentifier ?? "",
+                    bundleID: $0.bundleIdentifier,
                     displayName: $0.applicationName
                 )
             } ?? .generic

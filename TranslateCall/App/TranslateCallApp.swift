@@ -77,8 +77,9 @@ struct TranslateCallApp: App {
         var size = 0
         sysctlbyname("hw.model", nil, &size, nil, 0)
         guard size > 0 else { return "unknown" }
-        var model = [CChar](repeating: 0, count: size)
-        sysctlbyname("hw.model", &model, &size, nil, 0)
-        return String(cString: model)
+        var buffer = [UInt8](repeating: 0, count: size)
+        sysctlbyname("hw.model", &buffer, &size, nil, 0)
+        return String(bytes: buffer.prefix(while: { $0 != 0 }), encoding: .utf8)
+            ?? "unknown"
     }
 }
