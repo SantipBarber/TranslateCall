@@ -36,10 +36,15 @@ actor EdgeTTSWebSocket {
             throw EdgeTTSError.invalidURL
         }
 
-        // Let NWConnection auto-configure WebSocket from wss:// URL
-        let conn = NWConnection(
-            to: .url(url), using: .tls
-        )
+        // Configure WebSocket protocol on top of TLS
+        let wsOptions = NWProtocolWebSocket.Options()
+        wsOptions.autoReplyPing = true
+
+        let params = NWParameters.tls
+        params.defaultProtocolStack.applicationProtocols
+            .insert(wsOptions, at: 0)
+
+        let conn = NWConnection(to: .url(url), using: params)
         self.connection = conn
 
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
