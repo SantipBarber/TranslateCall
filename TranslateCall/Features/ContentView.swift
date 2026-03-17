@@ -146,9 +146,11 @@ struct ContentView: View {
                 + "Enable Cloud TTS? Text will be sent to Microsoft for speech synthesis."
             )
         }
-        // Force re-render when voice clone availability changes (nested ObservableObject)
+        // Force re-render when nested ObservableObject properties change
         .onChange(of: viewModel.ttsEngineSelector.voiceCloneAvailable) { _, _ in }
         .onChange(of: viewModel.ttsEngineSelector.voiceCloningEnabled) { _, _ in }
+        .onChange(of: viewModel.engineSelector.whisperAvailable) { _, _ in }
+        .onChange(of: viewModel.engineSelector.isWhisperDownloading) { _, _ in }
         .onChange(of: viewModel.ttsEngineSelector.currentTargetLocale) { _, _ in
             if viewModel.ttsEngineSelector.needsEdgeTTSConsent {
                 showEdgeTTSConsent = true
