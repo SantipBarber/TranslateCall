@@ -5,6 +5,7 @@ struct ContentView: View {
     @EnvironmentObject var viewModel: AudioViewModel
     @EnvironmentObject private var setupManager: SetupManager
     @EnvironmentObject private var voiceProfileManager: VoiceProfileManager
+    @EnvironmentObject private var ttsSelector: TTSEngineSelector
 
     @State private var showSetupWizard: Bool = false
     @State private var showVoiceProfiles: Bool = false
@@ -126,10 +127,10 @@ struct ContentView: View {
         .onChange(of: viewModel.engineSelector.isWhisperDownloading) { _, downloading in
             if downloading { showWhisperDownload = true }
         }
-        .onChange(of: viewModel.ttsEngineSelector.isDownloading) { _, downloading in
+        .onChange(of: ttsSelector.isDownloading) { _, downloading in
             showKokoroDownload = downloading
         }
-        .onChange(of: viewModel.ttsEngineSelector.isVoiceCloneDownloading) { _, downloading in
+        .onChange(of: ttsSelector.isVoiceCloneDownloading) { _, downloading in
             showVoiceCloneDownload = downloading
         }
         .alert(
@@ -137,7 +138,7 @@ struct ContentView: View {
             isPresented: $showEdgeTTSConsent
         ) {
             Button("Enable") {
-                viewModel.ttsEngineSelector.grantEdgeTTSConsent()
+                ttsSelector.grantEdgeTTSConsent()
             }
             Button("Not Now", role: .cancel) {}
         } message: {
@@ -147,10 +148,10 @@ struct ContentView: View {
             )
         }
         // Force re-render when nested ObservableObject properties change
-        .onChange(of: viewModel.ttsEngineSelector.voiceCloneAvailable) { _, _ in }
-        .onChange(of: viewModel.ttsEngineSelector.voiceCloningEnabled) { _, _ in }
-        .onChange(of: viewModel.ttsEngineSelector.currentTargetLocale) { _, _ in
-            if viewModel.ttsEngineSelector.needsEdgeTTSConsent {
+        .onChange(of: ttsSelector.voiceCloneAvailable) { _, _ in }
+        .onChange(of: ttsSelector.voiceCloningEnabled) { _, _ in }
+        .onChange(of: ttsSelector.currentTargetLocale) { _, _ in
+            if ttsSelector.needsEdgeTTSConsent {
                 showEdgeTTSConsent = true
             }
         }
