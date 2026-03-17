@@ -173,6 +173,9 @@ final class AudioViewModel: ObservableObject {
 
     // MARK: - Actions
 
+    /// Set to true when Edge TTS consent is needed after starting a session.
+    @Published var showEdgeTTSConsent: Bool = false
+
     func toggleCapture() async {
         if isCapturing {
             await coordinator.stop()
@@ -183,6 +186,10 @@ final class AudioViewModel: ObservableObject {
                     ? AudioDevice.deviceID(forNameContaining: "BlackHole")
                     : nil
             )
+            // Check if Edge TTS consent is needed after pipeline starts
+            if ttsEngineSelector.needsEdgeTTSConsent {
+                showEdgeTTSConsent = true
+            }
         }
     }
 

@@ -14,7 +14,7 @@ struct ContentView: View {
     @State var showVoiceCloneDownload: Bool = false
     @State var showWhisperDownload: Bool = false
     @State var whisperModelSize: WhisperModelSize = .base
-    @State private var showEdgeTTSConsent: Bool = false
+    // Edge TTS consent is driven by viewModel.showEdgeTTSConsent
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -135,7 +135,7 @@ struct ContentView: View {
         }
         .alert(
             "Cloud TTS Required",
-            isPresented: $showEdgeTTSConsent
+            isPresented: $viewModel.showEdgeTTSConsent
         ) {
             Button("Enable") {
                 ttsSelector.grantEdgeTTSConsent()
@@ -150,11 +150,6 @@ struct ContentView: View {
         // Force re-render when nested ObservableObject properties change
         .onChange(of: ttsSelector.voiceCloneAvailable) { _, _ in }
         .onChange(of: ttsSelector.voiceCloningEnabled) { _, _ in }
-        .onChange(of: ttsSelector.currentTargetLocale) { _, _ in
-            if ttsSelector.needsEdgeTTSConsent {
-                showEdgeTTSConsent = true
-            }
-        }
         .onAppear {
             setupManager.checkBlackHole()
             if !setupManager.isSetupCompleted {
