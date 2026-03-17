@@ -46,12 +46,18 @@ actor EdgeTTSWebSocket {
 
         var request = URLRequest(url: url)
         request.setValue(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/130.0 Safari/537.36 Edg/130.0",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0",
             forHTTPHeaderField: "User-Agent"
         )
+        request.setValue("no-cache", forHTTPHeaderField: "Pragma")
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         request.setValue(
             "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold",
             forHTTPHeaderField: "Origin"
+        )
+        request.setValue(
+            "en-US,en;q=0.9",
+            forHTTPHeaderField: "Accept-Language"
         )
 
         let task = session.webSocketTask(with: request)
