@@ -1,9 +1,9 @@
 # TranslateCall - Development Roadmap
 
 > **Methodology**: Spec-Driven Development (SDD)
-> **Last Updated**: 2026-03-16
-> **Version**: 0.7.0
-> **Status**: M7 COMPLETED — Starting M8
+> **Last Updated**: 2026-03-17
+> **Version**: 0.8.0
+> **Status**: M8 COMPLETED — Starting M9
 
 ---
 
@@ -117,9 +117,9 @@ M5 ✅  Beta Release            ── Testing, polish, beta distribution  [COMP
  │
 M6 ✅  Enhanced STT/TTS        ── FluidAudio Parakeet, MLX-Audio Kokoro  [COMPLETED 2026-03-12]
  │
-M7 ○  Neural Voice Cloning    ── MLX-Audio CSM-1B integration
+M7 ✅  Neural Voice Cloning    ── Qwen3-TTS voice cloning  [COMPLETED 2026-03-16]
  │
-M8 ○  Full Language Coverage   ── whisper.cpp, custom language framework
+M8 ✅  Full Language Coverage   ── WhisperKit STT, Edge TTS, Translation abstraction  [COMPLETED 2026-03-17]
  │
 M9 ○  Public Launch            ── Mac App Store, marketing, community
 ```
