@@ -9,8 +9,7 @@ private nonisolated let logger = Logger(
 
 // MARK: - EdgeTTSWebSocket
 
-/// WebSocket client for Microsoft Edge TTS using Network.framework (NWConnection).
-/// Uses NWConnection instead of URLSessionWebSocketTask to support custom Origin header.
+/// WebSocket client for Microsoft Edge TTS using Network.framework.
 actor EdgeTTSWebSocket {
 
     private var connection: NWConnection?
@@ -22,39 +21,25 @@ actor EdgeTTSWebSocket {
     private static let path = "/consumer/speech/synthesize/readaloud/edge/v1"
     private static let token = "6A5AA1D4EAFF4E9FB37E23D68491D6F4"
     private static let outputFormat = "audio-24khz-48kbitrate-mono-mp3"
-    // swiftlint:disable:next line_length
-    private static let userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0"
-    private static let origin = "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold"
-    nonisolated static let webSocketHeaders: [(String, String)] = [
-        ("User-Agent", userAgent),
-        ("Origin", origin),
-        ("Pragma", "no-cache"),
-        ("Cache-Control", "no-cache")
-    ]
 
     // MARK: - Connect
 
     func connect() async throws {
         if connection != nil { return }
 
-        let connId = UUID().uuidString.replacingOccurrences(of: "-", with: "")
-
-        let wsOptions = NWProtocolWebSocket.Options()
-        wsOptions.setAdditionalHeaders(Self.webSocketHeaders)
-        wsOptions.autoReplyPing = true
-
-        let parameters = NWParameters.tls
-        parameters.defaultProtocolStack.applicationProtocols
-            .insert(wsOptions, at: 0)
-
+        let connId = UUID().uuidString
+            .replacingOccurrences(of: "-", with: "")
         let urlString = "wss://\(Self.host)\(Self.path)"
             + "?TrustedClientToken=\(Self.token)"
             + "&ConnectionId=\(connId)"
         guard let url = URL(string: urlString) else {
             throw EdgeTTSError.invalidURL
         }
-        let endpoint = NWEndpoint.url(url)
-        let conn = NWConnection(to: endpoint, using: parameters)
+
+        // Let NWConnection auto-configure WebSocket from wss:// URL
+        let conn = NWConnection(
+            to: .url(url), using: .tls
+        )
         self.connection = conn
 
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
@@ -64,9 +49,11 @@ actor EdgeTTSWebSocket {
                 switch state {
                 case .ready:
                     resumed = true
+                    logger.debug("Edge TTS WebSocket connected")
                     cont.resume()
                 case .failed(let error):
                     resumed = true
+                    logger.error("Edge TTS connect failed: \(error)")
                     cont.resume(throwing: error)
                 case .cancelled:
                     resumed = true
@@ -79,17 +66,8 @@ actor EdgeTTSWebSocket {
         }
 
         // Send speech config
-        let configPayload = """
-        Content-Type:application/json; charset=utf-8\r
-        Path:speech.config\r
-        \r
-        {"context":{"synthesis":{"audio":{"metadataoptions":{\
-        "sentenceBoundaryEnabled":"false",\
-        "wordBoundaryEnabled":"false"},\
-        "outputFormat":"\(Self.outputFormat)"}}}}
-        """
-        try await sendText(configPayload)
-        logger.debug("Edge TTS connected via NWConnection")
+        try await sendText(buildConfigMessage())
+        logger.debug("Edge TTS config sent")
     }
 
     // MARK: - Synthesize
@@ -105,25 +83,9 @@ actor EdgeTTSWebSocket {
             throw EdgeTTSError.notConnected
         }
 
-        let requestId = UUID().uuidString
-            .replacingOccurrences(of: "-", with: "")
-        let rateStr = rate >= 0 ? "+\(rate)%" : "\(rate)%"
-        let pitchStr = pitch >= 0 ? "+\(pitch)Hz" : "\(pitch)Hz"
-        let volStr = volume >= 0 ? "+\(volume)%" : "\(volume)%"
-
-        let ssml = """
-        X-RequestId:\(requestId)\r
-        Content-Type:application/ssml+xml\r
-        Path:ssml\r
-        \r
-        <speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>\
-        <voice name='\(voice)'>\
-        <prosody rate='\(rateStr)' pitch='\(pitchStr)' volume='\(volStr)'>\
-        \(text.escapedForXML)\
-        </prosody></voice></speak>
-        """
-
-        try await sendText(ssml)
+        try await sendText(
+            buildSSML(text: text, voice: voice, rate: rate, pitch: pitch, volume: volume)
+        )
 
         return AsyncThrowingStream { continuation in
             Task { [weak self] in
@@ -132,7 +94,9 @@ actor EdgeTTSWebSocket {
                     return
                 }
                 do {
-                    try await self.receiveLoop(continuation: continuation)
+                    try await self.receiveLoop(
+                        continuation: continuation
+                    )
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -147,7 +111,42 @@ actor EdgeTTSWebSocket {
         connection = nil
     }
 
-    // MARK: - Private: Send
+    // MARK: - Message builders
+
+    private func buildConfigMessage() -> String {
+        "Content-Type:application/json; charset=utf-8\r\n"
+            + "Path:speech.config\r\n\r\n"
+            + "{\"context\":{\"synthesis\":{\"audio\":{"
+            + "\"metadataoptions\":{"
+            + "\"sentenceBoundaryEnabled\":\"false\","
+            + "\"wordBoundaryEnabled\":\"false\"},"
+            + "\"outputFormat\":\"\(Self.outputFormat)\"}}}}"
+    }
+
+    private func buildSSML(
+        text: String, voice: String,
+        rate: Int, pitch: Int, volume: Int
+    ) -> String {
+        let reqId = UUID().uuidString
+            .replacingOccurrences(of: "-", with: "")
+        let rateStr = rate >= 0 ? "+\(rate)%" : "\(rate)%"
+        let pitchStr = pitch >= 0 ? "+\(pitch)Hz" : "\(pitch)Hz"
+        let volStr = volume >= 0 ? "+\(volume)%" : "\(volume)%"
+
+        return "X-RequestId:\(reqId)\r\n"
+            + "Content-Type:application/ssml+xml\r\n"
+            + "Path:ssml\r\n\r\n"
+            + "<speak version='1.0' "
+            + "xmlns='http://www.w3.org/2001/10/synthesis' "
+            + "xml:lang='en-US'>"
+            + "<voice name='\(voice)'>"
+            + "<prosody rate='\(rateStr)' pitch='\(pitchStr)' "
+            + "volume='\(volStr)'>"
+            + "\(text.escapedForXML)"
+            + "</prosody></voice></speak>"
+    }
+
+    // MARK: - Send/Receive
 
     private func sendText(_ text: String) async throws {
         guard let conn = connection else {
@@ -174,27 +173,23 @@ actor EdgeTTSWebSocket {
         }
     }
 
-    // MARK: - Private: Receive
-
     private func receiveLoop(
         continuation: AsyncThrowingStream<Data, Error>.Continuation
     ) async throws {
         while true {
             let (data, context) = try await receiveMessage()
-
-            // Check WebSocket metadata for opcode
             let metadata = context?.protocolMetadata(
                 definition: NWProtocolWebSocket.definition
             ) as? NWProtocolWebSocket.Metadata
 
             switch metadata?.opcode {
             case .binary:
-                if let audioData = extractAudioData(from: data) {
-                    continuation.yield(audioData)
+                if let audio = extractAudioData(from: data) {
+                    continuation.yield(audio)
                 }
             case .text:
-                if let text = String(data: data, encoding: .utf8),
-                   text.contains("Path:turn.end") {
+                if let str = String(data: data, encoding: .utf8),
+                   str.contains("Path:turn.end") {
                     continuation.finish()
                     return
                 }
@@ -222,8 +217,6 @@ actor EdgeTTSWebSocket {
         }
     }
 
-    /// Extracts MP3 audio from a binary WebSocket message.
-    /// Binary messages have a 2-byte header length prefix.
     private func extractAudioData(from data: Data) -> Data? {
         guard data.count > 2 else { return nil }
         let headerLen = Int(data[0]) << 8 | Int(data[1])
@@ -243,7 +236,7 @@ enum EdgeTTSError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL: return "Invalid Edge TTS endpoint URL."
-        case .notConnected: return "Edge TTS WebSocket not connected."
+        case .notConnected: return "Edge TTS not connected."
         case .synthesisTimeout: return "Edge TTS synthesis timed out."
         }
     }
