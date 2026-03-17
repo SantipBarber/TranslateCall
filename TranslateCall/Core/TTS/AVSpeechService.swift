@@ -182,9 +182,16 @@ actor AVSpeechService: SynthesisService {
     }
 }
 
-// MARK: - Testing helpers
+// MARK: - Voice availability
 
 extension AVSpeechService {
+    /// Returns true if AVSpeechSynthesizer has at least one voice for the locale.
+    nonisolated static func hasVoice(for locale: Locale) -> Bool {
+        let code = locale.language.languageCode?.identifier ?? ""
+        return AVSpeechSynthesisVoice.speechVoices()
+            .contains { $0.language.hasPrefix(code) }
+    }
+
     /// Exposed for unit tests only.
     func bestVoiceForTesting(locale: Locale) -> AVSpeechSynthesisVoice? {
         bestVoice(for: locale)

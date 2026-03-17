@@ -11,12 +11,14 @@ enum TTSEngine: String, Codable, Sendable, CaseIterable {
     case avSpeech
     case kokoro
     case voiceClone
+    case edgeTTS
 
     var displayName: String {
         switch self {
         case .avSpeech:   return "AVSpeech"
         case .kokoro:     return "Kokoro"
         case .voiceClone: return "Voice Clone"
+        case .edgeTTS:    return "Edge TTS (Cloud)"
         }
     }
 
@@ -26,6 +28,7 @@ enum TTSEngine: String, Codable, Sendable, CaseIterable {
         case .avSpeech:   return true
         case .kokoro:     return locale.isEnglish
         case .voiceClone: return QwenCloneConfiguration.supportsLocale(locale)
+        case .edgeTTS:    return EdgeTTSVoiceCatalog.supports(locale)
         }
     }
 }

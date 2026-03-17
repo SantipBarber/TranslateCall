@@ -145,7 +145,12 @@ struct LanguagePairView: View {
                 .help("Kokoro voice variant")
             }
 
-            if ttsSelector.usingFallback {
+            if ttsSelector.isUsingEdgeTTS {
+                Label("Cloud", systemImage: "cloud")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            } else if ttsSelector.usingFallback {
                 Label("English only", systemImage: "info.circle")
                     .font(.caption2)
                     .foregroundStyle(.orange)

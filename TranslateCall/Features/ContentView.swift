@@ -13,6 +13,7 @@ struct ContentView: View {
     @State var showVoiceCloneDownload: Bool = false
     @State var showWhisperDownload: Bool = false
     @State var whisperModelSize: WhisperModelSize = .base
+    @State private var showEdgeTTSConsent: Bool = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -131,9 +132,26 @@ struct ContentView: View {
         .onChange(of: viewModel.ttsEngineSelector.isVoiceCloneDownloading) { _, downloading in
             showVoiceCloneDownload = downloading
         }
+        .alert(
+            "Cloud TTS Required",
+            isPresented: $showEdgeTTSConsent
+        ) {
+            Button("Enable") {
+                viewModel.ttsEngineSelector.grantEdgeTTSConsent()
+            }
+            Button("Not Now", role: .cancel) {}
+        } message: {
+            Text(
+                "No voice is available for this language on your device. "
+                + "Enable Cloud TTS? Text will be sent to Microsoft for speech synthesis."
+            )
+        }
         // Force re-render when voice clone availability changes (nested ObservableObject)
         .onChange(of: viewModel.ttsEngineSelector.voiceCloneAvailable) { _, _ in }
         .onChange(of: viewModel.ttsEngineSelector.voiceCloningEnabled) { _, _ in }
+        .onChange(of: viewModel.ttsEngineSelector.needsEdgeTTSConsent) { _, needs in
+            if needs { showEdgeTTSConsent = true }
+        }
         .onAppear {
             setupManager.checkBlackHole()
             if !setupManager.isSetupCompleted {
