@@ -138,9 +138,11 @@ struct ContentView: View {
             isPresented: $viewModel.showEdgeTTSConsent
         ) {
             Button("Enable") {
-                ttsSelector.grantEdgeTTSConsent()
+                viewModel.onEdgeTTSConsentResponse(accepted: true)
             }
-            Button("Not Now", role: .cancel) {}
+            Button("Not Now", role: .cancel) {
+                viewModel.onEdgeTTSConsentResponse(accepted: false)
+            }
         } message: {
             Text(
                 "No voice is available for this language on your device. "

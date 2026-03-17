@@ -173,31 +173,48 @@ final class AudioViewModel: ObservableObject {
 
     // MARK: - Actions
 
-    /// Set to true when Edge TTS consent is needed after starting a session.
+    /// Set to true when Edge TTS consent is needed before starting.
     @Published var showEdgeTTSConsent: Bool = false
+    /// Set to true when waiting for consent before starting pipeline.
+    private var pendingStartAfterConsent: Bool = false
 
     func toggleCapture() async {
         if isCapturing {
             await coordinator.stop()
         } else {
             // Check Edge TTS consent BEFORE starting
-            let targetId = languagePairManager.targetLanguage.minimalIdentifier
-            let targetLocale = Locale(identifier: targetId)
-            let hasVoice = AVSpeechService.hasVoice(for: targetLocale)
-            let consentGiven = EdgeTTSConsentManager.consentGiven
-            print("[EdgeTTS] target=\(targetId) hasVoice=\(hasVoice) consentGiven=\(consentGiven)")
-            if !hasVoice, !consentGiven {
-                showEdgeTTSConsent = true
-                print("[EdgeTTS] showEdgeTTSConsent set to TRUE")
-            }
-
-            await coordinator.start(
-                captureApp: setupManager.selectedCaptureApp,
-                blackHoleDeviceID: setupManager.isBlackHolePresent
-                    ? AudioDevice.deviceID(forNameContaining: "BlackHole")
-                    : nil
+            let targetLocale = Locale(
+                identifier: languagePairManager.targetLanguage.minimalIdentifier
             )
+            if !AVSpeechService.hasVoice(for: targetLocale),
+               !EdgeTTSConsentManager.consentGiven {
+                // Show consent dialog and defer start
+                pendingStartAfterConsent = true
+                showEdgeTTSConsent = true
+                return
+            }
+            await startPipeline()
         }
+    }
+
+    /// Called from consent dialog: user accepted or declined Edge TTS.
+    func onEdgeTTSConsentResponse(accepted: Bool) {
+        if accepted {
+            ttsEngineSelector.grantEdgeTTSConsent()
+        }
+        if pendingStartAfterConsent {
+            pendingStartAfterConsent = false
+            Task { await startPipeline() }
+        }
+    }
+
+    private func startPipeline() async {
+        await coordinator.start(
+            captureApp: setupManager.selectedCaptureApp,
+            blackHoleDeviceID: setupManager.isBlackHolePresent
+                ? AudioDevice.deviceID(forNameContaining: "BlackHole")
+                : nil
+        )
     }
 
     func downloadLanguages() async {
