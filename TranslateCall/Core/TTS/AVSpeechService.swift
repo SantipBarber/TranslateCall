@@ -156,7 +156,8 @@ actor AVSpeechService: SynthesisService {
     private func scheduleBuffer(_ pcm: AVAudioPCMBuffer) async {
         guard engine.isRunning else { return }
         if !playerNode.isPlaying { playerNode.play() }
-        await playerNode.scheduleBuffer(pcm, at: nil, options: [])
+        // DO NOT use async scheduleBuffer — it blocks the synthesis callback pipeline.
+        playerNode.scheduleBuffer(pcm, at: nil, options: [], completionHandler: nil)
     }
 
     func bestVoice(for locale: Locale) -> AVSpeechSynthesisVoice? {
