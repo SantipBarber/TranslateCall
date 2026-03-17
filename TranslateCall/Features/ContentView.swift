@@ -149,8 +149,6 @@ struct ContentView: View {
         // Force re-render when nested ObservableObject properties change
         .onChange(of: viewModel.ttsEngineSelector.voiceCloneAvailable) { _, _ in }
         .onChange(of: viewModel.ttsEngineSelector.voiceCloningEnabled) { _, _ in }
-        .onChange(of: viewModel.engineSelector.whisperAvailable) { _, _ in }
-        .onChange(of: viewModel.engineSelector.isWhisperDownloading) { _, _ in }
         .onChange(of: viewModel.ttsEngineSelector.currentTargetLocale) { _, _ in
             if viewModel.ttsEngineSelector.needsEdgeTTSConsent {
                 showEdgeTTSConsent = true
