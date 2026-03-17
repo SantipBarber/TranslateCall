@@ -180,13 +180,15 @@ final class AudioViewModel: ObservableObject {
         if isCapturing {
             await coordinator.stop()
         } else {
-            // Check Edge TTS consent BEFORE starting (based on selected language pair)
-            let targetLocale = Locale(
-                identifier: languagePairManager.targetLanguage.minimalIdentifier
-            )
-            if !AVSpeechService.hasVoice(for: targetLocale),
-               !EdgeTTSConsentManager.consentGiven {
+            // Check Edge TTS consent BEFORE starting
+            let targetId = languagePairManager.targetLanguage.minimalIdentifier
+            let targetLocale = Locale(identifier: targetId)
+            let hasVoice = AVSpeechService.hasVoice(for: targetLocale)
+            let consentGiven = EdgeTTSConsentManager.consentGiven
+            print("[EdgeTTS] target=\(targetId) hasVoice=\(hasVoice) consentGiven=\(consentGiven)")
+            if !hasVoice, !consentGiven {
                 showEdgeTTSConsent = true
+                print("[EdgeTTS] showEdgeTTSConsent set to TRUE")
             }
 
             await coordinator.start(

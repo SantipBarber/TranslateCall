@@ -187,9 +187,13 @@ actor AVSpeechService: SynthesisService {
 extension AVSpeechService {
     /// Returns true if AVSpeechSynthesizer has at least one voice for the locale.
     nonisolated static func hasVoice(for locale: Locale) -> Bool {
-        let code = locale.language.languageCode?.identifier ?? ""
-        return AVSpeechSynthesisVoice.speechVoices()
-            .contains { $0.language.hasPrefix(code) }
+        guard let code = locale.language.languageCode?.identifier,
+              !code.isEmpty else { return false }
+        // Match language code exactly: voice "en-US" → extract "en", compare to code "en"
+        return AVSpeechSynthesisVoice.speechVoices().contains { voice in
+            let voiceLang = voice.language.components(separatedBy: "-").first ?? ""
+            return voiceLang == code
+        }
     }
 
     /// Exposed for unit tests only.
