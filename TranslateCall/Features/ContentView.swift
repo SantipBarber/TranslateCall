@@ -149,8 +149,10 @@ struct ContentView: View {
         // Force re-render when voice clone availability changes (nested ObservableObject)
         .onChange(of: viewModel.ttsEngineSelector.voiceCloneAvailable) { _, _ in }
         .onChange(of: viewModel.ttsEngineSelector.voiceCloningEnabled) { _, _ in }
-        .onChange(of: viewModel.ttsEngineSelector.needsEdgeTTSConsent) { _, needs in
-            if needs { showEdgeTTSConsent = true }
+        .onChange(of: viewModel.ttsEngineSelector.currentTargetLocale) { _, _ in
+            if viewModel.ttsEngineSelector.needsEdgeTTSConsent {
+                showEdgeTTSConsent = true
+            }
         }
         .onAppear {
             setupManager.checkBlackHole()

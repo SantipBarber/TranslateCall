@@ -14,6 +14,7 @@ struct TTSMetricsView: View {
     @State private var avSpeechSummary: TTSMetricsSummary = .empty
     @State private var kokoroSummary: TTSMetricsSummary = .empty
     @State private var voiceCloneSummary: TTSMetricsSummary = .empty
+    @State private var edgeTTSSummary: TTSMetricsSummary = .empty
     @State private var isExpanded: Bool = false
 
     // MARK: - Body
@@ -43,6 +44,7 @@ struct TTSMetricsView: View {
                 Text("AVSpeech").font(.caption2).bold().gridColumnAlignment(.center)
                 Text("Kokoro").font(.caption2).bold().gridColumnAlignment(.center)
                 Text("Voice Clone").font(.caption2).bold().gridColumnAlignment(.center)
+                Text("Edge TTS").font(.caption2).bold().gridColumnAlignment(.center)
             }
             Divider()
             metricRow(
@@ -50,7 +52,8 @@ struct TTSMetricsView: View {
                 values: [
                     formatLatency(avSpeechSummary),
                     formatLatency(kokoroSummary),
-                    formatLatency(voiceCloneSummary)
+                    formatLatency(voiceCloneSummary),
+                    formatLatency(edgeTTSSummary)
                 ]
             )
             metricRow(
@@ -58,7 +61,8 @@ struct TTSMetricsView: View {
                 values: [
                     "\(avSpeechSummary.count)",
                     "\(kokoroSummary.count)",
-                    "\(voiceCloneSummary.count)"
+                    "\(voiceCloneSummary.count)",
+                    "\(edgeTTSSummary.count)"
                 ]
             )
         }
@@ -86,6 +90,7 @@ struct TTSMetricsView: View {
         avSpeechSummary = await TTSMetricsCollector.shared.summary(for: .avSpeech)
         kokoroSummary = await TTSMetricsCollector.shared.summary(for: .kokoro)
         voiceCloneSummary = await TTSMetricsCollector.shared.summary(for: .voiceClone)
+        edgeTTSSummary = await TTSMetricsCollector.shared.summary(for: .edgeTTS)
     }
 }
 

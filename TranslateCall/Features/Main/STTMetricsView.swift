@@ -13,6 +13,7 @@ struct STTMetricsView: View {
 
     @State private var appleSummary: STTMetricsSummary = .empty
     @State private var parakeetSummary: STTMetricsSummary = .empty
+    @State private var whisperSummary: STTMetricsSummary = .empty
     @State private var isExpanded: Bool = false
 
     // MARK: - Body
@@ -39,24 +40,28 @@ struct STTMetricsView: View {
         Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
             GridRow {
                 Text("").gridColumnAlignment(.leading)
-                Text("Apple Speech").font(.caption).bold().gridColumnAlignment(.center)
-                Text("Parakeet").font(.caption).bold().gridColumnAlignment(.center)
+                Text("Apple Speech").font(.caption).bold()
+                    .gridColumnAlignment(.center)
+                Text("Parakeet").font(.caption).bold()
+                    .gridColumnAlignment(.center)
+                Text("Whisper").font(.caption).bold()
+                    .gridColumnAlignment(.center)
             }
             Divider()
             metricRow(
                 label: "Avg latency",
-                appleValue: appleSummary.count == 0 ? "—" : "\(Int(appleSummary.avgLatencyMs)) ms",
-                parakeetValue: parakeetSummary.count == 0 ? "—" : "\(Int(parakeetSummary.avgLatencyMs)) ms"
+                values: [appleSummary, parakeetSummary, whisperSummary]
+                    .map { $0.count == 0 ? "—" : "\(Int($0.avgLatencyMs)) ms" }
             )
             metricRow(
                 label: "Avg confidence",
-                appleValue: appleSummary.count == 0 ? "—" : String(format: "%.2f", appleSummary.avgConfidence),
-                parakeetValue: parakeetSummary.count == 0 ? "—" : String(format: "%.2f", parakeetSummary.avgConfidence)
+                values: [appleSummary, parakeetSummary, whisperSummary]
+                    .map { $0.count == 0 ? "—" : String(format: "%.2f", $0.avgConfidence) }
             )
             metricRow(
                 label: "Segments",
-                appleValue: "\(appleSummary.count)",
-                parakeetValue: "\(parakeetSummary.count)"
+                values: [appleSummary, parakeetSummary, whisperSummary]
+                    .map { "\($0.count)" }
             )
         }
         .padding(.top, 4)
@@ -64,11 +69,12 @@ struct STTMetricsView: View {
     }
 
     @ViewBuilder
-    private func metricRow(label: String, appleValue: String, parakeetValue: String) -> some View {
+    private func metricRow(label: String, values: [String]) -> some View {
         GridRow {
             Text(label).foregroundStyle(.secondary)
-            Text(appleValue).monospacedDigit()
-            Text(parakeetValue).monospacedDigit()
+            ForEach(values.indices, id: \.self) { idx in
+                Text(values[idx]).monospacedDigit()
+            }
         }
     }
 
@@ -77,6 +83,7 @@ struct STTMetricsView: View {
     private func refreshMetrics() async {
         appleSummary = await STTMetricsCollector.shared.summary(for: .appleSpeech)
         parakeetSummary = await STTMetricsCollector.shared.summary(for: .parakeet)
+        whisperSummary = await STTMetricsCollector.shared.summary(for: .whisper)
     }
 }
 
@@ -84,6 +91,6 @@ struct STTMetricsView: View {
 
 #Preview {
     STTMetricsView()
-        .frame(width: 400)
+        .frame(width: 500)
         .padding()
 }
