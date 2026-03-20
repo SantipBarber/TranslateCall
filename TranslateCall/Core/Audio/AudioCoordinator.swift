@@ -36,6 +36,14 @@ final class AudioCoordinator: ObservableObject {
     @Published private(set) var isStarting: Bool = false
     @Published private(set) var availableCaptureApps: [SCRunningApplication] = []
 
+    // MARK: - TTS Audio Monitor (local playback + recording of outgoing TTS)
+
+    @Published var ttsMonitorEnabled: Bool = false {
+        didSet { ttsMonitor?.isEnabled = ttsMonitorEnabled }
+    }
+    @Published private(set) var ttsMonitorRecording: Bool = false
+    private(set) var ttsMonitor: TTSAudioMonitor?
+
     // MARK: - Injected dependencies
 
     let audioCapture: any AudioCapture
@@ -182,6 +190,46 @@ final class AudioCoordinator: ObservableObject {
     func suppressNextOutgoingTurn() {
         suppressNextOutgoingTurnFlag = true
         logger.debug("Next outgoing turn will be suppressed")
+    }
+
+    // MARK: - TTS Monitor actions
+
+    /// Initializes the monitor (lazy — only created when first enabled).
+    func enableTTSMonitor() {
+        if ttsMonitor == nil {
+            do {
+                ttsMonitor = try TTSAudioMonitor()
+            } catch {
+                errorAlert = makeAlertItem(for: error)
+                return
+            }
+        }
+        ttsMonitorEnabled = true
+        Task { await outgoingTTS?.setAudioMonitor(ttsMonitor) }
+    }
+
+    func disableTTSMonitor() {
+        ttsMonitorEnabled = false
+        Task { await outgoingTTS?.setAudioMonitor(nil) }
+    }
+
+    func toggleTTSRecording() {
+        guard let monitor = ttsMonitor else { return }
+        if monitor.isRecording {
+            monitor.stopRecording()
+            ttsMonitorRecording = false
+        } else {
+            do {
+                try monitor.startRecording()
+                ttsMonitorRecording = true
+            } catch {
+                errorAlert = makeAlertItem(for: error)
+            }
+        }
+    }
+
+    func playLastRecording() {
+        ttsMonitor?.playLastRecording()
     }
 
     /// Update STT locales when the language pair changes.

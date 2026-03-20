@@ -33,6 +33,10 @@ actor QwenCloneSpeechService: SynthesisService {
     private let activeProfileId: UUID
     private let config: QwenCloneConfiguration
 
+    // MARK: - Monitor
+
+    private var audioMonitor: TTSAudioMonitor?
+
     // MARK: - Queue
 
     private var isSpeaking = false
@@ -257,11 +261,16 @@ actor QwenCloneSpeechService: SynthesisService {
         return status == .error ? nil : outBuf
     }
 
+    func setAudioMonitor(_ monitor: TTSAudioMonitor?) async {
+        self.audioMonitor = monitor
+    }
+
     private func scheduleBuffer(_ buffer: AVAudioPCMBuffer) {
         playerNode.scheduleBuffer(buffer, at: nil, options: []) { [weak self] in
             Task { await self?.bufferCompleted() }
         }
         if !playerNode.isPlaying { playerNode.play() }
+        audioMonitor?.process(buffer)
     }
 
     private func bufferCompleted() async {

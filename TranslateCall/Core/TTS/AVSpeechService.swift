@@ -24,6 +24,9 @@ actor AVSpeechService: SynthesisService {
     private let mixer = AVAudioMixerNode()
     private var synthesizer = AVSpeechSynthesizer()
 
+    // Monitor (optional — for local playback/recording of outgoing TTS)
+    private var audioMonitor: TTSAudioMonitor?
+
     // Queue (actor-isolated)
     private var utteranceQueue: [(text: String, locale: Locale)] = []
     private var isSynthesizing = false
@@ -153,11 +156,16 @@ actor AVSpeechService: SynthesisService {
         }
     }
 
+    func setAudioMonitor(_ monitor: TTSAudioMonitor?) async {
+        self.audioMonitor = monitor
+    }
+
     private func scheduleBuffer(_ pcm: AVAudioPCMBuffer) async {
         guard engine.isRunning else { return }
         if !playerNode.isPlaying { playerNode.play() }
         // DO NOT use async scheduleBuffer — it blocks the synthesis callback pipeline.
         playerNode.scheduleBuffer(pcm, at: nil, options: [], completionHandler: nil)
+        audioMonitor?.process(pcm)
     }
 
     func bestVoice(for locale: Locale) -> AVSpeechSynthesisVoice? {

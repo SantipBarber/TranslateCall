@@ -65,6 +65,9 @@ struct ContentView: View {
             TTSMetricsView()
                 .padding(.horizontal, 2)
 
+            // TTS Monitor row (local playback + recording)
+            ttsMonitorRow
+
             // Voice profile row
             voiceProfileRow
 
@@ -161,6 +164,47 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 setupManager.checkBlackHole()
+            }
+        }
+    }
+
+    // MARK: - TTS Monitor row
+
+    private var ttsMonitorRow: some View {
+        HStack(spacing: 8) {
+            Toggle(isOn: Binding(
+                get: { viewModel.ttsMonitorEnabled },
+                set: { _ in viewModel.toggleTTSMonitor() }
+            )) {
+                Label("Monitor", systemImage: viewModel.ttsMonitorEnabled
+                      ? "speaker.wave.2.fill" : "speaker.slash")
+                    .font(.caption)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+
+            Spacer()
+
+            if viewModel.ttsMonitorEnabled {
+                Button {
+                    viewModel.toggleTTSRecording()
+                } label: {
+                    Image(systemName: viewModel.ttsMonitorRecording ? "stop.circle.fill" : "record.circle")
+                        .foregroundStyle(viewModel.ttsMonitorRecording ? .red : .secondary)
+                }
+                .buttonStyle(.borderless)
+                .help(viewModel.ttsMonitorRecording ? "Stop recording" : "Record TTS output")
+
+                if viewModel.hasRecording, !viewModel.ttsMonitorRecording {
+                    Button {
+                        viewModel.playLastRecording()
+                    } label: {
+                        Image(systemName: "play.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Play last recording")
+                }
             }
         }
     }

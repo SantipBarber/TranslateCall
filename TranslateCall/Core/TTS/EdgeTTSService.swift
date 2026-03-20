@@ -26,6 +26,7 @@ actor EdgeTTSService: SynthesisService {
     private let webSocket: EdgeTTSWebSocket
     private let voiceName: String
     private var currentTask: Task<Void, Never>?
+    private var audioMonitor: TTSAudioMonitor?
 
     // MARK: - Init
 
@@ -95,6 +96,10 @@ actor EdgeTTSService: SynthesisService {
         speakingContinuation?.yield(false)
     }
 
+    func setAudioMonitor(_ monitor: TTSAudioMonitor?) async {
+        self.audioMonitor = monitor
+    }
+
     func deactivate() async {
         await stopSpeaking()
         await webSocket.disconnect()
@@ -158,6 +163,7 @@ actor EdgeTTSService: SynthesisService {
         playerNode?.stop()
         playerNode?.scheduleBuffer(buffer, at: nil, options: [])
         playerNode?.play()
+        audioMonitor?.process(buffer)
     }
 
     private func waitForPlaybackEnd() async {

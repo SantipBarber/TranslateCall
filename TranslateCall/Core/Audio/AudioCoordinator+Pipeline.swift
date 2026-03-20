@@ -48,6 +48,10 @@ extension AudioCoordinator {
         do {
             let tts = try outgoingTTSFactory(targetLocaleForTTS, blackHoleDeviceID)
             outgoingTTS = tts
+            // Attach monitor if enabled (so user can hear outgoing TTS through speakers)
+            if ttsMonitorEnabled {
+                await tts.setAudioMonitor(ttsMonitor)
+            }
             observeTTSState(tts, onSpeakingChange: { [weak self] speaking in
                 self?.isOutgoingSpeaking = speaking
             }, into: &outgoingTasks)

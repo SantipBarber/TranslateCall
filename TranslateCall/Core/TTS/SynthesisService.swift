@@ -55,4 +55,12 @@ protocol SynthesisService: Actor {
 
     /// Stop synthesis, clear queue, stop audio engine.
     func deactivate() async
+
+    /// Attach a monitor that receives a copy of every audio buffer for local playback/recording.
+    func setAudioMonitor(_ monitor: TTSAudioMonitor?) async
+}
+
+extension SynthesisService {
+    /// Default no-op — services that don't support monitoring simply ignore the call.
+    func setAudioMonitor(_ monitor: TTSAudioMonitor?) async {}
 }

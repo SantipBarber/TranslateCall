@@ -9,44 +9,43 @@ private nonisolated let logger = Logger(
 
 // MARK: - EdgeTTSWebSocket
 
-/// WebSocket client for Microsoft Edge TTS using Network.framework.
+/// WebSocket client for Microsoft Edge TTS using raw TLS + manual handshake.
+///
+/// Apple's `NWProtocolWebSocket` and `URLSessionWebSocketTask` filter custom headers
+/// (notably `Origin`), so we perform the HTTP/1.1 upgrade ourselves over a plain
+/// TLS `NWConnection`. This gives full control over all headers including the
+/// `Origin: chrome-extension://…` that Microsoft requires.
 actor EdgeTTSWebSocket {
 
     private var connection: NWConnection?
     private let queue = DispatchQueue(label: "com.spbarber.EdgeTTSWebSocket")
-
-    // MARK: - Constants
-
-    private static let host = "speech.platform.bing.com"
-    private static let path = "/consumer/speech/synthesize/readaloud/edge/v1"
-    private static let token = "6A5AA1D4EAFF4E9FB37E23D68491D6F4"
-    private static let outputFormat = "audio-24khz-48kbitrate-mono-mp3"
 
     // MARK: - Connect
 
     func connect() async throws {
         if connection != nil { return }
 
-        let connId = UUID().uuidString
-            .replacingOccurrences(of: "-", with: "")
-        let urlString = "wss://\(Self.host)\(Self.path)"
-            + "?TrustedClientToken=\(Self.token)"
+        let connId = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        let gecToken = EdgeTTSDRM.generateSecMsGec()
+        let path = "\(EdgeTTSConstants.path)"
+            + "?TrustedClientToken=\(EdgeTTSConstants.trustedClientToken)"
             + "&ConnectionId=\(connId)"
-        guard let url = URL(string: urlString) else {
-            throw EdgeTTSError.invalidURL
-        }
+            + "&Sec-MS-GEC=\(gecToken)"
+            + "&Sec-MS-GEC-Version=\(EdgeTTSConstants.secMsGecVersion)"
 
-        // Configure WebSocket protocol on top of TLS
-        let wsOptions = NWProtocolWebSocket.Options()
-        wsOptions.autoReplyPing = true
+        // Raw TLS connection (no WebSocket protocol layer — we do the upgrade ourselves)
+        let tlsOptions = NWProtocolTLS.Options()
+        let tcpOptions = NWProtocolTCP.Options()
+        let params = NWParameters(tls: tlsOptions, tcp: tcpOptions)
 
-        let params = NWParameters.tls
-        params.defaultProtocolStack.applicationProtocols
-            .insert(wsOptions, at: 0)
-
-        let conn = NWConnection(to: .url(url), using: params)
+        let endpoint = NWEndpoint.hostPort(
+            host: NWEndpoint.Host(EdgeTTSConstants.host),
+            port: .https
+        )
+        let conn = NWConnection(to: endpoint, using: params)
         self.connection = conn
 
+        // Wait for TCP+TLS ready
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             nonisolated(unsafe) var resumed = false
             conn.stateUpdateHandler = { state in
@@ -54,11 +53,9 @@ actor EdgeTTSWebSocket {
                 switch state {
                 case .ready:
                     resumed = true
-                    logger.debug("Edge TTS WebSocket connected")
                     cont.resume()
                 case .failed(let error):
                     resumed = true
-                    logger.error("Edge TTS connect failed: \(error)")
                     cont.resume(throwing: error)
                 case .cancelled:
                     resumed = true
@@ -69,6 +66,11 @@ actor EdgeTTSWebSocket {
             }
             conn.start(queue: self.queue)
         }
+
+        // WebSocket upgrade handshake
+        let wsKey = EdgeTTSDRM.generateWebSocketKey()
+        try await performWebSocketUpgrade(conn: conn, path: path, wsKey: wsKey)
+        logger.debug("Edge TTS WebSocket connected")
 
         // Send speech config
         try await sendText(buildConfigMessage())
@@ -99,9 +101,7 @@ actor EdgeTTSWebSocket {
                     return
                 }
                 do {
-                    try await self.receiveLoop(
-                        continuation: continuation
-                    )
+                    try await self.receiveLoop(continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -116,57 +116,72 @@ actor EdgeTTSWebSocket {
         connection = nil
     }
 
-    // MARK: - Message builders
+    // MARK: - WebSocket Upgrade
 
-    private func buildConfigMessage() -> String {
-        "Content-Type:application/json; charset=utf-8\r\n"
-            + "Path:speech.config\r\n\r\n"
-            + "{\"context\":{\"synthesis\":{\"audio\":{"
-            + "\"metadataoptions\":{"
-            + "\"sentenceBoundaryEnabled\":\"false\","
-            + "\"wordBoundaryEnabled\":\"false\"},"
-            + "\"outputFormat\":\"\(Self.outputFormat)\"}}}}"
+    private func performWebSocketUpgrade(
+        conn: NWConnection, path: String, wsKey: String
+    ) async throws {
+        var request = "GET \(path) HTTP/1.1\r\n"
+        request += "Host: \(EdgeTTSConstants.host)\r\n"
+        request += "Upgrade: websocket\r\n"
+        request += "Connection: Upgrade\r\n"
+        request += "Sec-WebSocket-Key: \(wsKey)\r\n"
+        request += "Sec-WebSocket-Version: 13\r\n"
+        request += "Origin: \(EdgeTTSConstants.origin)\r\n"
+        request += "User-Agent: \(EdgeTTSConstants.userAgent)\r\n"
+        request += "Pragma: no-cache\r\n"
+        request += "Cache-Control: no-cache\r\n"
+        request += "Accept-Encoding: gzip, deflate, br, zstd\r\n"
+        request += "Accept-Language: en-US,en;q=0.9\r\n"
+        request += "\r\n"
+
+        // Send upgrade request
+        try await sendRaw(conn: conn, data: Data(request.utf8))
+
+        // Read response (may arrive in chunks)
+        let response = try await readHTTPResponse(conn: conn)
+
+        guard response.contains("HTTP/1.1 101") || response.contains("HTTP/1.0 101") else {
+            logger.error("WebSocket upgrade rejected: \(response.prefix(200))")
+            throw EdgeTTSError.handshakeRejected(response)
+        }
     }
 
-    private func buildSSML(
-        text: String, voice: String,
-        rate: Int, pitch: Int, volume: Int
-    ) -> String {
-        let reqId = UUID().uuidString
-            .replacingOccurrences(of: "-", with: "")
-        let rateStr = rate >= 0 ? "+\(rate)%" : "\(rate)%"
-        let pitchStr = pitch >= 0 ? "+\(pitch)Hz" : "\(pitch)Hz"
-        let volStr = volume >= 0 ? "+\(volume)%" : "\(volume)%"
+    private func readHTTPResponse(conn: NWConnection) async throws -> String {
+        var accumulated = Data()
+        let headerEnd = Data("\r\n\r\n".utf8)
 
-        return "X-RequestId:\(reqId)\r\n"
-            + "Content-Type:application/ssml+xml\r\n"
-            + "Path:ssml\r\n\r\n"
-            + "<speak version='1.0' "
-            + "xmlns='http://www.w3.org/2001/10/synthesis' "
-            + "xml:lang='en-US'>"
-            + "<voice name='\(voice)'>"
-            + "<prosody rate='\(rateStr)' pitch='\(pitchStr)' "
-            + "volume='\(volStr)'>"
-            + "\(text.escapedForXML)"
-            + "</prosody></voice></speak>"
+        // Read until we see \r\n\r\n (end of HTTP headers)
+        while !accumulated.wsContains(headerEnd) {
+            let chunk: Data = try await withCheckedThrowingContinuation { cont in
+                conn.receive(minimumIncompleteLength: 1, maximumLength: 4096) { data, _, _, error in
+                    if let error {
+                        cont.resume(throwing: error)
+                    } else {
+                        cont.resume(returning: data ?? Data())
+                    }
+                }
+            }
+            guard !chunk.isEmpty else { throw EdgeTTSError.notConnected }
+            accumulated.append(chunk)
+        }
+
+        return String(data: accumulated, encoding: .utf8) ?? ""
     }
 
-    // MARK: - Send/Receive
+    // MARK: - WebSocket Frame Send
 
     private func sendText(_ text: String) async throws {
-        guard let conn = connection else {
-            throw EdgeTTSError.notConnected
-        }
-        let metadata = NWProtocolWebSocket.Metadata(opcode: .text)
-        let context = NWConnection.ContentContext(
-            identifier: "edgeTTS",
-            metadata: [metadata]
-        )
+        guard let conn = connection else { throw EdgeTTSError.notConnected }
+        let payload = Data(text.utf8)
+        let frame = WSFrameEncoder.encodeFrame(opcode: 0x01, payload: payload) // 0x01 = text
+        try await sendRaw(conn: conn, data: frame)
+    }
+
+    private func sendRaw(conn: NWConnection, data: Data) async throws {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             conn.send(
-                content: text.data(using: .utf8),
-                contentContext: context,
-                isComplete: true,
+                content: data,
                 completion: .contentProcessed { error in
                     if let error {
                         cont.resume(throwing: error)
@@ -178,49 +193,113 @@ actor EdgeTTSWebSocket {
         }
     }
 
+    // Frame encoding delegated to WSFrameEncoder (reduces actor body length).
+
+    // MARK: - WebSocket Frame Receive
+
     private func receiveLoop(
         continuation: AsyncThrowingStream<Data, Error>.Continuation
     ) async throws {
         while true {
-            let (data, context) = try await receiveMessage()
-            let metadata = context?.protocolMetadata(
-                definition: NWProtocolWebSocket.definition
-            ) as? NWProtocolWebSocket.Metadata
+            let (opcode, payload) = try await receiveFrame()
 
-            switch metadata?.opcode {
-            case .binary:
-                if let audio = extractAudioData(from: data) {
-                    continuation.yield(audio)
-                }
-            case .text:
-                if let str = String(data: data, encoding: .utf8),
+            switch opcode {
+            case 0x01: // text
+                if let str = String(data: payload, encoding: .utf8),
                    str.contains("Path:turn.end") {
                     continuation.finish()
                     return
                 }
-            case .close:
+            case 0x02: // binary
+                if let audio = extractAudioData(from: payload) {
+                    continuation.yield(audio)
+                }
+            case 0x08: // close
                 continuation.finish()
                 return
+            case 0x09: // ping → send pong
+                try await sendPong(payload: payload)
             default:
                 break
             }
         }
     }
 
-    private func receiveMessage() async throws -> (Data, NWConnection.ContentContext?) {
-        guard let conn = connection else {
-            throw EdgeTTSError.notConnected
-        }
-        return try await withCheckedThrowingContinuation { cont in
-            conn.receiveMessage { content, context, _, error in
-                if let error {
-                    cont.resume(throwing: error)
-                } else {
-                    cont.resume(returning: (content ?? Data(), context))
-                }
+    private func receiveFrame() async throws -> (opcode: UInt8, payload: Data) {
+        guard let conn = connection else { throw EdgeTTSError.notConnected }
+
+        // Read first 2 bytes: [FIN+opcode] [mask+length]
+        let header = try await readExact(conn: conn, count: 2)
+        let opcode = header[0] & 0x0F
+        let masked = (header[1] & 0x80) != 0
+        var payloadLength = UInt64(header[1] & 0x7F)
+
+        // Extended length
+        if payloadLength == 126 {
+            let ext = try await readExact(conn: conn, count: 2)
+            payloadLength = UInt64(ext[0]) << 8 | UInt64(ext[1])
+        } else if payloadLength == 127 {
+            let ext = try await readExact(conn: conn, count: 8)
+            payloadLength = 0
+            for byte in ext {
+                payloadLength = (payloadLength << 8) | UInt64(byte)
             }
         }
+
+        // Mask key (server→client is normally unmasked, but handle it)
+        var maskKey: [UInt8]?
+        if masked {
+            let maskData = try await readExact(conn: conn, count: 4)
+            maskKey = Array(maskData)
+        }
+
+        // Payload
+        guard payloadLength <= 10_000_000 else { throw EdgeTTSError.synthesisTimeout }
+        var payload = try await readExact(conn: conn, count: Int(payloadLength))
+
+        // Unmask if needed
+        if let mask = maskKey {
+            for idx in payload.indices {
+                payload[idx] ^= mask[(idx - payload.startIndex) % 4]
+            }
+        }
+
+        return (opcode, payload)
     }
+
+    private func readExact(conn: NWConnection, count: Int) async throws -> Data {
+        guard count > 0 else { return Data() }
+        var accumulated = Data()
+        accumulated.reserveCapacity(count)
+
+        while accumulated.count < count {
+            let remaining = count - accumulated.count
+            let chunk: Data = try await withCheckedThrowingContinuation { cont in
+                conn.receive(
+                    minimumIncompleteLength: 1,
+                    maximumLength: remaining
+                ) { data, _, _, error in
+                    if let error {
+                        cont.resume(throwing: error)
+                    } else if let data, !data.isEmpty {
+                        cont.resume(returning: data)
+                    } else {
+                        cont.resume(throwing: EdgeTTSError.notConnected)
+                    }
+                }
+            }
+            accumulated.append(chunk)
+        }
+        return accumulated
+    }
+
+    private func sendPong(payload: Data) async throws {
+        guard let conn = connection else { return }
+        let frame = WSFrameEncoder.encodeFrame(opcode: 0x0A, payload: payload) // 0x0A = pong
+        try await sendRaw(conn: conn, data: frame)
+    }
+
+    // MARK: - Audio extraction
 
     private func extractAudioData(from data: Data) -> Data? {
         guard data.count > 2 else { return nil }
@@ -229,32 +308,28 @@ actor EdgeTTSWebSocket {
         guard audioStart < data.count else { return nil }
         return data.subdata(in: audioStart..<data.count)
     }
-}
 
-// MARK: - EdgeTTSError
+    // MARK: - Message builders (nonisolated — pure string construction)
 
-enum EdgeTTSError: LocalizedError {
-    case invalidURL
-    case notConnected
-    case synthesisTimeout
+    private nonisolated func buildConfigMessage() -> String {
+        EdgeTTSMessageBuilder.configMessage()
+    }
 
-    var errorDescription: String? {
-        switch self {
-        case .invalidURL: return "Invalid Edge TTS endpoint URL."
-        case .notConnected: return "Edge TTS not connected."
-        case .synthesisTimeout: return "Edge TTS synthesis timed out."
-        }
+    private nonisolated func buildSSML(
+        text: String, voice: String,
+        rate: Int, pitch: Int, volume: Int
+    ) -> String {
+        EdgeTTSMessageBuilder.ssml(
+            text: text, voice: voice, rate: rate, pitch: pitch, volume: volume
+        )
     }
 }
 
-// MARK: - String XML escape
+// MARK: - Data helper
 
-extension String {
-    nonisolated var escapedForXML: String {
-        replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-            .replacingOccurrences(of: "\"", with: "&quot;")
-            .replacingOccurrences(of: "'", with: "&apos;")
+private extension Data {
+    nonisolated func wsContains(_ other: Data) -> Bool {
+        guard other.count <= count else { return false }
+        return range(of: other) != nil
     }
 }

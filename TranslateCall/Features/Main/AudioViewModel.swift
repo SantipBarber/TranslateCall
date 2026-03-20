@@ -49,6 +49,11 @@ final class AudioViewModel: ObservableObject {
 
     @Published private(set) var halfDuplexState: HalfDuplexState = .listening
 
+    // MARK: - TTS Monitor state (from coordinator)
+
+    @Published var ttsMonitorEnabled: Bool = false
+    @Published private(set) var ttsMonitorRecording: Bool = false
+
     // MARK: - Shared
 
     @Published var errorAlert: AlertItem?
@@ -156,6 +161,8 @@ final class AudioViewModel: ObservableObject {
         coordinator.$incomingTranslation.assign(to: &$incomingTranslation)
         coordinator.$isIncomingActive.assign(to: &$isIncomingActive)
         coordinator.$halfDuplexState.assign(to: &$halfDuplexState)
+        coordinator.$ttsMonitorEnabled.assign(to: &$ttsMonitorEnabled)
+        coordinator.$ttsMonitorRecording.assign(to: &$ttsMonitorRecording)
         coordinator.$errorAlert.assign(to: &$errorAlert)
     }
 
@@ -226,6 +233,28 @@ final class AudioViewModel: ObservableObject {
     func muteTurn() {
         guard isCapturing else { return }
         coordinator.suppressNextOutgoingTurn()
+    }
+
+    // MARK: - TTS Monitor actions
+
+    func toggleTTSMonitor() {
+        if ttsMonitorEnabled {
+            coordinator.disableTTSMonitor()
+        } else {
+            coordinator.enableTTSMonitor()
+        }
+    }
+
+    func toggleTTSRecording() {
+        coordinator.toggleTTSRecording()
+    }
+
+    func playLastRecording() {
+        coordinator.playLastRecording()
+    }
+
+    var hasRecording: Bool {
+        coordinator.ttsMonitor?.lastRecordingURL != nil
     }
 
     // MARK: - Display helpers for menu bar
