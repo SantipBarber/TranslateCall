@@ -204,11 +204,13 @@ final class AudioCoordinator: ObservableObject {
                 return
             }
         }
+        ttsMonitor?.isEnabled = true
         ttsMonitorEnabled = true
         Task { await outgoingTTS?.setAudioMonitor(ttsMonitor) }
     }
 
     func disableTTSMonitor() {
+        ttsMonitor?.isEnabled = false
         ttsMonitorEnabled = false
         Task { await outgoingTTS?.setAudioMonitor(nil) }
     }

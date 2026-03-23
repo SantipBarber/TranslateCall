@@ -21,14 +21,18 @@ nonisolated final class TTSAudioMonitor: @unchecked Sendable {
     private let lock = NSLock()
     private var recordingFile: AVAudioFile?
     private var recordingURL: URL?
+    /// When true, the file will be created lazily on the first buffer in `process(_:)`.
+    private var recordingPending: Bool = false
 
     // MARK: - State
 
     /// Master toggle. When false, `process(_:)` is a no-op.
     var isEnabled: Bool = false
+    /// Whether playerNode→mixer has been reconnected with the actual TTS buffer format.
+    private var playerFormatConfigured = false
 
-    /// True while recording to file.
-    var isRecording: Bool { lock.withLock { recordingFile != nil } }
+    /// True while recording to file (or pending first buffer).
+    var isRecording: Bool { lock.withLock { recordingFile != nil || recordingPending } }
 
     /// URL of the last completed recording (nil until first recording finishes).
     private(set) var lastRecordingURL: URL?
@@ -56,10 +60,41 @@ nonisolated final class TTSAudioMonitor: @unchecked Sendable {
     func process(_ buffer: AVAudioPCMBuffer) {
         guard isEnabled, buffer.frameLength > 0 else { return }
 
+        // On first buffer, reconnect playerNode→mixer with the actual TTS format
+        // (e.g. mono 22 kHz). format:nil at init resolves to stereo from outputNode.
+        if !playerFormatConfigured {
+            engine.disconnectNodeOutput(playerNode)
+            engine.connect(playerNode, to: mixer, format: buffer.format)
+            playerFormatConfigured = true
+            logger.info("Monitor player format configured: \(buffer.format.description)")
+        }
+
+        // Restart engine if it was invalidated (e.g. after stop/start cycle).
+        if !engine.isRunning {
+            do {
+                try engine.start()
+                logger.info("Monitor engine restarted")
+            } catch {
+                logger.warning("Monitor engine restart failed: \(error.localizedDescription)")
+                return
+            }
+        }
+
         playerNode.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
         if !playerNode.isPlaying { playerNode.play() }
 
         lock.lock()
+        // Lazily create the recording file on the first buffer so the format matches.
+        if recordingPending, recordingFile == nil, let url = recordingURL {
+            do {
+                recordingFile = try AVAudioFile(forWriting: url, settings: buffer.format.settings)
+                recordingPending = false
+                logger.info("Recording file created with format: \(buffer.format.description)")
+            } catch {
+                logger.warning("Failed to create recording file: \(error.localizedDescription)")
+                recordingPending = false
+            }
+        }
         if let file = recordingFile {
             do {
                 try file.write(from: buffer)
@@ -84,15 +119,13 @@ nonisolated final class TTSAudioMonitor: @unchecked Sendable {
             .replacingOccurrences(of: ":", with: "-")
         let url = dir.appendingPathComponent("tts_\(timestamp).wav")
 
-        let format = engine.outputNode.outputFormat(forBus: 0)
-        let file = try AVAudioFile(forWriting: url, settings: format.settings)
-
         lock.lock()
-        recordingFile = file
+        recordingFile = nil
         recordingURL = url
+        recordingPending = true
         lock.unlock()
 
-        logger.info("Recording started: \(url.lastPathComponent)")
+        logger.info("Recording started (pending first buffer): \(url.lastPathComponent)")
         return url
     }
 
@@ -102,13 +135,20 @@ nonisolated final class TTSAudioMonitor: @unchecked Sendable {
         lock.lock()
         let file = recordingFile
         let url = recordingURL
+        let wasPending = recordingPending
         recordingFile = nil
         recordingURL = nil
+        recordingPending = false
         lock.unlock()
 
         if file != nil, let url {
             lastRecordingURL = url
             logger.info("Recording stopped: \(url.lastPathComponent)")
+        } else if wasPending, let url {
+            // Recording was pending but no TTS buffers arrived — clean up empty file.
+            try? FileManager.default.removeItem(at: url)
+            logger.info("Recording stopped (no audio captured): \(url.lastPathComponent)")
+            return nil
         }
         return url
     }
@@ -124,6 +164,10 @@ nonisolated final class TTSAudioMonitor: @unchecked Sendable {
         do {
             let audioFile = try AVAudioFile(forReading: url)
             let frameCount = AVAudioFrameCount(audioFile.length)
+            guard frameCount > 0 else {
+                logger.info("Recording is empty (no audio was captured)")
+                return
+            }
             guard let buffer = AVAudioPCMBuffer(
                 pcmFormat: audioFile.processingFormat, frameCapacity: frameCount
             ) else { return }

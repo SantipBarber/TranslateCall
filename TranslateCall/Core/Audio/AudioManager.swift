@@ -48,14 +48,12 @@ final class AudioManager: ObservableObject {
     // MARK: - Audio streams
 
     /// Raw 48 kHz PCM stream — for routing / future full-quality processing.
-    private(set) lazy var audioStream48kHz: AsyncStream<AVAudioPCMBuffer> = {
-        AsyncStream { self._continuation48 = $0 }
-    }()
+    /// Recreated on each `startCapture()` so downstream consumers get a fresh iterator.
+    private(set) var audioStream48kHz: AsyncStream<AVAudioPCMBuffer> = AsyncStream { _ in }
 
     /// Downsampled 16 kHz mono PCM stream — for VAD and STT.
-    private(set) lazy var audioStream16kHz: AsyncStream<AVAudioPCMBuffer> = {
-        AsyncStream { self._continuation16 = $0 }
-    }()
+    /// Recreated on each `startCapture()` so downstream consumers get a fresh iterator.
+    private(set) var audioStream16kHz: AsyncStream<AVAudioPCMBuffer> = AsyncStream { _ in }
 
     // MARK: - Private — real-time thread storage (set on MainActor, read on audio thread)
 
@@ -81,11 +79,8 @@ final class AudioManager: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        // Force lazy stream init here (MainActor) so the continuations are populated
-        // before any audio thread access. configureEngine() is nonisolated and must
-        // not touch @MainActor lazy vars.
-        _ = audioStream48kHz
-        _ = audioStream16kHz
+        // Create initial streams so continuations are populated before any audio thread access.
+        recreateStreams()
 
         monitor.onDevicesChanged = { [weak self] in
             self?.refreshDevices()
@@ -142,6 +137,18 @@ final class AudioManager: ObservableObject {
         return AudioDevice(id: id, name: name, uid: uid, hasInput: hasInput, hasOutput: hasOutput)
     }
 
+    // MARK: - Stream lifecycle
+
+    /// Creates fresh AsyncStreams and continuations. Must be called on @MainActor
+    /// before `configureEngine()` so the nonisolated tap callback has valid continuations.
+    private func recreateStreams() {
+        // Finish old continuations so any existing for-await loops exit cleanly.
+        _continuation48?.finish()
+        _continuation16?.finish()
+        audioStream48kHz = AsyncStream { self._continuation48 = $0 }
+        audioStream16kHz = AsyncStream { self._continuation16 = $0 }
+    }
+
     // MARK: - Capture control (T5)
 
     func startCapture() async throws {
@@ -159,6 +166,8 @@ final class AudioManager: ObservableObject {
             selectedInput = inputDevices.first
         }
 
+        // Fresh streams so downstream (VAD, STT) get a new iterator each session.
+        recreateStreams()
         try configureEngine()
         isCapturing = true
     }
@@ -168,6 +177,9 @@ final class AudioManager: ObservableObject {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         engine.reset()      // clean state so next configureEngine() starts fresh
+        // Finish continuations so downstream for-await loops exit.
+        _continuation48?.finish()
+        _continuation16?.finish()
         isCapturing = false
         inputLevel = -160
     }
@@ -224,8 +236,8 @@ final class AudioManager: ObservableObject {
 
         _converter = AVAudioConverter(from: captureFormat, to: targetFormat)
 
-        // Streams were initialized in init() — continuations are already set.
-        // Do NOT access audioStream48kHz / audioStream16kHz (lazy @MainActor vars) here.
+        // Continuations were set by recreateStreams() (called from startCapture on @MainActor)
+        // before this nonisolated method runs. Do NOT access the stream vars here.
 
         inputNode.installTap(
             onBus: 0, bufferSize: 1024, format: captureFormat

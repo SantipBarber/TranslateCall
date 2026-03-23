@@ -30,6 +30,8 @@ actor AVSpeechService: SynthesisService {
     // Queue (actor-isolated)
     private var utteranceQueue: [(text: String, locale: Locale)] = []
     private var isSynthesizing = false
+    /// Tracks whether the playerNode→mixer connection has been reconfigured to match the TTS buffer format.
+    private var playerFormatConfigured = false
 
     // Delegate bridge — holds self weakly via ObjC delegate
     private var delegateBridge: SpeechSynthesizerDelegateBridge?
@@ -162,6 +164,15 @@ actor AVSpeechService: SynthesisService {
 
     private func scheduleBuffer(_ pcm: AVAudioPCMBuffer) async {
         guard engine.isRunning else { return }
+        // On first buffer, reconnect playerNode→mixer with the actual TTS buffer format
+        // (e.g. mono 22 kHz). This avoids the channel-count mismatch crash because
+        // `format: nil` at init time resolves to stereo (from the output node).
+        if !playerFormatConfigured {
+            engine.disconnectNodeOutput(playerNode)
+            engine.connect(playerNode, to: mixer, format: pcm.format)
+            playerFormatConfigured = true
+            logger.info("Player format configured: \(pcm.format.description)")
+        }
         if !playerNode.isPlaying { playerNode.play() }
         // DO NOT use async scheduleBuffer — it blocks the synthesis callback pipeline.
         playerNode.scheduleBuffer(pcm, at: nil, options: [], completionHandler: nil)

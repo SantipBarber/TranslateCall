@@ -1,8 +1,8 @@
-# M8 Testing Status — 2026-03-17
+# M8 Testing Status — 2026-03-23 (updated)
 
 ## Resumen
 
-M8 (Full Language Coverage) implementado. El core funcional está listo pero hay dos bloqueantes para testing end-to-end completo.
+M8 (Full Language Coverage) implementado. Pipeline end-to-end **verificado**: ES→EN funciona con STT + Translation + TTS + Monitor local.
 
 ## Lo que funciona ✅
 
@@ -48,35 +48,38 @@ M8 (Full Language Coverage) implementado. El core funcional está listo pero hay
 
 **Alternativa**: Explorar si `TTSKit` (incluido en WhisperKit package) soporta ucraniano o más idiomas que nuestro Qwen3-TTS actual.
 
-### 2. No se puede escuchar TTS durante testing local
-**Problema**: El outgoing TTS está diseñado para rutear audio a **BlackHole** (para que el participante remoto lo oiga en Zoom/Teams). Sin BlackHole o sin una llamada activa, el audio no se reproduce por los altavoces locales.
+### 2. ~~No se puede escuchar TTS durante testing local~~ RESUELTO 2026-03-23
+**Estado**: RESUELTO. TTSAudioMonitor funciona correctamente.
 
-**El usuario NUNCA ha escuchado TTS en el pipeline de traducción** — solo en la preview de voz (VoicePreviewService, que tiene su propio AVAudioEngine ruteado a altavoces).
+**Fixes aplicados**:
+1. **`ttsMonitor.isEnabled` nunca se seteaba** — `enableTTSMonitor()` seteaba `ttsMonitorEnabled` (UI) pero no `ttsMonitor.isEnabled` (guard en `process()`)
+2. **Channel mismatch crash** — `playerNode→mixer` con `format:nil` resolvía a stereo, pero AVSpeechSynthesizer produce mono. Fix: reconexión lazy con formato del primer buffer, tanto en `AVSpeechService` como en `TTSAudioMonitor`
+3. **Recording file format mismatch** — archivo WAV se creaba con formato del output node (stereo) pero recibía buffers mono. Fix: creación lazy del archivo en `process()` con el formato del primer buffer
+4. **AsyncStream single-iterator bug** — `audioStream16kHz` era `lazy var` creado una vez; tras stop/start el nuevo VAD iteraba un stream consumido. Fix: `recreateStreams()` en cada `startCapture()`, `finish()` de continuations en `stopCapture()`
+5. **Monitor engine invalidation** — tras stop/start, el engine del monitor podía quedar inválido. Fix: auto-restart en `process()` si `!engine.isRunning`
 
-**Soluciones propuestas**:
-1. **Monitor local**: Opción para duplicar el audio TTS a los altavoces locales además de BlackHole (como "monitor" en DAWs). Toggle en la UI.
-2. **Test mode**: Modo de prueba sin BlackHole donde el TTS va directo a altavoces. Para development/testing.
-3. **Grabación + playback**: Grabar el audio TTS a un archivo y reproducirlo después para verificar.
+## Próximos pasos
 
-## Plan para mañana
-
-### Prioridad 1: Hacer TTS audible para testing
-- Implementar "monitor local" o "test mode" para escuchar TTS por altavoces
-- Esto desbloquea TODO el testing de TTS (AVSpeech, Voice Clone, y futuro Edge TTS)
-
-### Prioridad 2: Edge TTS WebSocket
-- Añadir Starscream SPM dependency
-- Reescribir `EdgeTTSWebSocket` usando Starscream
+### Prioridad 1: Edge TTS WebSocket
+- Añadir **Starscream** SPM dependency (MIT, Swift WebSocket library)
+- Reescribir `EdgeTTSWebSocket` usando Starscream (control total sobre headers)
 - Verificar que el audio ucraniano se reproduce
+- Esto desbloquea cobertura de 100+ idiomas para TTS
 
-### Prioridad 3: Calidad Whisper
+### Prioridad 2: Calidad Whisper STT
 - El modelo `base` a veces tiene confianza baja (~0.43) para audio casual
 - Evaluar modelo `small` (500 MB, mejor calidad)
-- Considerar ajustar `minimumConfidence` threshold para Whisper (puede ser menor que para Apple Speech)
+- Considerar bajar `minimumConfidence` threshold para Whisper (0.60 → 0.40-0.50)
+- Apple Speech con `minimumConfidence=0.60` funciona bien para español claro
 
-### Prioridad 4: Tests
+### Prioridad 3: Tests
 - Ejecutar los 38 tests escritos (21 Whisper + 17 Edge TTS)
 - Verificar que tests pre-existentes siguen pasando
+
+### Prioridad 4: Audio overload mitigation
+- `HALC_ProxyIOContext::IOWorkLoop: skipping cycle due to overload` aparece con 3 engines simultáneos
+- Evaluar si se puede compartir el engine del monitor con el TTS service
+- O reducir buffer sizes / sample rates para aliviar carga
 
 ## Bugs menores detectados
 - "Picker: the selection nil is invalid" — aparece al iniciar antes de cargar idiomas (cosmético)
