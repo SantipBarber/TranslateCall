@@ -57,14 +57,9 @@ actor EdgeTTSService: SynthesisService {
 
         do {
             try await webSocket.connect()
-            let audioStream = try await webSocket.synthesize(
+            let allData = try await webSocket.synthesize(
                 text: text, voice: voiceName
             )
-
-            var allData = Data()
-            for try await chunk in audioStream {
-                allData.append(chunk)
-            }
 
             guard !allData.isEmpty else {
                 logger.warning("Edge TTS returned empty audio")

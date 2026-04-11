@@ -3,10 +3,10 @@ import Foundation
 // MARK: - EdgeTTSVoice
 
 struct EdgeTTSVoice: Sendable, Codable {
-    let shortName: String
-    let locale: String
-    let gender: String
-    let friendlyName: String
+    nonisolated let shortName: String
+    nonisolated let locale: String
+    nonisolated let gender: String
+    nonisolated let friendlyName: String
 }
 
 // MARK: - EdgeTTSVoiceCatalog

@@ -10,7 +10,7 @@ enum WhisperModelSize: String, Codable, Sendable, CaseIterable {
     case largeV3
 
     /// WhisperKit model identifier on HuggingFace (argmaxinc/whisperkit-coreml).
-    var whisperKitName: String {
+    nonisolated var whisperKitName: String {
         switch self {
         case .tiny:    return "openai_whisper-tiny"
         case .base:    return "openai_whisper-base"
@@ -20,7 +20,7 @@ enum WhisperModelSize: String, Codable, Sendable, CaseIterable {
         }
     }
 
-    var approximateSizeMB: Int {
+    nonisolated var approximateSizeMB: Int {
         switch self {
         case .tiny:    return 75
         case .base:    return 150
@@ -30,7 +30,7 @@ enum WhisperModelSize: String, Codable, Sendable, CaseIterable {
         }
     }
 
-    var displayName: String {
+    nonisolated var displayName: String {
         switch self {
         case .tiny:    return "Tiny"
         case .base:    return "Base"
@@ -40,7 +40,7 @@ enum WhisperModelSize: String, Codable, Sendable, CaseIterable {
         }
     }
 
-    var qualityDescription: String {
+    nonisolated var qualityDescription: String {
         switch self {
         case .tiny:    return "Fastest, lowest quality"
         case .base:    return "Real-time, balanced"
@@ -54,11 +54,11 @@ enum WhisperModelSize: String, Codable, Sendable, CaseIterable {
 // MARK: - WhisperConfiguration
 
 struct WhisperConfiguration: Sendable {
-    var modelSize: WhisperModelSize = .base
+    nonisolated var modelSize: WhisperModelSize = .base
     /// BCP-47 language code, or nil for auto-detect.
-    var language: String?
-    var beamSize: Int = 5
-    var noSpeechThreshold: Float = 0.6
+    nonisolated var language: String?
+    nonisolated var beamSize: Int = 5
+    nonisolated var noSpeechThreshold: Float = 0.6
 
     nonisolated static let `default` = WhisperConfiguration()
 }

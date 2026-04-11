@@ -1,40 +1,5 @@
 import CommonCrypto
 import Foundation
-import Security
-
-// MARK: - WebSocket Frame Encoder
-
-/// Encodes WebSocket frames per RFC 6455.
-enum WSFrameEncoder {
-    /// Encodes a WebSocket frame with masking (client → server must be masked).
-    nonisolated static func encodeFrame(opcode: UInt8, payload: Data) -> Data {
-        var frame = Data()
-        frame.append(0x80 | opcode) // FIN + opcode
-
-        let length = payload.count
-        if length < 126 {
-            frame.append(UInt8(length) | 0x80)
-        } else if length < 65536 {
-            frame.append(126 | 0x80)
-            frame.append(UInt8((length >> 8) & 0xFF))
-            frame.append(UInt8(length & 0xFF))
-        } else {
-            frame.append(127 | 0x80)
-            for shift in stride(from: 56, through: 0, by: -8) {
-                frame.append(UInt8((length >> shift) & 0xFF))
-            }
-        }
-
-        var maskKey = [UInt8](repeating: 0, count: 4)
-        _ = SecRandomCopyBytes(kSecRandomDefault, 4, &maskKey)
-        frame.append(contentsOf: maskKey)
-
-        for (idx, byte) in payload.enumerated() {
-            frame.append(byte ^ maskKey[idx % 4])
-        }
-        return frame
-    }
-}
 
 // MARK: - EdgeTTS DRM
 
@@ -57,12 +22,6 @@ enum EdgeTTSDRM {
         return hash.map { String(format: "%02X", $0) }.joined()
     }
 
-    /// Random 16-byte base64 WebSocket key.
-    nonisolated static func generateWebSocketKey() -> String {
-        var bytes = [UInt8](repeating: 0, count: 16)
-        _ = SecRandomCopyBytes(kSecRandomDefault, 16, &bytes)
-        return Data(bytes).base64EncodedString()
-    }
 }
 
 // MARK: - EdgeTTS Message Builder

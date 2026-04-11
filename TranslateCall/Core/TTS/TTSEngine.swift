@@ -13,7 +13,7 @@ enum TTSEngine: String, Codable, Sendable, CaseIterable {
     case voiceClone
     case edgeTTS
 
-    var displayName: String {
+    nonisolated var displayName: String {
         switch self {
         case .avSpeech:   return "AVSpeech"
         case .kokoro:     return "Kokoro"
@@ -23,7 +23,7 @@ enum TTSEngine: String, Codable, Sendable, CaseIterable {
     }
 
     /// Returns true if this engine can synthesise for the given locale.
-    func supports(locale: Locale) -> Bool {
+    nonisolated func supports(locale: Locale) -> Bool {
         switch self {
         case .avSpeech:   return true
         case .kokoro:     return locale.isEnglish

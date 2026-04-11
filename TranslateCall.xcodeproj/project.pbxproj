@@ -12,6 +12,7 @@
 		6D67203D2F5E70990023D811 /* MLXAudioTTS in Frameworks */ = {isa = PBXBuildFile; productRef = 6D67203B2F5E70990023D811 /* MLXAudioTTS */; };
 		6D67203E2F5E70990023D811 /* MLXAudioCore in Frameworks */ = {isa = PBXBuildFile; productRef = 6D67203C2F5E70990023D811 /* MLXAudioCore */; };
 		6DAA036A2F69392600A49B15 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 6DAA03692F69392600A49B15 /* WhisperKit */; };
+		6DAA036D2F7A000000A49B15 /* Starscream in Frameworks */ = {isa = PBXBuildFile; productRef = 6DAA036C2F7A000000A49B15 /* Starscream */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,6 +60,7 @@
 				6DAA036A2F69392600A49B15 /* WhisperKit in Frameworks */,
 				6D67203D2F5E70990023D811 /* MLXAudioTTS in Frameworks */,
 				6D67203E2F5E70990023D811 /* MLXAudioCore in Frameworks */,
+				6DAA036D2F7A000000A49B15 /* Starscream in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -132,6 +134,7 @@
 				6D67203B2F5E70990023D811 /* MLXAudioTTS */,
 				6D67203C2F5E70990023D811 /* MLXAudioCore */,
 				6DAA03692F69392600A49B15 /* WhisperKit */,
+				6DAA036C2F7A000000A49B15 /* Starscream */,
 			);
 			productName = TranslateCall;
 			productReference = 6DC120F02F5B66B800211F41 /* TranslateCall.app */;
@@ -169,6 +172,7 @@
 				6D6720342F5B70990023D811 /* XCRemoteSwiftPackageReference "FluidAudio" */,
 				6D67203A2F5E70990023D811 /* XCRemoteSwiftPackageReference "mlx-audio-swift" */,
 				6DAA03682F69392600A49B15 /* XCRemoteSwiftPackageReference "WhisperKit" */,
+				6DAA036B2F7A000000A49B15 /* XCRemoteSwiftPackageReference "Starscream" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 6DC120F12F5B66B800211F41 /* Products */;
@@ -250,9 +254,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 8A6PXCGB7U;
+				DEVELOPMENT_TEAM = 8H8Q5Q22R6;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
@@ -271,9 +276,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 8A6PXCGB7U;
+				DEVELOPMENT_TEAM = 8H8Q5Q22R6;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
@@ -414,6 +420,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = TranslateCall/TranslateCall.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -433,6 +441,7 @@
 				MARKETING_VERSION = 0.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.spbarber.TranslateCall;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -450,6 +459,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = TranslateCall/TranslateCall.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -469,6 +480,7 @@
 				MARKETING_VERSION = 0.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.spbarber.TranslateCall;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -538,6 +550,14 @@
 				minimumVersion = 0.17.0;
 			};
 		};
+		6DAA036B2F7A000000A49B15 /* XCRemoteSwiftPackageReference "Starscream" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/daltoniam/Starscream.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.0.6;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -565,6 +585,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 6DAA03682F69392600A49B15 /* XCRemoteSwiftPackageReference "WhisperKit" */;
 			productName = WhisperKit;
+		};
+		6DAA036C2F7A000000A49B15 /* Starscream */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6DAA036B2F7A000000A49B15 /* XCRemoteSwiftPackageReference "Starscream" */;
+			productName = Starscream;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

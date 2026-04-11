@@ -11,7 +11,7 @@ enum TranslationEngine: String, Codable, Sendable, CaseIterable {
     // case opusMT           // On-device Opus-MT via CoreML/ONNX
     // case libreTranslate   // Self-hosted LibreTranslate API
 
-    var displayName: String {
+    nonisolated var displayName: String {
         switch self {
         case .appleTranslation: return "Apple Translation"
         }
