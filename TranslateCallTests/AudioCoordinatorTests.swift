@@ -95,6 +95,7 @@ struct AudioCoordinatorTests {
         #expect(coordinator.isOutgoingActive)
         #expect(!coordinator.isIncomingActive)
         #expect(coordinator.errorAlert != nil)
+        #expect(coordinator.incomingStatus == .stopped(.permissionDenied))
     }
 
     @Test("stop() deactivates all services and resets active flags")
@@ -213,6 +214,132 @@ struct AudioCoordinatorTests {
         let coordinator = makeCoordinator(mocks)
         await coordinator.start(captureTarget: callTarget)
         #expect(await mocks.mockSystemCapture.activatedTargets == [callTarget])
+    }
+
+    @Test("no capture target → incoming .disabled and system capture untouched")
+    func noTargetDisablesIncoming() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start()
+        #expect(coordinator.incomingStatus == .disabled)
+        #expect(!(await mocks.mockSystemCapture.activateCalled))
+    }
+
+    @Test("target app not running → .stopped(.targetNotFound), outgoing keeps running, no alert")
+    func targetNotFoundStops() async {
+        let mocks = CoordinatorMocks()
+        await mocks.mockSystemCapture.setThrowOnActivate(SystemAudioCaptureError.targetNotFound(bundleID: "com.test.call"))
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start(captureTarget: callTarget)
+        #expect(coordinator.incomingStatus == .stopped(.targetNotFound(bundleID: "com.test.call")))
+        #expect(coordinator.isOutgoingActive)
+        #expect(!coordinator.isIncomingActive)
+        #expect(coordinator.errorAlert == nil)
+    }
+
+    @Test("stream stops mid-session → incoming torn down, .stopped, outgoing alive, speaking released")
+    func streamStopTearsDownIncoming() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start(captureTarget: callTarget)
+        coordinator.isIncomingSpeaking = true
+
+        await mocks.mockSystemCapture.emit(.stopped(.streamError("boom")))
+
+        #expect(await waitUntil { coordinator.incomingStatus == .stopped(.streamError("boom")) })
+        #expect(await mocks.mockIncomingVAD.deactivateCalled)
+        #expect(await mocks.mockIncomingSTT.deactivateCalled)
+        #expect(await mocks.mockIncomingTTS.deactivateCalled)
+        #expect(!coordinator.isIncomingSpeaking)
+        #expect(coordinator.isOutgoingActive)
+    }
+
+    @Test("Retry after a stop reactivates incoming with a fresh stream")
+    func retryReactivates() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start(captureTarget: callTarget)
+        await mocks.mockSystemCapture.emit(.stopped(.streamError("boom")))
+        #expect(await waitUntil { coordinator.incomingStatus == .stopped(.streamError("boom")) })
+
+        coordinator.retryIncoming()
+
+        #expect(await waitUntil { coordinator.incomingStatus == .active })
+        await mocks.mockSystemCapture.injectBuffer(makePCMBuffer())
+        #expect(await waitUntil { await mocks.mockIncomingVAD.receivedBufferCount == 1 })
+        #expect(await mocks.mockSystemCapture.activatedTargets.count == 2)
+    }
+
+    @Test("Retry twice in a row activates once")
+    func doubleRetryActivatesOnce() async {
+        let mocks = CoordinatorMocks()
+        await mocks.mockSystemCapture.setThrowOnActivate(SystemAudioCaptureError.targetNotFound(bundleID: "com.test.call"))
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start(captureTarget: callTarget)
+        await mocks.mockSystemCapture.setThrowOnActivate(nil)
+
+        coordinator.retryIncoming()
+        coordinator.retryIncoming()
+
+        #expect(await waitUntil { coordinator.incomingStatus == .active })
+        #expect(await mocks.mockSystemCapture.activatedTargets.count == 1)
+    }
+
+    @Test("Retry is a no-op unless incoming is stopped")
+    func retryOnlyWhenStopped() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start(captureTarget: callTarget)
+        coordinator.retryIncoming()
+        #expect(coordinator.incomingStatus == .active)
+        #expect(await mocks.mockSystemCapture.activatedTargets.count == 1)
+    }
+
+    @Test("stop() during an in-flight activation leaves nothing alive and ends .idle")
+    func stopDuringActivationTearsDown() async {
+        let mocks = CoordinatorMocks()
+        await mocks.mockSystemCapture.holdNextActivation()
+        let coordinator = makeCoordinator(mocks)
+
+        let starting = Task { await coordinator.start(captureTarget: callTarget) }
+        #expect(await waitUntil { await mocks.mockSystemCapture.isWaitingAtGate })
+        let stopping = Task { await coordinator.stop() }
+        await mocks.mockSystemCapture.releaseActivation()
+        await starting.value
+        await stopping.value
+
+        #expect(coordinator.incomingStatus == .idle)
+        #expect(await mocks.mockIncomingVAD.activateCount == 0)
+        #expect(await mocks.mockSystemCapture.deactivateCalled)
+        #expect(!coordinator.isOutgoingActive)
+    }
+
+    @Test("stream stop while incoming is still starting ends .stopped, not .active")
+    func stopEventDuringStartingEndsStopped() async {
+        let mocks = CoordinatorMocks()
+        await mocks.mockSystemCapture.holdNextActivation()
+        let coordinator = makeCoordinator(mocks)
+
+        let starting = Task { await coordinator.start(captureTarget: callTarget) }
+        #expect(await waitUntil { await mocks.mockSystemCapture.isWaitingAtGate })
+        #expect(await waitUntil { coordinator.incomingStatus == .starting })
+        await mocks.mockSystemCapture.emit(.stopped(.streamError("died")))
+        #expect(await waitUntil { coordinator.pendingStopReasonForTesting != nil })
+        await mocks.mockSystemCapture.releaseActivation()
+        await starting.value
+
+        #expect(coordinator.incomingStatus == .stopped(.streamError("died")))
+        #expect(!coordinator.isIncomingActive)
+    }
+
+    @Test("stop() resets incoming status to .idle")
+    func stopResetsStatus() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start(captureTarget: callTarget)
+        await coordinator.stop()
+        #expect(coordinator.incomingStatus == .idle)
+        #expect(!coordinator.isIncomingActive)
     }
 }
 

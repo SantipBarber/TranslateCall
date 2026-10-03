@@ -16,6 +16,10 @@ actor MockSystemAudioCapture: SystemAudioCapture {
     var throwOnActivate: Error?
     var appsToReturn: [SCRunningApplication] = []
 
+    private var holdActivation = false
+    private var gate: CheckedContinuation<Void, Never>?
+    private(set) var isWaitingAtGate = false
+
     nonisolated let events: AsyncStream<SystemCaptureEvent>
     private let eventsContinuation: AsyncStream<SystemCaptureEvent>.Continuation
 
@@ -29,7 +33,17 @@ actor MockSystemAudioCapture: SystemAudioCapture {
         return appsToReturn
     }
 
+    /// The next `activate` suspends until `releaseActivation()`.
+    func holdNextActivation() { holdActivation = true }
+    func releaseActivation() { gate?.resume(); gate = nil }
+
     func activate(target: CaptureTarget) async throws -> AsyncStream<AVAudioPCMBuffer> {
+        if holdActivation {
+            holdActivation = false
+            isWaitingAtGate = true
+            await withCheckedContinuation { gate = $0 }
+            isWaitingAtGate = false
+        }
         if let error = throwOnActivate { throw error }
         activatedTargets.append(target)
         let (stream, continuation) = AsyncStream.makeStream(

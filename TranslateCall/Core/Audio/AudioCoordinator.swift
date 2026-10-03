@@ -27,7 +27,24 @@ final class AudioCoordinator: ObservableObject {
     @Published var incomingTranscription: String?
     @Published var incomingTranslation: String?
     @Published var isIncomingSpeaking: Bool = false
-    @Published var isIncomingActive: Bool = false
+    /// Written only by the coordinator (here and in AudioCoordinator+Pipeline.swift); the setter is
+    /// internal rather than `private(set)` because the extension lives in another file.
+    @Published var incomingStatus: IncomingStatus = .idle {
+        didSet { isIncomingActive = (incomingStatus == .active) }
+    }
+    /// Derived from `incomingStatus`; kept as its own publisher for existing bindings.
+    @Published private(set) var isIncomingActive: Bool = false
+
+    /// Bumped by start() and stop(); an activation that sees a different value was superseded.
+    var sessionGeneration: UInt64 = 0
+    var captureTarget: CaptureTarget?
+    /// Subscribed once to `systemCapture.events` and never cancelled: cancelling the iterating
+    /// task would terminate the service's long-lived stream (the A1 bug class).
+    var incomingEventsTask: Task<Void, Never>?
+    var incomingActivationTask: Task<Void, Never>?
+    /// A `.stopped` event that arrived while incoming was `.starting`.
+    var pendingStopReason: IncomingStopReason?
+    var pendingStopReasonForTesting: IncomingStopReason? { pendingStopReason }
 
     // MARK: - Shared state
 
@@ -132,6 +149,8 @@ final class AudioCoordinator: ObservableObject {
     /// All other outgoing failures and all incoming failures are non-fatal (errorAlert set, continue).
     func start(captureTarget: CaptureTarget? = nil, blackHoleDeviceID: AudioDeviceID? = nil) async {
         guard !isOutgoingActive else { return }
+        sessionGeneration &+= 1
+        self.captureTarget = captureTarget
         setupHalfDuplex()
         isStarting = true
         defer { isStarting = false }
@@ -144,10 +163,18 @@ final class AudioCoordinator: ObservableObject {
         }
 
         isOutgoingActive = true
-        await startIncomingPipeline(captureTarget: captureTarget)
+        subscribeToIncomingEvents()
+        let activation = Task { await self.activateIncoming() }
+        incomingActivationTask = activation
+        await activation.value
     }
 
     func stop() async {
+        sessionGeneration &+= 1
+        let pendingActivation = incomingActivationTask
+        incomingActivationTask = nil
+        await pendingActivation?.value   // a superseded activation tears itself down
+
         cancelAllTasks()
         teardownHalfDuplex()
 
@@ -162,15 +189,11 @@ final class AudioCoordinator: ObservableObject {
 
         // Incoming pipeline
         await systemCapture.deactivate()
-        await incomingVAD?.deactivate()
-        await incomingSTT?.deactivate()
-        await incomingTTS?.deactivate()
-        incomingVAD = nil
-        incomingSTT = nil
-        incomingTTS = nil
+        await teardownIncomingServices()
 
         isOutgoingActive = false
-        isIncomingActive = false
+        incomingStatus = .idle
+        pendingStopReason = nil
         isSpeechActive = false
         isOutgoingSpeaking = false
         isIncomingSpeaking = false
@@ -182,6 +205,13 @@ final class AudioCoordinator: ObservableObject {
         suppressNextOutgoingTurnFlag = false
 
         logger.info("AudioCoordinator stopped")
+    }
+
+    /// Re-runs incoming activation after a stop (REQ-C-34). No-op unless `.stopped`.
+    func retryIncoming() {
+        guard case .stopped = incomingStatus, isOutgoingActive else { return }
+        incomingStatus = .starting
+        incomingActivationTask = Task { await self.activateIncoming() }
     }
 
     /// Silently drops the next outgoing utterance from STT (one-shot mute turn).
