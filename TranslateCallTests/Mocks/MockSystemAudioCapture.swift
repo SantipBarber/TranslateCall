@@ -16,6 +16,13 @@ actor MockSystemAudioCapture: SystemAudioCapture {
     var throwOnActivate: Error?
     var appsToReturn: [SCRunningApplication] = []
 
+    nonisolated let events: AsyncStream<SystemCaptureEvent>
+    private let eventsContinuation: AsyncStream<SystemCaptureEvent>.Continuation
+
+    init() {
+        (events, eventsContinuation) = AsyncStream.makeStream(of: SystemCaptureEvent.self, bufferingPolicy: .bufferingNewest(8))
+    }
+
     func requestPermissionAndLoadApps() async throws -> [SCRunningApplication] {
         requestPermissionCalled = true
         if let error = throwOnRequestPermission { throw error }
@@ -41,5 +48,11 @@ actor MockSystemAudioCapture: SystemAudioCapture {
     /// Feeds a buffer into the current session's stream (simulated remote audio).
     func injectBuffer(_ buffer: AVAudioPCMBuffer) {
         continuation?.yield(buffer)
+    }
+
+    /// Simulates an out-of-band event (e.g. the SCStream died). Finishes the stream for `.stopped`.
+    func emit(_ event: SystemCaptureEvent) {
+        if case .stopped = event { continuation?.finish(); continuation = nil }
+        eventsContinuation.yield(event)
     }
 }

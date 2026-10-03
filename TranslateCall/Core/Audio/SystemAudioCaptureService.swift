@@ -45,6 +45,10 @@ protocol SystemAudioCapture: Actor {
     func activate(target: CaptureTarget) async throws -> AsyncStream<AVAudioPCMBuffer>
     /// Stops capturing and finishes the session stream.
     func deactivate() async
+    /// Out-of-band capture events (e.g. the SCStream stopped on its own).
+    /// Lives as long as the service. Subscribe once and never cancel the iterating task —
+    /// cancelling terminates the stream.
+    nonisolated var events: AsyncStream<SystemCaptureEvent> { get }
 }
 
 // MARK: - Implementation
@@ -54,23 +58,34 @@ protocol SystemAudioCapture: Actor {
 /// Each `activate(target:)` returns a fresh 16 kHz mono stream, matching the format of
 /// `AudioManager.startCapture()` so the same VAD/STT pipeline can consume both mic and system audio.
 ///
-/// Uses `SCStreamOutputBridge` (NSObject subclass) to receive SCStream callbacks —
-/// same pattern as `SpeechSynthesizerDelegateBridge` for AVSpeechSynthesizer.
+/// Uses `SCStreamBridge` (NSObject subclass) to receive SCStream sample buffers and stop
+/// callbacks — same pattern as `SpeechSynthesizerDelegateBridge` for AVSpeechSynthesizer.
+/// Samples are copied and downsampled synchronously by a per-activation `SystemTap`.
 actor SystemAudioCaptureService: SystemAudioCapture {
 
-    // MARK: - Private
+    // MARK: - State
 
+    nonisolated let events: AsyncStream<SystemCaptureEvent>
+    private let eventsContinuation: AsyncStream<SystemCaptureEvent>.Continuation
+    private let sampleQueue = DispatchQueue(label: "TranslateCall.SystemAudioCapture.samples")
+    private var generation: UInt64 = 0
     private var session: SessionAudioStream?
     private var captureStream: SCStream?
-    private var outputBridge: SCStreamOutputBridge?
-    private var converter: AVAudioConverter?
+    private var bridge: SCStreamBridge?
+    /// True between the start of `activate` and its return/throw; closes the reentrancy window
+    /// across its awaits (two overlapping calls must not both start an SCStream).
+    private var isActivating = false
 
     /// True while an SCStream capture session is running.
     var isActive: Bool { captureStream != nil }
 
     // MARK: - Init
 
-    init() {}
+    init() {
+        (events, eventsContinuation) = AsyncStream.makeStream(
+            of: SystemCaptureEvent.self, bufferingPolicy: .bufferingNewest(8)
+        )
+    }
 
     // MARK: - Permission + app enumeration
 
@@ -88,7 +103,9 @@ actor SystemAudioCaptureService: SystemAudioCapture {
     // MARK: - Activation
 
     func activate(target: CaptureTarget) async throws -> AsyncStream<AVAudioPCMBuffer> {
-        guard captureStream == nil else { throw SystemAudioCaptureError.alreadyActive }
+        guard captureStream == nil, !isActivating else { throw SystemAudioCaptureError.alreadyActive }
+        isActivating = true
+        defer { isActivating = false }
 
         let content: SCShareableContent
         do {
@@ -115,35 +132,34 @@ actor SystemAudioCaptureService: SystemAudioCapture {
         config.height = 2
         config.minimumFrameInterval = CMTime(value: 1, timescale: 1)
 
-        // Set up AVAudioConverter: 48kHz mono → 16kHz mono
-        guard
-            let inputFormat = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 1),
-            let outputFormat = AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1),
-            let conv = AVAudioConverter(from: inputFormat, to: outputFormat)
-        else {
-            throw SystemAudioCaptureError.streamFailed(
-                underlying: NSError(domain: "TranslateCall", code: -1,
-                                    userInfo: [NSLocalizedDescriptionKey: "Failed to create audio converter"])
-            )
-        }
-        converter = conv
-
+        generation &+= 1
         let session = SessionAudioStream(label: "system")
-        // Create delegate bridge (NSObject, avoids actor isolation conflict with SCStreamOutput)
-        let bridge = SCStreamOutputBridge(service: self)
-        outputBridge = bridge
-        let stream = SCStream(filter: filter, configuration: config, delegate: nil)
+        let tap = try SystemTap(session: session)
+        let bridge = SCStreamBridge(service: self, generation: generation, tap: tap)
+        let stream = SCStream(filter: filter, configuration: config, delegate: bridge)
+        // Publish state before the startCapture suspension: buffers delivered meanwhile go to
+        // `tap` (already wired), and a stop callback during the await finds a matching generation.
+        self.session = session
+        self.bridge = bridge
+        captureStream = stream
         do {
-            try stream.addStreamOutput(bridge, type: .audio, sampleHandlerQueue: nil)
+            try stream.addStreamOutput(bridge, type: .audio, sampleHandlerQueue: sampleQueue)
             try await stream.startCapture()
         } catch {
             session.finish()
-            converter = nil
-            outputBridge = nil
+            if captureStream === stream {
+                self.session = nil
+                self.bridge = nil
+                captureStream = nil
+            }
             throw SystemAudioCaptureError.streamFailed(underlying: error)
         }
-        self.session = session
-        captureStream = stream
+        guard captureStream === stream else {
+            // deactivate() or a stop callback tore this activation down during startCapture;
+            // the session is already finished — make sure the SCStream does not keep running unowned.
+            try? await stream.stopCapture()
+            return session.stream
+        }
         logger.info("System audio capture activated (app: \(bundleID, privacy: .public))")
         return session.stream
     }
@@ -160,95 +176,61 @@ actor SystemAudioCaptureService: SystemAudioCapture {
         session?.finish()
         session = nil
         self.captureStream = nil
-        outputBridge = nil
-        converter = nil
+        bridge = nil
         logger.info("System audio capture deactivated")
     }
 
-    // MARK: - Buffer processing (called from bridge, already on background thread via Task)
+    // MARK: - Stream stop (SCStreamDelegate, via SCStreamBridge)
 
-    func handleCapturedBuffer(_ input: AVAudioPCMBuffer) {
-        guard let downsampled = downsample(input) else { return }
-        session?.yield(downsampled)
+    /// Maps an SCStream stop error to a user-facing reason.
+    nonisolated static func stopReason(for error: Error) -> IncomingStopReason {
+        if let streamError = error as? SCStreamError, streamError.code == .userDeclined {
+            return .permissionDenied
+        }
+        return .streamError(error.localizedDescription)
     }
 
-    // MARK: - Downsampling (internal, testable via actor isolation)
-
-    func downsample(_ input: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-        guard let converter else { return nil }
-        let outputFrames = AVAudioFrameCount(
-            Double(input.frameLength) * 16000.0 / 48000.0
-        ) + 1
-        guard let output = AVAudioPCMBuffer(
-            pcmFormat: converter.outputFormat,
-            frameCapacity: outputFrames
-        ) else { return nil }
-
-        final class SyncBox<T>: @unchecked Sendable {
-            // SAFETY: the converter input block runs synchronously on this call's thread only.
-            nonisolated(unsafe) var value: T
-            nonisolated init(_ value: T) { self.value = value }
-        }
-        let inputBox = SyncBox<AVAudioPCMBuffer?>(input)
-        var convError: NSError?
-        let status = converter.convert(to: output, error: &convError) { _, outStatus in
-            if let buf = inputBox.value {
-                outStatus.pointee = .haveData
-                inputBox.value = nil
-                return buf
-            }
-            outStatus.pointee = .noDataNow
-            return nil
-        }
-        guard status != .error else {
-            logger.warning("AVAudioConverter error: \(convError?.localizedDescription ?? "unknown")")
-            return nil
-        }
-        return output.frameLength > 0 ? output : nil
-    }
-
-    // MARK: - CMSampleBuffer → AVAudioPCMBuffer (nonisolated, used by bridge)
-
-    nonisolated static func extractPCMBuffer(from sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {
-        var result: AVAudioPCMBuffer?
-        try? sampleBuffer.withAudioBufferList { audioBufferList, _ in
-            guard
-                let description = sampleBuffer.formatDescription?.audioStreamBasicDescription,
-                let format = AVAudioFormat(
-                    standardFormatWithSampleRate: description.mSampleRate,
-                    channels: description.mChannelsPerFrame
-                ),
-                let pcm = AVAudioPCMBuffer(
-                    pcmFormat: format,
-                    bufferListNoCopy: audioBufferList.unsafePointer
-                )
-            else { return }
-            result = pcm
-        }
-        return result
+    /// Called from the SCStream delegate. Ignores callbacks from a previous activation or while inactive.
+    @discardableResult
+    func handleStreamStopped(_ reason: IncomingStopReason, generation callbackGeneration: UInt64) -> Bool {
+        guard callbackGeneration == generation, captureStream != nil else { return false }
+        logger.error("System audio capture stopped: \(reason.message, privacy: .public)")
+        session?.finish()
+        session = nil
+        captureStream = nil
+        bridge = nil
+        eventsContinuation.yield(.stopped(reason))
+        return true
     }
 }
 
-// MARK: - SCStreamOutputBridge
+// MARK: - SCStreamBridge
 
-/// NSObject subclass that receives SCStream callbacks and forwards to the actor.
+/// Receives SCStream sample buffers (on `sampleQueue`) and stop errors, forwarding to the tap / actor.
 /// Required because actors cannot directly conform to ObjC protocols under
 /// SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor without isolation conflicts.
-private final class SCStreamOutputBridge: NSObject, SCStreamOutput, @unchecked Sendable {
-    // SAFETY: weak ref set once in nonisolated init, only read afterwards in the nonisolated callback.
+private final class SCStreamBridge: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
+    // SAFETY: assigned once in init and never mutated; `weak` requires `var`.
     nonisolated(unsafe) private weak var service: SystemAudioCaptureService?
+    private let generation: UInt64
+    private let tap: SystemTap
 
-    nonisolated init(service: SystemAudioCaptureService) {
+    nonisolated init(service: SystemAudioCaptureService, generation: UInt64, tap: SystemTap) {
         self.service = service
+        self.generation = generation
+        self.tap = tap
     }
 
-    nonisolated func stream(
-        _ stream: SCStream,
-        didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
-        of outputType: SCStreamOutputType
-    ) {
-        guard outputType == .audio, let service else { return }
-        guard let pcm = SystemAudioCaptureService.extractPCMBuffer(from: sampleBuffer) else { return }
-        Task { await service.handleCapturedBuffer(pcm) }
+    nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
+                            of outputType: SCStreamOutputType) {
+        guard outputType == .audio else { return }
+        tap.process(sampleBuffer)   // synchronous on sampleQueue: the CMSampleBuffer never escapes
+    }
+
+    nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
+        guard let service else { return }
+        let reason = SystemAudioCaptureService.stopReason(for: error)
+        let generation = generation
+        Task { await service.handleStreamStopped(reason, generation: generation) }
     }
 }
