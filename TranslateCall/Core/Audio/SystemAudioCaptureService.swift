@@ -42,6 +42,7 @@ protocol SystemAudioCapture: Actor {
     /// Request Screen Recording permission and return the capturable apps, sorted by name.
     func requestPermissionAndLoadApps() async throws -> [SCRunningApplication]
     /// Starts capturing `target` and returns that session's 16 kHz mono stream; `deactivate()` finishes it.
+    /// A `deactivate()` that runs while this call is suspended may make it return an already-finished stream.
     func activate(target: CaptureTarget) async throws -> AsyncStream<AVAudioPCMBuffer>
     /// Stops capturing and finishes the session stream.
     func deactivate() async
@@ -167,16 +168,19 @@ actor SystemAudioCaptureService: SystemAudioCapture {
     // MARK: - Deactivation
 
     func deactivate() async {
-        guard let captureStream else { return }
+        guard let stream = captureStream else { return }
+        // Take ownership synchronously before suspending, so a newer activation (or a stop
+        // callback) that runs while we await `stopCapture` is never clobbered.
+        let session = self.session
+        captureStream = nil
+        self.session = nil
+        bridge = nil
+        session?.finish()
         do {
-            try await captureStream.stopCapture()
+            try await stream.stopCapture()
         } catch {
             logger.warning("SCStream stopCapture error (ignored): \(error.localizedDescription)")
         }
-        session?.finish()
-        session = nil
-        self.captureStream = nil
-        bridge = nil
         logger.info("System audio capture deactivated")
     }
 
