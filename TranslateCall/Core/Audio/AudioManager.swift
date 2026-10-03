@@ -23,7 +23,7 @@ extension AudioManager: AudioCapture {}
 /// Central audio hub: device enumeration, capture, routing, sample-rate conversion, and metering.
 ///
 /// All public API is `@MainActor` for safe use from SwiftUI.
-/// Audio tap callbacks run on a real-time thread and use `nonisolated(unsafe)` storage.
+/// Audio tap callbacks run on a real-time thread via `MicTap`, which holds no MainActor state.
 @MainActor
 final class AudioManager: ObservableObject {
 
@@ -69,49 +69,9 @@ final class AudioManager: ObservableObject {
     // MARK: - Device enumeration (T4)
 
     private func refreshDevices() {
-        let all = enumerateCoreAudioDevices()
+        let all = CoreAudioDevices.allDevices()
         inputDevices = all.filter(\.hasInput)
         outputDevices = all.filter(\.hasOutput)
-    }
-
-    private func enumerateCoreAudioDevices() -> [AudioDevice] {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDevices,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-
-        var dataSize: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(
-            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize
-        ) == noErr else { return [] }
-
-        let count = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
-        var ids = [AudioDeviceID](repeating: 0, count: count)
-        guard AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize, &ids
-        ) == noErr else { return [] }
-
-        return ids.compactMap { makeDevice(id: $0) }
-    }
-
-    private func makeDevice(id: AudioDeviceID) -> AudioDevice? {
-        guard
-            let name = stringProperty(
-                id, selector: kAudioDevicePropertyDeviceNameCFString,
-                scope: kAudioObjectPropertyScopeGlobal
-            ),
-            let uid = stringProperty(
-                id, selector: kAudioDevicePropertyDeviceUID,
-                scope: kAudioObjectPropertyScopeGlobal
-            )
-        else { return nil }
-
-        let hasInput = channelCount(id, scope: kAudioDevicePropertyScopeInput) > 0
-        let hasOutput = channelCount(id, scope: kAudioDevicePropertyScopeOutput) > 0
-        guard hasInput || hasOutput else { return nil }
-
-        return AudioDevice(id: id, name: name, uid: uid, hasInput: hasInput, hasOutput: hasOutput)
     }
 
     // MARK: - Capture control (T5)
@@ -232,45 +192,5 @@ final class AudioManager: ObservableObject {
                 defaults.removeObject(forKey: Self.outputDeviceUIDKey)
             }
         }
-    }
-
-    // MARK: - CoreAudio helpers
-
-    private func stringProperty(
-        _ id: AudioDeviceID,
-        selector: AudioObjectPropertySelector,
-        scope: AudioObjectPropertyScope
-    ) -> String? {
-        var address = AudioObjectPropertyAddress(
-            mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain
-        )
-        var dataSize = UInt32(MemoryLayout<CFString>.size)
-        var value: CFString = "" as CFString
-        let status = withUnsafeMutablePointer(to: &value) {
-            AudioObjectGetPropertyData(id, &address, 0, nil, &dataSize, $0)
-        }
-        return status == noErr ? (value as String) : nil
-    }
-
-    private func channelCount(_ id: AudioDeviceID, scope: AudioObjectPropertyScope) -> Int {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyStreamConfiguration,
-            mScope: scope,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var dataSize: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(
-            id, &address, 0, nil, &dataSize
-        ) == noErr, dataSize > 0 else { return 0 }
-
-        let bufferList = UnsafeMutablePointer<AudioBufferList>.allocate(capacity: Int(dataSize))
-        defer { bufferList.deallocate() }
-        guard AudioObjectGetPropertyData(
-            id, &address, 0, nil, &dataSize, bufferList
-        ) == noErr else { return 0 }
-
-        // UnsafeMutableAudioBufferListPointer is the safe way to iterate AudioBufferList
-        return UnsafeMutableAudioBufferListPointer(bufferList)
-            .reduce(0) { $0 + Int($1.mNumberChannels) }
     }
 }
