@@ -43,3 +43,7 @@ check: lint scan
 # Run selected unit tests, e.g. `just test-only WordErrorRateTests FileAudioSourceTests`
 test-only +suites:
     tools/scripts/test-only.sh {{suites}}
+
+# Regenerate audio fixtures (needs voices Mónica, Samantha, Lesya)
+fixtures:
+    tools/scripts/fixtures.sh
