@@ -10,9 +10,11 @@ private nonisolated let logger = Logger(subsystem: "TranslateCall", category: "S
 
 // MARK: - Error
 
-enum SystemAudioCaptureError: LocalizedError {
+nonisolated enum SystemAudioCaptureError: LocalizedError {
     case permissionDenied
     case noDisplayAvailable
+    case targetNotFound(bundleID: String)
+    case alreadyActive
     case streamFailed(underlying: Error)
 
     var errorDescription: String? {
@@ -22,6 +24,10 @@ enum SystemAudioCaptureError: LocalizedError {
                 + "Enable it in System Settings > Privacy > Screen Recording."
         case .noDisplayAvailable:
             return "No display available for audio capture."
+        case .targetNotFound(let bundleID):
+            return "The call app (\(bundleID)) is not running."
+        case .alreadyActive:
+            return "System audio capture is already active."
         case .streamFailed(let error):
             return "Audio capture stream failed: \(error.localizedDescription)"
         }
