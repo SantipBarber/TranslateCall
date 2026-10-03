@@ -16,10 +16,16 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # tooling self-tests clone the repo locally
       - name: Install pinned opengrep
         run: tools/scripts/setup.sh --ci
       - name: opengrep
         run: tools/scripts/scan.sh
+      - name: Tooling self-tests
+        run: |
+          git config --global user.email ci@example.invalid && git config --global user.name ci
+          tools/scripts/test-pr-guards.sh && tools/scripts/test-pr-gate.sh
       - name: SwiftLint
         run: |
           source tools/versions.env

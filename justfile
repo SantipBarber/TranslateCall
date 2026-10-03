@@ -38,8 +38,13 @@ lint:
 scan:
     tools/scripts/scan.sh
 
-# Everything GitHub runs: lint + scan
-check: lint scan
+# Self-tests of the PR gate scripts (no network: throwaway clones, stubbed GitHub)
+test-tooling:
+    tools/scripts/test-pr-guards.sh
+    tools/scripts/test-pr-gate.sh
+
+# Everything GitHub runs: lint + scan + tooling self-tests
+check: lint scan test-tooling
 
 # Run selected unit tests, e.g. `just test-only WordErrorRateTests FileAudioSourceTests`
 test-only +suites:

@@ -15,7 +15,7 @@ extension IntegrationTests {
             defer { window.close() }
             let translator = AppleTranslationService(model: model)
             let src = Locale.Language(identifier: "es"), dst = Locale.Language(identifier: "en")
-            try requirePrerequisite(await translator.supports(source: src, target: dst), "Translation pack es→en")
+            try await requireTranslationPack(from: "es", to: "en")
             try await translator.prepare(source: src, target: dst)
 
             var config = STTConfiguration.default

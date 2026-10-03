@@ -28,8 +28,7 @@ extension IntegrationTests {
             let (model, window) = hostTranslationBridge()
             defer { window.close() }
             let service = AppleTranslationService(model: model)
-            try requirePrerequisite(await service.supports(source: src, target: dst),
-                                    "Translation language pack \(pair.source)→\(pair.target)")
+            try await requireTranslationPack(from: pair.source, to: pair.target)
 
             let start = ContinuousClock.now
             let output = try await service.translate(text: fixture.text, from: src, to: dst)

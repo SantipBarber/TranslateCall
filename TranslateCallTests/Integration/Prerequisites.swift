@@ -2,6 +2,7 @@ import AVFoundation
 import Speech
 import SwiftUI
 import Testing
+import Translation
 @testable import TranslateCall
 
 struct MissingPrerequisite: Error, CustomStringConvertible {
@@ -25,6 +26,19 @@ func requireSpeechAuthorization() async throws {
         }
     }
     try requirePrerequisite(status == .authorized, "Speech Recognition permission for TranslateCall (status \(status.rawValue))")
+}
+
+/// Whether the Apple Translation pack for this pair is downloaded (`.supported` = not yet downloaded).
+func isTranslationPackInstalled(from source: String, to target: String) async -> Bool {
+    let status = await LanguageAvailability().status(from: Locale.Language(identifier: source),
+                                                     to: Locale.Language(identifier: target))
+    return status == .installed
+}
+
+/// Fails with the pack name instead of hanging on `.translationTask` when a pack is missing.
+func requireTranslationPack(from source: String, to target: String) async throws {
+    try requirePrerequisite(await isTranslationPackInstalled(from: source, to: target),
+                            "Translation language pack \(source)→\(target) (System Settings → General → Language & Region → Translation Languages)")
 }
 
 /// Hosts a TranslationBridge in an offscreen window so `.translationTask` runs inside the test host.
