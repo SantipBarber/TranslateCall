@@ -122,7 +122,7 @@ Establish a professional, reproducible development workflow for TranslateCall be
 
 ## Open Questions
 
-- **OQ-1**: Ukrainian `say` voice is not installed on the Mac mini today. Resolution: `just setup` reports it; user installs it once via System Settings → Accessibility → Spoken Content.
+- **OQ-1** (resolved 2026-10-03): voices Lesya (uk_UA), Mónica (es_ES) and Samantha (en_US) are installed on the Mac mini. `just setup` still reports missing voices on other machines.
 - **OQ-2**: Swift support in opengrep is pattern-level; if a rule cannot be expressed reliably it MAY be implemented as a `just scan` grep step with the same rule ID, documented in `.opengrep/README.md`.
 
 ## Acceptance Criteria

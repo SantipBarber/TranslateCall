@@ -165,7 +165,7 @@ Paced real-time mode is the default for latency measurement; accelerated mode is
 |------|--------------------|-----------|
 | `SpeechToTextFixtureTests` | FileAudioSource → EnergyVAD → STT (Apple Speech es/en; WhisperKit uk) | WER ≤ manifest threshold |
 | `TranslationFixtureTests` | expected transcript → AppleTranslationService (host app's TranslationBridge) | non-empty, `NLLanguageRecognizer` detects target language |
-| `OutgoingPipelineFixtureTests` | FileAudioSource → full outgoing pipeline via `AudioCoordinator` with a capturing TTS output | non-empty synthesized audio; per-stage latency recorded |
+| `OutgoingPipelineFixtureTests` | FileAudioSource → VAD → STT → translate → TTS, composed exactly as `AudioCoordinator+Pipeline.swift` wires them (no production changes) | non-empty translation; per-stage latency recorded |
 | `TTSFixtureTests` | AVSpeech (+ Kokoro if model present) | first audio buffer arrives; duration > 0 |
 
 Tests run inside the app host (`TEST_HOST` is already the app), so the hidden `TranslationBridge` view is available. If a language pack or model is missing, the test fails via `Issue.record("Missing prerequisite: … — run just setup")` (REQ-W-23).
@@ -180,7 +180,7 @@ Tests run inside the app host (`TEST_HOST` is already the app), so the hidden `T
                   "tts_first_audio_ms": 220, "total_ms": 1408 } ] }
 ```
 
-Stage timestamps are taken from existing pipeline events where available (segment `capturedAt`, transcription result, translation return, first TTS buffer). Where the pipeline does not expose a hook, a minimal internal observer protocol is added to `AudioCoordinator` (no behavior change).
+Stage timestamps are taken in the test harness around each stage (VAD segment closure, first transcript, translation return, TTS `isSpeakingStream` = true). Instrumenting `AudioCoordinator` itself is deferred to F8.5.1, which rewrites that pipeline. The report is rewritten after each record because suite order is not guaranteed.
 
 ## 6. Audio fixtures
 
