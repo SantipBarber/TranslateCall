@@ -70,7 +70,7 @@ actor VoiceProfileStore: VoiceProfileStoring {
     // MARK: - Storage URL (injectable for tests)
 
     private let storageURL: URL
-    private let keychainProvider: () throws -> SymmetricKey
+    private let keychainProvider: @Sendable () throws -> SymmetricKey
 
     private nonisolated static let defaultKeychainProvider: @Sendable () throws -> SymmetricKey = {
         try KeychainKeyStore.loadOrCreate()
@@ -78,7 +78,7 @@ actor VoiceProfileStore: VoiceProfileStoring {
 
     init(
         storageURL: URL = VoiceProfileStore.defaultStorageURL,
-        keychainProvider: @escaping () throws -> SymmetricKey = VoiceProfileStore.defaultKeychainProvider
+        keychainProvider: @escaping @Sendable () throws -> SymmetricKey = VoiceProfileStore.defaultKeychainProvider
     ) {
         self.storageURL = storageURL
         self.keychainProvider = keychainProvider

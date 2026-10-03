@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreAudio
 import Foundation
 import Testing
@@ -129,9 +130,11 @@ struct AVSpeechServiceHasVoiceTests {
         #expect(AVSpeechService.hasVoice(for: Locale(identifier: "en")))
     }
 
-    @Test("hasVoice returns false for Ukrainian (no AVSpeech voices on macOS)")
-    func noVoiceForUkrainian() {
-        #expect(!AVSpeechService.hasVoice(for: Locale(identifier: "uk")))
+    @Test("hasVoice matches the voices installed on this machine")
+    func hasVoiceMatchesInstalledVoices() {
+        // Machine-independent: whether a Ukrainian voice exists depends on what the user installed.
+        let installed = AVSpeechSynthesisVoice.speechVoices().contains { $0.language.hasPrefix("uk") }
+        #expect(AVSpeechService.hasVoice(for: Locale(identifier: "uk")) == installed)
     }
 }
 
@@ -156,6 +159,8 @@ struct TTSEngineSelectorEdgeTTSTests {
         let selector = TTSEngineSelector(defaults: defs)
         selector.avSpeechFactory = { _ in MockSynthesisService() }
         selector.kokoroFactory = { _, _ in MockSynthesisService() }
+        // Deterministic voice availability: every language except Ukrainian has a system voice.
+        selector.hasSystemVoice = { $0.language.languageCode?.identifier != "uk" }
         return selector
     }
 

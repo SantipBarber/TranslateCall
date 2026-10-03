@@ -87,10 +87,10 @@ struct ParakeetModelManagerTests {
 
     @Test("Concurrent callers share the same in-flight task")
     func concurrentCallersShareTask() async throws {
-        var factoryCallCount = 0
+        let factoryCallCount = CallCounter()
         // Simulate a slow factory
         let manager = makeManager { _ in
-            factoryCallCount += 1
+            factoryCallCount.increment()
             try await Task.sleep(for: .milliseconds(30))
             throw TestError.downloadFailed // still fails — we only care about call count
         }
@@ -105,7 +105,7 @@ struct ParakeetModelManagerTests {
         }
 
         // Factory should have been called exactly once despite 5 concurrent callers
-        #expect(factoryCallCount == 1)
+        #expect(factoryCallCount.value == 1)
     }
 
     // MARK: - unload
@@ -127,19 +127,19 @@ struct ParakeetModelManagerTests {
 
     @Test("After unload, ensureReady can be called again (retry)")
     func afterUnloadCanRetry() async {
-        var callCount = 0
+        let callCount = CallCounter()
         let manager = makeManager { _ in
-            callCount += 1
+            callCount.increment()
             throw TestError.downloadFailed
         }
 
         _ = try? await manager.ensureReady()  // first attempt
-        #expect(callCount == 1)
+        #expect(callCount.value == 1)
 
         await manager.unload()
 
         _ = try? await manager.ensureReady()  // retry after unload
-        #expect(callCount == 2)
+        #expect(callCount.value == 2)
     }
 
     // MARK: - ModelState Equatable

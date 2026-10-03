@@ -15,3 +15,16 @@ setup:
 build:
     mkdir -p build/logs
     {{xcb}} build 2>&1 | tee build/logs/build.log | xcbeautify
+
+# Unit tier (fast, no network/mic/models).
+# Tier selection lives here: xctestplan selectedTests/skippedTests don't match Swift Testing suites (Xcode 27).
+test:
+    rm -rf build/logs/unit.xcresult
+    mkdir -p build/logs
+    {{xcb}} test -testPlan Unit -skip-testing:TranslateCallTests/IntegrationTests -resultBundlePath build/logs/unit.xcresult 2>&1 | tee build/logs/test-unit.log | xcbeautify
+
+# Integration tier (real frameworks + audio fixtures)
+test-integration:
+    rm -rf build/logs/integration.xcresult
+    mkdir -p build/logs build/reports
+    {{xcb}} test -testPlan Integration -only-testing:TranslateCallTests/IntegrationTests -resultBundlePath build/logs/integration.xcresult 2>&1 | tee build/logs/test-integration.log | xcbeautify

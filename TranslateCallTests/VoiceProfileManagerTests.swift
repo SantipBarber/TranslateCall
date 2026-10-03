@@ -65,7 +65,7 @@ struct VoiceProfileManagerTests {
         await mockStore.forceStore(profile)
 
         let (manager1, _) = makeManager(suite: suite, mockStore: mockStore)
-        try await Task.sleep(for: .milliseconds(100))
+        await manager1.loadProfiles() // deterministic: no timing sleep
         manager1.setActiveProfile(profile.header.id)
 
         // Simulate relaunch with same suite + store
@@ -75,7 +75,7 @@ struct VoiceProfileManagerTests {
             recorder: VoiceProfileRecorder(isSessionActive: { false }),
             defaults: defaults2
         )
-        try await Task.sleep(for: .milliseconds(100))
+        await manager2.loadProfiles() // deterministic: no timing sleep
         #expect(manager2.activeProfileId == profile.header.id)
     }
 
@@ -91,7 +91,7 @@ struct VoiceProfileManagerTests {
             recorder: VoiceProfileRecorder(isSessionActive: { false }),
             defaults: defaults
         )
-        try await Task.sleep(for: .milliseconds(100))
+        await manager.loadProfiles() // deterministic: no timing sleep
         #expect(manager.activeProfileId == nil)
     }
 
@@ -101,7 +101,7 @@ struct VoiceProfileManagerTests {
         await mockStore.forceStore(profile)
 
         let (manager, _) = makeManager(mockStore: mockStore)
-        try await Task.sleep(for: .milliseconds(100))
+        await manager.loadProfiles() // deterministic: no timing sleep
         manager.setActiveProfile(profile.header.id)
         #expect(manager.activeProfileId == profile.header.id)
 
@@ -139,7 +139,7 @@ struct VoiceProfileManagerTests {
         try await manager.saveProfile(
             name: "My Voice", transcript: "Hello world", result: makeResult()
         )
-        try await Task.sleep(for: .milliseconds(100))
+        await manager.loadProfiles() // deterministic: no timing sleep
         #expect(manager.profiles.count == 1)
         #expect(manager.profiles.first?.name == "My Voice")
     }
@@ -163,14 +163,14 @@ struct VoiceProfileManagerTests {
         let profile = makeTestProfile(name: "Active Voice")
         await mockStore.forceStore(profile)
         let (manager, _) = makeManager(mockStore: mockStore)
-        try await Task.sleep(for: .milliseconds(100))
+        await manager.loadProfiles() // deterministic: no timing sleep
         manager.setActiveProfile(profile.header.id)
         #expect(manager.activeProfile?.name == "Active Voice")
     }
 
     @Test func activeProfileNilWhenNoneSelected() async throws {
         let (manager, _) = makeManager()
-        try await Task.sleep(for: .milliseconds(100))
+        await manager.loadProfiles() // deterministic: no timing sleep
         #expect(manager.activeProfile == nil)
     }
 

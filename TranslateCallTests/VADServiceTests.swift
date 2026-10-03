@@ -322,6 +322,9 @@ struct SileroVADServiceTests {
         var config = VADConfiguration()
         config.maxSpeechDuration = 0.5
         config.minSpeechDuration = 0.1
+        // FluidAudio asserts minSilence/speechPadding ≤ maxSpeech/minSpeech; keep the config consistent.
+        config.minSilenceDuration = 0.3
+        config.speechPadding = 0.1
         guard let service = try? await SileroVADService(config: config) else { return }
 
         // Feed enough speech to trigger max duration; actual Silero detection depends on model

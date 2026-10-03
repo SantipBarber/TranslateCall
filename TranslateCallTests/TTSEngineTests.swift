@@ -80,7 +80,7 @@ struct TTSEngineTests {
 
     @Test("CaseIterable covers all cases")
     func allCasesCount() {
-        #expect(TTSEngine.allCases.count == 3)
+        #expect(TTSEngine.allCases == [.avSpeech, .kokoro, .voiceClone, .edgeTTS])
     }
 
     @Test("displayName is non-empty for all cases")

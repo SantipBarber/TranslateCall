@@ -138,10 +138,10 @@ extension Tag {
 }
 ```
 
-- `Unit.xctestplan`: all tests, **excluding** tag `integration`.
-- `Integration.xctestplan`: **only** tag `integration`; `executionTimeAllowance` raised (model warm-up).
-- Both plans attached to the shared scheme; Unit is the default plan, so ⌘U in Xcode runs the unit tier.
-- Test target settings unified with the app: `SWIFT_VERSION = 6.0`, same development team, deployment target 15.0 (today the test target has 5.0 / 26.2 / a different team — `project.pbxproj:262,270`).
+- `Unit.xctestplan` / `Integration.xctestplan` carry only the environment (`TC_TEST_TIER=unit|integration`). Xcode 27 ignores plan-level `selectedTests`/`skippedTests`/tag filters for Swift Testing suites (verified: 0 tests executed), so tier **selection** is done by `just`: `-skip-testing:TranslateCallTests/IntegrationTests` (unit) and `-only-testing:TranslateCallTests/IntegrationTests` (integration).
+- All integration suites nest under `struct IntegrationTests`, which is also gated by `.enabled(if: TestTier.current == .integration)` — a second guard so ⌘U in Xcode never runs integration tests in the unit tier.
+- Both plans attached to the shared scheme; Unit is the default plan.
+- Test target settings unified with the app target: `SWIFT_VERSION = 6.0`, deployment target 15.0 (was 5.0 / 26.2). Team was already the app target's (8H8Q5Q22R6).
 
 ### 5.2 FileAudioSource
 
