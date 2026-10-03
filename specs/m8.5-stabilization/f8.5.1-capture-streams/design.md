@@ -191,12 +191,13 @@ func activate(target: CaptureTarget) async throws -> AsyncStream<AVAudioPCMBuffe
 - `@Published private(set) var incomingStatus: IncomingStatus = .idle`, whose `didSet` updates `@Published private(set) var isIncomingActive`. `AudioViewModel` keeps binding `$isIncomingActive`.
 - `private var sessionGeneration: UInt64`, incremented by `start()` and by `stop()`.
 - `private var captureTarget: CaptureTarget?`, kept for retry.
-- `private var incomingEventsTask: Task<Void, Never>?`.
+- `private var incomingEventsTask: Task<Void, Never>?`: subscribed to `systemCapture.events` **once**, on the first `start()`, and never cancelled. Cancelling a task that iterates an `AsyncStream` terminates the stream, which is the A1 bug class. Events that arrive while no session is active are ignored.
+- `private(set) var incomingActivationTask: Task<Void, Never>?`: the in-flight start or retry activation.
+- `private var pendingStopReason: IncomingStopReason?`: a `.stopped` event received while `.starting`.
 
 **`start(captureTarget:blackHoleDeviceID:)`**
 - Outgoing: `let mic = try await audioCapture.startCapture()` → `vad.activate(stream: mic)` → the rest as today.
-- Then `incomingEventsTask` observes `systemCapture.events` for the whole session.
-- Then `await activateIncoming()`.
+- Then subscribe `incomingEventsTask` (if not yet), `incomingActivationTask = Task { await activateIncoming() }`, and `await` it.
 
 **`activateIncoming()`** (shared by start and retry):
 ```
@@ -207,19 +208,23 @@ do {
   guard gen == sessionGeneration else { await systemCapture.deactivate(); return }      // REQ-C-35
   create VAD → activate(stream: sys) → STT → TTS   (same order as today; re-check gen after each await,
                                                     on mismatch tear down what was created and return)
+  if let reason = pendingStopReason { throw as failure with reason }   // stream died while starting
   incomingStatus = .active
+} catch superseded {                                   // stop() ran meanwhile
+  await teardownIncomingServices(); await systemCapture.deactivate()   // status already .idle
 } catch {
   await teardownIncomingServices(); await systemCapture.deactivate()
+  if permissionDenied { errorAlert = makeAlertItem(for: error) }       // keeps the "Open Settings" action
   incomingStatus = .stopped(IncomingStopReason(error: error))
 }
 ```
 
 **`retryIncoming()`**: `guard case .stopped = incomingStatus else { return }`. Then `incomingStatus = .starting` synchronously, so a second call is a no-op (REQ-C-34), and `Task { await activateIncoming() }`. `AudioViewModel.retryIncoming()` calls it.
 
-**Event `.stopped(reason)`**: if `incomingStatus == .active`, run `teardownIncomingServices()` (deactivate and nil the VAD, STT and TTS, cancel `incomingTasks`), set `isIncomingSpeaking = false` (which releases half-duplex) and `incomingStatus = .stopped(reason)`.
+**Event `.stopped(reason)`**: if `.starting`, store `pendingStopReason`. If `.active`, run `teardownIncomingServices()` (deactivate and nil the VAD, STT and TTS, cancel `incomingTasks`), set `isIncomingSpeaking = false` (which releases half-duplex) and `incomingStatus = .stopped(reason)`.
 
 **`stop()`**:
-- `sessionGeneration &+= 1` and cancel `incomingEventsTask`.
+- `sessionGeneration &+= 1`, then `await incomingActivationTask?.value`. The activation sees the stale generation and tears itself down, and no new session can begin until `stop()` returns, so two sessions never overlap.
 - Tear down as today: `systemCapture.deactivate()` finishes the stream.
 - `incomingStatus = .idle`.
 
@@ -278,8 +283,10 @@ do {
 | `emit(.stopped(.streamError))` while active → incoming services deactivated, `isIncomingSpeaking == false`, `.stopped`, outgoing active | REQ-C-33 |
 | `retryIncoming()` after stop event → `.active`, new stream; two calls in a row → one `activate` | REQ-C-34 |
 | `stop()` while `activate` is suspended on the gate → after release: `deactivate` called, no incoming services alive, `.idle` | REQ-C-35 |
-| Stale `.stopped` event after `stop()` → status stays `.idle` | REQ-C-32 |
-| Mic device switch (mock) → outgoing VAD `activateCalled` once; buffers after the switch reach it | A5b |
+| `.stopped` emitted while activation is suspended (`.starting`) → ends `.stopped`, not `.active` | REQ-C-33 |
+| Service: `handleStreamStopped` with a stale generation or while inactive → returns `false`, no event | REQ-C-32 |
+| `SystemAudioCaptureService.stopReason(for:)`: `SCStreamError(.userDeclined)` → `.permissionDenied`, others → `.streamError` | REQ-C-31 |
+| `AudioManager.chooseInput(selectedUID:available:defaultID:)` fallback order | REQ-C-10/13 |
 | `SystemTap.extractOwnedPCMBuffer` on a synthetic `CMSampleBuffer` (sine wave): after the sample buffer is released, the samples are still equal to the sine | A2, REQ-C-40 |
 | `IncomingStopReason(error:)` mapping | REQ-C-31 |
 

@@ -108,7 +108,7 @@ The 2026-10-03 audit and code reading found:
 
 1. `just pr` passes on the feature branch.
 2. No `.disabled("F8.5.1: …")` remains in `AudioCoordinatorTests`. The 5 tests pass against `CaptureTarget`.
-3. New unit tests cover: Stop → Start fresh stream (A1), stream-error stop + Retry + double Retry + stop-during-retry (A1b, REQ-C-34/35), owned-memory extraction (A2), bounded stream drop counting (A4), mic change does not re-activate the VAD (A5b).
+3. New unit tests cover: Stop → Start fresh stream (A1), stream-error stop + Retry + double Retry + stop-during-retry (A1b, REQ-C-34/35), owned-memory extraction (A2), bounded stream drop counting (A4), mic fallback choice (REQ-C-13). A5b is pinned by integration test (criterion 4).
 4. Integration tier: with BlackHole 2ch as input, `CurrentDevice` equals BlackHole and fixture audio played into BlackHole reaches the stream (A5). A hot swap default → BlackHole keeps the same iterator delivering audio (A5b, NFR-C-01). A missing BlackHole **fails** with an actionable message.
 5. opengrep: `buffer-nocopy-escape` promoted to ERROR. Zero `asyncstream-unbounded`, `asyncstream-force-unwrap` and `nonisolated-unsafe-justified` findings under `TranslateCall/Core/Audio/`.
 6. Manual checklist (in `tasks.md`) completed with Zoom or FaceTime: Stop → Start keeps incoming working, closing the call app shows "stopped" while outgoing still works, Retry after reopening restores incoming, unplugging the selected mic falls back to the default with a notice.
