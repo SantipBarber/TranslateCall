@@ -32,7 +32,7 @@ tools/scripts/fixtures.sh                  NEW  regenerate audio fixtures with `
 tools/scripts/scan.sh                      NEW  opengrep test + WARNING report + ERROR gate
 tools/scripts/pr.sh                        NEW  `just pr` implementation
 tools/scripts/protect-main.sh              NEW  one-off branch protection
-.opengrep/rules/*.yml                      NEW  project rules
+.opengrep/rules/*.yml + *.swift            NEW  project rules + paired self-tests (same basename)
 .opengrep/README.md                        NEW  rule catalog + severity policy
 .github/workflows/ci.yml                   REPLACED  ubuntu `check` job
 .github/pull_request_template.md           NEW
@@ -208,7 +208,7 @@ Synthetic voices are a deliberate starting point: deterministic and license-free
 | `nonisolated-unsafe-justified` | WARNING | `nonisolated(unsafe)` not preceded by a `// SAFETY:` comment | F8.5.x (progressive) |
 | `hardcoded-secret` | ERROR | generic token/key regexes | already clean |
 
-Each rule file carries `message`, `metadata.audit_ref` (link to the audit finding) and a test file (`.opengrep/tests/<rule>.swift`) with positive and negative examples, run via `opengrep test` inside `just scan`. If Swift pattern support proves unreliable for a rule, it is implemented as a regex rule (`pattern-regex`) with the same ID (OQ-2).
+Each rule file carries `message`, `metadata.audit_ref` (link to the audit finding) and a test file next to the rule file (`.opengrep/rules/<name>.swift`, required by opengrep's test pairing) with positive and negative examples, run via `opengrep test` inside `just scan`. If Swift pattern support proves unreliable for a rule, it is implemented as a regex rule (`pattern-regex`) with the same ID (OQ-2).
 
 ## 8. GitHub side
 

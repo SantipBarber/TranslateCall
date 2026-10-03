@@ -1,42 +1,27 @@
-name: CI
+name: check
 
+# Minimal Linux gate (spec F8.5.0 D-4). Builds and tests run on the developer's Mac via
+# `just pr`, which publishes the `local/just-pr` commit status required by branch protection.
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
-  build-and-test:
-    runs-on: macos-15
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.app
-
-      - name: Resolve dependencies
+      - name: Install pinned opengrep
+        run: tools/scripts/setup.sh --ci
+      - name: opengrep
+        run: tools/scripts/scan.sh
+      - name: SwiftLint
         run: |
-          xcodebuild -resolvePackageDependencies \
-            -project TranslateCall.xcodeproj \
-            -scheme TranslateCall
-
-      - name: Build
-        run: |
-          xcodebuild build \
-            -project TranslateCall.xcodeproj \
-            -scheme TranslateCall \
-            -destination 'platform=macOS' \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
-
-      - name: Test
-        run: |
-          xcodebuild test \
-            -project TranslateCall.xcodeproj \
-            -scheme TranslateCall \
-            -destination 'platform=macOS' \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+          source tools/versions.env
+          docker run --rm -v "$PWD:/src" -w /src "ghcr.io/realm/swiftlint:${SWIFTLINT_VERSION}" \
+            swiftlint lint --strict --quiet

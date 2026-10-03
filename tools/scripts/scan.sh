@@ -3,6 +3,9 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 OG=tools/bin/opengrep
+# opengrep bundles a frozen Python: under a POSIX locale (CI containers) it reads rule files as
+# ASCII and crashes on non-ASCII text. PYTHONUTF8 is ignored by the frozen interpreter; LC_ALL works.
+export LC_ALL=C.UTF-8
 RULES=.opengrep/rules
 [[ -x $OG ]] || { echo "✗ opengrep missing — run: just setup" >&2; exit 1; }
 

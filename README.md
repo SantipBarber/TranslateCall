@@ -142,9 +142,22 @@ TranslateCall is built with privacy as the #1 priority:
 
 Read more: [PRIVACY_SECURITY.md](PRIVACY_SECURITY.md)
 
+## 🛠️ Development
+
+Requirements: macOS 15+ on Apple Silicon, Xcode 27, Homebrew, [just](https://github.com/casey/just), `gh`.
+
+```bash
+just setup            # once: pinned tools + Metal Toolchain
+just test             # unit tier
+just test-integration # real Apple frameworks + audio fixtures (writes build/reports/latency.json)
+just pr               # full gate before opening a PR
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for branches, commits and the PR gate.
+
 ## 🤝 Contributing
 
-This project is in early development. Contributions welcome once MVP is complete.
+Contributions follow [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Areas for Contribution
 - Translation quality improvements
