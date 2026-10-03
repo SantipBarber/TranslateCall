@@ -129,7 +129,8 @@ final class AudioManager: ObservableObject {
         }
         self.session = session
         activeDevice = device
-        if selectedInput == nil { selectedInput = device }
+        // Reflect the device actually in use (e.g. selection unplugged while idle); not persisted.
+        if selectedInput != device { selectedInput = device }
         isCapturing = true
         observeConfigurationChanges()
         return session.stream
@@ -172,11 +173,14 @@ final class AudioManager: ObservableObject {
     // MARK: - Device choice, hot swap and fallback (A5, A5b, REQ-C-10…13)
 
     /// Selected device if present, else the system default input, else the first input.
+    /// Automatic fallback never picks BlackHole (it carries our own TTS: capturing it would loop);
+    /// an explicitly selected BlackHole is still honored.
     nonisolated static func chooseInput(selectedUID: String?, available: [AudioDevice],
                                         defaultID: AudioDeviceID?) -> AudioDevice? {
         if let selectedUID, let selected = available.first(where: { $0.uid == selectedUID }) { return selected }
-        if let defaultID, let fallback = available.first(where: { $0.id == defaultID }) { return fallback }
-        return available.first
+        let candidates = available.filter { !$0.isBlackHole }
+        if let defaultID, let fallback = candidates.first(where: { $0.id == defaultID }) { return fallback }
+        return candidates.first
     }
 
     /// The device the engine's input unit is bound to (reads `CurrentDevice`; integration tests).
@@ -197,9 +201,10 @@ final class AudioManager: ObservableObject {
                 engine.stop()
                 do {
                     try configure(previous.id, session)
-                } catch {
+                } catch let restoreError {
                     stopCapture()
-                    deviceNotice = "Microphone capture stopped: \(error.localizedDescription)"
+                    deviceNotice = "Microphone capture stopped: \(restoreError.localizedDescription)"
+                    throw AudioError.deviceSwitchFailedCaptureStopped(device.name, error)
                 }
             }
             throw AudioError.deviceSwitchFailed(device.name, error)

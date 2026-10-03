@@ -149,6 +149,17 @@ final class AudioViewModel: ObservableObject {
         audioManager.$selectedOutput.assign(to: &$selectedOutput)
         audioManager.$inputLevel.assign(to: &$inputLevel)
         audioManager.$isCapturing.assign(to: &$isCapturing)
+        // AudioManager may stop the mic on its own (device lost, failed switch): end the
+        // coordinator session too, or the UI is stuck (Start no-ops while isOutgoingActive).
+        audioManager.$isCapturing
+            .removeDuplicates()
+            .dropFirst()
+            .filter { !$0 }
+            .sink { [weak self] _ in
+                guard let self, self.coordinator.isOutgoingActive else { return }
+                Task { await self.coordinator.handleOutgoingCaptureEnded() }
+            }
+            .store(in: &cancellables)
         audioManager.$deviceNotice
             .compactMap { $0 }
             .sink { [weak self] notice in

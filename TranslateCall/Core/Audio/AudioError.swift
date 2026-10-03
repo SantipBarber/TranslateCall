@@ -7,6 +7,7 @@ enum AudioError: LocalizedError {
     case noInputDevice
     case alreadyCapturing
     case deviceSwitchFailed(String, Error)
+    case deviceSwitchFailedCaptureStopped(String, Error)
 
     var errorDescription: String? {
         switch self {
@@ -22,6 +23,9 @@ enum AudioError: LocalizedError {
             return "Microphone capture is already running."
         case .deviceSwitchFailed(let name, let error):
             return "Could not use microphone '\(name)': \(error.localizedDescription)"
+        case .deviceSwitchFailedCaptureStopped(let name, let error):
+            return "Could not use microphone '\(name)': \(error.localizedDescription). "
+                + "The previous microphone could not be restored, so capture stopped."
         }
     }
 }

@@ -211,6 +211,13 @@ final class AudioCoordinator: ObservableObject {
         logger.info("AudioCoordinator stopped")
     }
 
+    /// AudioManager stopped the mic on its own (device lost, switch and restore failed):
+    /// tear the whole session down so the UI can Start again. No-op during a user stop().
+    func handleOutgoingCaptureEnded() async {
+        guard isOutgoingActive, !isStopping else { return }
+        await stop()
+    }
+
     /// Re-runs incoming activation after a stop (REQ-C-34). No-op unless `.stopped`.
     func retryIncoming() {
         guard case .stopped = incomingStatus, isOutgoingActive, !isStopping else { return }

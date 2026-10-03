@@ -364,6 +364,38 @@ struct AudioCoordinatorTests {
         #expect(coordinator.incomingStatus == .idle)
         #expect(!coordinator.isIncomingActive)
     }
+
+    @Test("capture ended by AudioManager stops the whole session")
+    func outgoingCaptureEndedStopsSession() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start(captureTarget: callTarget)
+        #expect(coordinator.isOutgoingActive)
+
+        await coordinator.handleOutgoingCaptureEnded()
+
+        #expect(!coordinator.isOutgoingActive)
+        #expect(coordinator.incomingStatus == .idle)
+        #expect(await mocks.mockSystemCapture.deactivateCount == 1)
+    }
+
+    @Test("capture ended during an in-flight stop() does not run a second teardown")
+    func outgoingCaptureEndedDuringStopIsNoOp() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start(captureTarget: callTarget)
+        await mocks.mockSystemCapture.holdNextDeactivation()
+
+        let stopping = Task { await coordinator.stop() }
+        #expect(await waitUntil { await mocks.mockSystemCapture.isWaitingAtDeactivateGate })
+        await coordinator.handleOutgoingCaptureEnded()
+        await mocks.mockSystemCapture.releaseDeactivation()
+        await stopping.value
+
+        #expect(await mocks.mockSystemCapture.deactivateCount == 1)
+        #expect(!coordinator.isOutgoingActive)
+        #expect(coordinator.incomingStatus == .idle)
+    }
 }
 
 // MARK: - MockSystemAudioCapture helper
