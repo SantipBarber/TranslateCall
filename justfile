@@ -32,3 +32,10 @@ test-integration:
 # SwiftLint, strict (warnings fail)
 lint:
     swiftlint lint --strict --quiet
+
+# opengrep static analysis (ERROR fails, WARNING reported)
+scan:
+    tools/scripts/scan.sh
+
+# Everything GitHub runs: lint + scan
+check: lint scan

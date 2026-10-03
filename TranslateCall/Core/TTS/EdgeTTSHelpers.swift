@@ -65,7 +65,8 @@ enum EdgeTTSMessageBuilder {
 enum EdgeTTSConstants: Sendable {
     nonisolated static let host = "speech.platform.bing.com"
     nonisolated static let path = "/consumer/speech/synthesize/readaloud/edge/v1"
-    nonisolated static let trustedClientToken = "6A5AA1D4EAFF4E9FB37E23D68491D6F4"
+    // Public token embedded in Microsoft Edge's Read Aloud client — not a credential.
+    nonisolated static let trustedClientToken = "6A5AA1D4EAFF4E9FB37E23D68491D6F4" // nosemgrep: hardcoded-secret
     nonisolated static let outputFormat = "audio-24khz-48kbitrate-mono-mp3"
     nonisolated static let origin = "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold"
     nonisolated static let chromiumVersion = "143.0.3650.75"

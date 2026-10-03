@@ -1,0 +1,11 @@
+rules:
+  - id: no-print
+    languages: [regex]
+    severity: ERROR
+    message: "Use os.Logger instead of print()."
+    pattern-regex: '(?<![\w.])print\('
+  - id: hardcoded-secret
+    languages: [regex]
+    severity: ERROR
+    message: "Possible hard-coded secret."
+    pattern-regex: '(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*"[A-Za-z0-9_\-]{16,}"'

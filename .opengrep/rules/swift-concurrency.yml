@@ -1,0 +1,23 @@
+rules:
+  - id: asyncstream-unbounded
+    languages: [regex]
+    severity: WARNING
+    message: "AsyncStream without bufferingPolicy buffers without limit (audit 2026-10-03 — 48 kHz stream leak). Pass bufferingPolicy explicitly."
+    metadata: { audit_ref: "F8.5.1 / AudioManager.swift:148" }
+    pattern-regex: 'AsyncStream(<[^>]*>)?\s*\{'
+    paths:
+      include: ["TranslateCall/Core/Audio/", "TranslateCall/Core/TTS/", ".opengrep/rules/"]
+  - id: asyncstream-force-unwrap
+    languages: [regex]
+    severity: WARNING
+    message: "Force-unwrapping an AsyncStream continuation. Use AsyncStream.makeStream(of:bufferingPolicy:)."
+    metadata: { audit_ref: "F8.5.1 / cont! pattern" }
+    pattern-regex: '\bcont!'
+  - id: nonisolated-unsafe-justified
+    languages: [regex]
+    severity: WARNING
+    message: "nonisolated(unsafe) needs a `// SAFETY:` comment on the preceding lines explaining why it is race-free."
+    patterns:
+      - pattern-regex: 'nonisolated\(unsafe\)'
+      # Allowed when a `// SAFETY:` comment sits on the previous line (one extra comment line tolerated).
+      - pattern-not-regex: '// SAFETY:[^\n]*\n(?:[ \t]*//[^\n]*\n)?[^\n]*nonisolated\(unsafe\)'
