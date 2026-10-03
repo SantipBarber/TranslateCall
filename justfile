@@ -48,3 +48,7 @@ test-only +suites:
 # Regenerate audio fixtures (needs voices Mónica, Samantha, Lesya)
 fixtures:
     tools/scripts/fixtures.sh
+
+# Full PR gate: build → check → test → test-integration → status on SHA → push → PR
+pr:
+    tools/scripts/pr.sh
