@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Testing
 
@@ -31,4 +32,16 @@ enum Fixtures {
     static func url(for fixture: AudioFixture) -> URL {
         directory.appendingPathComponent("\(fixture.id).wav")
     }
+}
+
+extension AudioFixture {
+    /// Speech duration of the WAV (without the trailing silence FileAudioSource appends).
+    var durationSeconds: Double {
+        guard let file = try? AVAudioFile(forReading: Fixtures.url(for: self)) else { return 0 }
+        return Double(file.length) / file.fileFormat.sampleRate
+    }
+}
+
+extension Duration {
+    var milliseconds: Double { Double(components.seconds) * 1000 + Double(components.attoseconds) / 1e15 }
 }

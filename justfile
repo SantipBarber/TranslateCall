@@ -23,11 +23,12 @@ test:
     mkdir -p build/logs
     {{xcb}} test -testPlan Unit -skip-testing:TranslateCallTests/IntegrationTests -resultBundlePath build/logs/unit.xcresult 2>&1 | tee build/logs/test-unit.log | xcbeautify
 
-# Integration tier (real frameworks + audio fixtures)
+# Integration tier (real frameworks + audio fixtures); writes build/reports/latency.json
 test-integration:
     rm -rf build/logs/integration.xcresult
     mkdir -p build/logs build/reports
-    {{xcb}} test -testPlan Integration -only-testing:TranslateCallTests/IntegrationTests -resultBundlePath build/logs/integration.xcresult 2>&1 | tee build/logs/test-integration.log | xcbeautify
+    {{xcb}} test -testPlan Integration -only-testing:TranslateCallTests/IntegrationTests \
+      -resultBundlePath build/logs/integration.xcresult 2>&1 | tee build/logs/test-integration.log | xcbeautify
 
 # SwiftLint, strict (warnings fail)
 lint:

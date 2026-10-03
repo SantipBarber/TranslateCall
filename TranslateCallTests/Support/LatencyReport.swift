@@ -10,11 +10,37 @@ enum LatencyStage: String, Codable, Sendable {
 /// Integration suites run in an unspecified order, so there is no reliable "last test" to write the
 /// file; when `autoWritePath` is set the report is rewritten after every `record` (a few rows, cheap).
 actor LatencyReport {
+    /// In the integration tier, writes `<repo>/build/reports/latency.json` (override with `TC_LATENCY_REPORT`).
+    /// xcodebuild does not forward shell env vars to the test host, so the default is derived from the source path.
     static let shared: LatencyReport = {
         let env = ProcessInfo.processInfo.environment
-        return LatencyReport(autoWritePath: env["TC_LATENCY_REPORT"].map { URL(fileURLWithPath: $0) },
-                             commit: env["TC_COMMIT"] ?? "unknown")
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let defaultPath = TestTier.current == .integration
+            ? repoRoot.appendingPathComponent("build/reports/latency.json") : nil
+        return LatencyReport(autoWritePath: env["TC_LATENCY_REPORT"].map { URL(fileURLWithPath: $0) } ?? defaultPath,
+                             commit: env["TC_COMMIT"] ?? gitShortHead(in: repoRoot))
     }()
+
+    private static func hardwareModel() -> String {
+        var size = 0
+        sysctlbyname("hw.model", nil, &size, nil, 0)
+        var buffer = [CChar](repeating: 0, count: max(size, 1))
+        sysctlbyname("hw.model", &buffer, &size, nil, 0)
+        return String(cString: buffer)
+    }
+
+    private static func gitShortHead(in repo: URL) -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["-C", repo.path, "rev-parse", "--short", "HEAD"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        guard (try? process.run()) != nil else { return "unknown" }
+        process.waitUntilExit()
+        let out = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        return out.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "unknown" : out.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     private let autoWritePath: URL?
     private let commit: String
@@ -41,7 +67,7 @@ actor LatencyReport {
         let doc: [String: Any] = [
             "commit": commit,
             "date": ISO8601DateFormatter().string(from: .now),
-            "machine": Host.current().localizedName ?? "unknown",
+            "machine": Self.hardwareModel(), // model id, not the user-chosen computer name
             "fixtures": fixtures,
         ]
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
