@@ -6,6 +6,8 @@ set -euo pipefail
 ROOT=$(git rev-parse --show-toplevel)
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 git clone -q "$ROOT" "$TMP/repo" && cd "$TMP/repo"
+git clone -q --bare "$ROOT" "$TMP/remote.git"       # never push to the real repo, even if a hook is ignored
+git remote set-url origin "$TMP/remote.git"
 git checkout -q -B test/gate "$(git -C "$ROOT" rev-parse HEAD)"
 
 export TC_PR_PUSH=true                              # no network
