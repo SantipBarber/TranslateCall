@@ -19,6 +19,9 @@ actor MockSystemAudioCapture: SystemAudioCapture {
     private var holdActivation = false
     private var gate: CheckedContinuation<Void, Never>?
     private(set) var isWaitingAtGate = false
+    private var holdDeactivation = false
+    private var deactivateGate: CheckedContinuation<Void, Never>?
+    private(set) var isWaitingAtDeactivateGate = false
 
     nonisolated let events: AsyncStream<SystemCaptureEvent>
     private let eventsContinuation: AsyncStream<SystemCaptureEvent>.Continuation
@@ -53,7 +56,17 @@ actor MockSystemAudioCapture: SystemAudioCapture {
         return stream
     }
 
+    /// The next `deactivate` suspends until `releaseDeactivation()`.
+    func holdNextDeactivation() { holdDeactivation = true }
+    func releaseDeactivation() { deactivateGate?.resume(); deactivateGate = nil }
+
     func deactivate() async {
+        if holdDeactivation {
+            holdDeactivation = false
+            isWaitingAtDeactivateGate = true
+            await withCheckedContinuation { deactivateGate = $0 }
+            isWaitingAtDeactivateGate = false
+        }
         deactivateCount += 1
         continuation?.finish()
         continuation = nil

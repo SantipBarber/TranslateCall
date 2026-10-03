@@ -158,15 +158,18 @@ extension AudioCoordinator {
     }
 
     /// Deactivates and releases incoming VAD/STT/TTS and their observation tasks.
+    /// Takes ownership synchronously before awaiting, so services a newer activation assigns
+    /// meanwhile are never cleared without being deactivated.
     func teardownIncomingServices() async {
         incomingTasks.forEach { $0.cancel() }
         incomingTasks.removeAll()
-        await incomingVAD?.deactivate()
-        await incomingSTT?.deactivate()
-        await incomingTTS?.deactivate()
+        let (vad, stt, tts) = (incomingVAD, incomingSTT, incomingTTS)
         incomingVAD = nil
         incomingSTT = nil
         incomingTTS = nil
+        await vad?.deactivate()
+        await stt?.deactivate()
+        await tts?.deactivate()
     }
 
     // MARK: - Observation helpers

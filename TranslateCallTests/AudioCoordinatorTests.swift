@@ -332,6 +332,29 @@ struct AudioCoordinatorTests {
         #expect(!coordinator.isIncomingActive)
     }
 
+    @Test("Retry during an in-flight stop() is a no-op; stop ends .idle with nothing alive")
+    func retryDuringStopIsNoOp() async {
+        let mocks = CoordinatorMocks()
+        await mocks.mockSystemCapture.setThrowOnActivate(SystemAudioCaptureError.targetNotFound(bundleID: "com.test.call"))
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start(captureTarget: callTarget)
+        #expect(coordinator.incomingStatus == .stopped(.targetNotFound(bundleID: "com.test.call")))
+        await mocks.mockSystemCapture.setThrowOnActivate(nil)
+        await mocks.mockSystemCapture.holdNextDeactivation()
+
+        let stopping = Task { await coordinator.stop() }
+        #expect(await waitUntil { await mocks.mockSystemCapture.isWaitingAtDeactivateGate })
+        coordinator.retryIncoming()
+        #expect(coordinator.incomingStatus != .starting)
+        await mocks.mockSystemCapture.releaseDeactivation()
+        await stopping.value
+
+        #expect(coordinator.incomingStatus == .idle)
+        #expect(!coordinator.isOutgoingActive)
+        #expect(await mocks.mockSystemCapture.activatedTargets.isEmpty)
+        #expect(await mocks.mockIncomingVAD.activateCount == 0)
+    }
+
     @Test("stop() resets incoming status to .idle")
     func stopResetsStatus() async {
         let mocks = CoordinatorMocks()

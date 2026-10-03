@@ -45,6 +45,8 @@ final class AudioCoordinator: ObservableObject {
     /// A `.stopped` event that arrived while incoming was `.starting`.
     var pendingStopReason: IncomingStopReason?
     var pendingStopReasonForTesting: IncomingStopReason? { pendingStopReason }
+    /// True for the whole of `stop()`, so a Retry cannot start a session that stop() would not see.
+    private var isStopping = false
 
     // MARK: - Shared state
 
@@ -170,6 +172,8 @@ final class AudioCoordinator: ObservableObject {
     }
 
     func stop() async {
+        isStopping = true   // set before any await: blocks retryIncoming() for the whole teardown
+        defer { isStopping = false }
         sessionGeneration &+= 1
         let pendingActivation = incomingActivationTask
         incomingActivationTask = nil
@@ -209,7 +213,7 @@ final class AudioCoordinator: ObservableObject {
 
     /// Re-runs incoming activation after a stop (REQ-C-34). No-op unless `.stopped`.
     func retryIncoming() {
-        guard case .stopped = incomingStatus, isOutgoingActive else { return }
+        guard case .stopped = incomingStatus, isOutgoingActive, !isStopping else { return }
         incomingStatus = .starting
         incomingActivationTask = Task { await self.activateIncoming() }
     }
