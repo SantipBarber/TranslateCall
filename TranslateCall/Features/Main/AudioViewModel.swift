@@ -217,7 +217,7 @@ final class AudioViewModel: ObservableObject {
 
     private func startPipeline() async {
         await coordinator.start(
-            captureApp: setupManager.selectedCaptureApp,
+            captureTarget: setupManager.captureTarget,
             blackHoleDeviceID: setupManager.isBlackHolePresent
                 ? AudioDevice.deviceID(forNameContaining: "BlackHole")
                 : nil

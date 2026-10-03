@@ -66,6 +66,22 @@ struct SetupManagerTests {
         #expect(defaults.string(forKey: "tlk.captureApp.bundleID") == "")
     }
 
+    @Test("captureTarget comes from the persisted bundle ID, even if the app is not running")
+    func captureTargetFromPersistedBundleID() {
+        let defaults = makeDefaults()
+        defaults.set("us.zoom.xos", forKey: "tlk.captureApp.bundleID")
+        let mgr = SetupManager(defaults: defaults)
+        #expect(mgr.captureTarget == .app(bundleID: "us.zoom.xos"))
+    }
+
+    @Test("captureTarget is nil when no app is persisted")
+    func captureTargetNilWhenUnset() {
+        let defaults = makeDefaults()
+        defaults.set("", forKey: "tlk.captureApp.bundleID")
+        #expect(SetupManager(defaults: defaults).captureTarget == nil)
+        #expect(SetupManager(defaults: makeDefaults()).captureTarget == nil)
+    }
+
     // MARK: - T6: checkBlackHole (hardware-agnostic)
 
     @Test("checkBlackHole does not crash and returns a Bool")

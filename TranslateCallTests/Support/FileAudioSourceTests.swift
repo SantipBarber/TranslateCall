@@ -21,9 +21,9 @@ struct FileAudioSourceTests {
     }
 
     private func collect(_ src: FileAudioSource) async throws -> [AVAudioPCMBuffer] {
-        try await src.startCapture()
+        let stream = try await src.startCapture()
         var out: [AVAudioPCMBuffer] = []
-        for await b in src.audioStream16kHz { out.append(b) }
+        for await b in stream { out.append(b) }
         return out
     }
 
@@ -60,10 +60,10 @@ struct FileAudioSourceTests {
 
     @Test func stopCaptureFinishesStream() async throws {
         let src = try FileAudioSource(url: makeWAV(sampleRate: 16_000, channels: 1), realtime: true, trailingSilence: 5)
-        try await src.startCapture()
+        let stream = try await src.startCapture()
         src.stopCapture()
         var count = 0
-        for await _ in src.audioStream16kHz { count += 1 }
+        for await _ in stream { count += 1 }
         #expect(count < 10) // finished early instead of streaming 5.5 s
     }
 }

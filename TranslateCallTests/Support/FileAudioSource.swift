@@ -12,8 +12,7 @@ final class FileAudioSource: AudioCapture {
     nonisolated static let sampleRate: Double = 16_000
     nonisolated static let chunk = 1024
 
-    let audioStream16kHz: AsyncStream<AVAudioPCMBuffer>
-    private let continuation: AsyncStream<AVAudioPCMBuffer>.Continuation
+    private var continuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
     private let samples: [Float]
     private let realtime: Bool
     private var task: Task<Void, Never>?
@@ -24,11 +23,12 @@ final class FileAudioSource: AudioCapture {
     init(url: URL, realtime: Bool = true, trailingSilence: TimeInterval = 1.5) throws {
         samples = try Self.decode16kMono(url) + Array(repeating: 0, count: Int(trailingSilence * Self.sampleRate))
         self.realtime = realtime
-        (audioStream16kHz, continuation) = AsyncStream.makeStream(of: AVAudioPCMBuffer.self, bufferingPolicy: .unbounded)
     }
 
-    func startCapture() async throws {
-        let samples = samples, realtime = realtime, cont = continuation
+    func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
+        let (stream, cont) = AsyncStream.makeStream(of: AVAudioPCMBuffer.self, bufferingPolicy: .unbounded)
+        continuation = cont
+        let samples = samples, realtime = realtime
         task = Task.detached {
             guard let format = Self.makeFormat() else { cont.finish(); return }
             var deadline = ContinuousClock.now
@@ -50,11 +50,12 @@ final class FileAudioSource: AudioCapture {
             }
             cont.finish()
         }
+        return stream
     }
 
     func stopCapture() {
         task?.cancel()
-        continuation.finish()
+        continuation?.finish()
     }
 
     nonisolated private static func makeFormat() -> AVAudioFormat? {

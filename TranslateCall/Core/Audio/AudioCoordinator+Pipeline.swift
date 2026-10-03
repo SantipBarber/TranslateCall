@@ -15,14 +15,14 @@ extension AudioCoordinator {
     /// without the failed component so the incoming pipeline can still start.
     func startOutgoingPipeline(blackHoleDeviceID: AudioDeviceID?) async throws {
         // Fatal: mic permission required for the app to function at all.
-        try await audioCapture.startCapture()
+        let micStream = try await audioCapture.startCapture()
         logger.info("Outgoing: audio capture started")
 
         // VAD (non-fatal)
         let vad = outgoingVADFactory()
         outgoingVAD = vad
         do {
-            try await vad.activate(stream: audioCapture.audioStream16kHz)
+            try await vad.activate(stream: micStream)
             observeVADState(vad)
             logger.info("Outgoing: VAD activated")
         } catch {
@@ -64,18 +64,18 @@ extension AudioCoordinator {
 
     /// Starts the incoming pipeline. All failures are non-fatal — errorAlert is set
     /// and `isIncomingActive` remains false if activation fails.
-    func startIncomingPipeline(captureApp: SCRunningApplication?) async {
-        guard captureApp != nil else {
-            logger.info("Incoming: skipped — no capture app selected")
+    func startIncomingPipeline(captureTarget: CaptureTarget?) async {
+        guard let captureTarget else {
+            logger.info("Incoming: skipped — no capture target")
             return
         }
         do {
-            try await systemCapture.activate(app: captureApp)
+            let systemStream = try await systemCapture.activate(target: captureTarget)
             logger.info("Incoming: system audio capture started")
 
             let vad = incomingVADFactory()
             incomingVAD = vad
-            try await vad.activate(stream: systemCapture.audioStream16kHz)
+            try await vad.activate(stream: systemStream)
             logger.info("Incoming: VAD activated")
 
             let targetLocale = Locale(identifier: languagePairManager.targetLanguage.minimalIdentifier)

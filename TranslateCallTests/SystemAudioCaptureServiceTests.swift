@@ -14,7 +14,7 @@ struct SystemAudioCaptureServiceTests {
     @Test("isActive is false initially")
     func isActiveFalseInitially() async {
         let service = SystemAudioCaptureService()
-        #expect(service.isActive == false)
+        #expect(await service.isActive == false)
     }
 
     // MARK: - Deactivate while inactive
@@ -23,7 +23,7 @@ struct SystemAudioCaptureServiceTests {
     func deactivateWhenInactive() async {
         let service = SystemAudioCaptureService()
         await service.deactivate()  // must not throw or crash
-        #expect(service.isActive == false)
+        #expect(await service.isActive == false)
     }
 
     // MARK: - Buffer extraction

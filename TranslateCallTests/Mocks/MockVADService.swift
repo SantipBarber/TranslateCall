@@ -13,9 +13,12 @@ actor MockVADService: VADService {
     private var stateContinuation: AsyncStream<Bool>.Continuation?
 
     // Call tracking
-    var activateCalled = false
+    private(set) var activateCount = 0
+    var activateCalled: Bool { activateCount > 0 }
     var deactivateCalled = false
     var throwOnActivate: Error?
+    private(set) var receivedBufferCount = 0
+    private var consumeTask: Task<Void, Never>?
 
     init() {
         var speechCont: AsyncStream<SpeechSegment>.Continuation?
@@ -28,11 +31,16 @@ actor MockVADService: VADService {
 
     func activate(stream: AsyncStream<AVAudioPCMBuffer>) async throws {
         if let error = throwOnActivate { throw error }
-        activateCalled = true
+        activateCount += 1
+        consumeTask = Task {
+            for await _ in stream { receivedBufferCount += 1 }
+        }
     }
 
     func deactivate() async {
         deactivateCalled = true
+        consumeTask?.cancel()
+        consumeTask = nil
         speechContinuation?.finish()
         stateContinuation?.finish()
     }

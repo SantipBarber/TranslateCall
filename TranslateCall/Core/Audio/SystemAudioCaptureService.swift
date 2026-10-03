@@ -39,20 +39,11 @@ nonisolated enum SystemAudioCaptureError: LocalizedError {
 /// Protocol abstraction over `SystemAudioCaptureService` — allows mock injection
 /// in `AudioCoordinator` unit tests without a real SCStream.
 protocol SystemAudioCapture: Actor {
-    /// 16 kHz mono PCM stream from the captured system audio source.
-    nonisolated var audioStream16kHz: AsyncStream<AVAudioPCMBuffer> { get }
-    /// True after `activate()` returns successfully.
-    nonisolated var isActive: Bool { get }
-
-    /// Request Screen Recording permission and return the list of capturable apps,
-    /// sorted alphabetically. Throws `SystemAudioCaptureError.permissionDenied` if
-    /// the user has not granted permission.
+    /// Request Screen Recording permission and return the capturable apps, sorted by name.
     func requestPermissionAndLoadApps() async throws -> [SCRunningApplication]
-
-    /// Begin capturing audio from the specified app, or from all apps if `app` is nil.
-    func activate(app: SCRunningApplication?) async throws
-
-    /// Stop capturing and release all SCStream resources.
+    /// Starts capturing `target` and returns that session's 16 kHz mono stream; `deactivate()` finishes it.
+    func activate(target: CaptureTarget) async throws -> AsyncStream<AVAudioPCMBuffer>
+    /// Stops capturing and finishes the session stream.
     func deactivate() async
 }
 
@@ -60,34 +51,26 @@ protocol SystemAudioCapture: Actor {
 
 /// Actor wrapping `ScreenCaptureKit SCStream` for system audio capture.
 ///
-/// Delivers 16 kHz mono `AVAudioPCMBuffer`s via `audioStream16kHz`, matching
-/// the format of `AudioManager.audioStream16kHz` so the same VAD/STT pipeline
-/// can consume both mic and system audio.
+/// Each `activate(target:)` returns a fresh 16 kHz mono stream, matching the format of
+/// `AudioManager.startCapture()` so the same VAD/STT pipeline can consume both mic and system audio.
 ///
 /// Uses `SCStreamOutputBridge` (NSObject subclass) to receive SCStream callbacks —
 /// same pattern as `SpeechSynthesizerDelegateBridge` for AVSpeechSynthesizer.
 actor SystemAudioCaptureService: SystemAudioCapture {
 
-    // MARK: - SystemAudioCapture
-
-    nonisolated let audioStream16kHz: AsyncStream<AVAudioPCMBuffer>
-    // nonisolated(unsafe): written on actor, read from nonisolated contexts — safe by design
-    nonisolated(unsafe) private(set) var isActive: Bool = false
-
     // MARK: - Private
 
-    private var streamContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
+    private var session: SessionAudioStream?
     private var captureStream: SCStream?
     private var outputBridge: SCStreamOutputBridge?
     private var converter: AVAudioConverter?
 
+    /// True while an SCStream capture session is running.
+    var isActive: Bool { captureStream != nil }
+
     // MARK: - Init
 
-    init() {
-        var cont: AsyncStream<AVAudioPCMBuffer>.Continuation?
-        audioStream16kHz = AsyncStream(bufferingPolicy: .bufferingNewest(64)) { cont = $0 }
-        streamContinuation = cont
-    }
+    init() {}
 
     // MARK: - Permission + app enumeration
 
@@ -104,8 +87,8 @@ actor SystemAudioCaptureService: SystemAudioCapture {
 
     // MARK: - Activation
 
-    func activate(app: SCRunningApplication?) async throws {
-        guard !isActive else { return }
+    func activate(target: CaptureTarget) async throws -> AsyncStream<AVAudioPCMBuffer> {
+        guard captureStream == nil else { throw SystemAudioCaptureError.alreadyActive }
 
         let content: SCShareableContent
         do {
@@ -113,12 +96,15 @@ actor SystemAudioCaptureService: SystemAudioCapture {
         } catch {
             throw SystemAudioCaptureError.permissionDenied
         }
-
-        guard let display = content.displays.first else {
-            throw SystemAudioCaptureError.noDisplayAvailable
+        guard let display = content.displays.first else { throw SystemAudioCaptureError.noDisplayAvailable }
+        let bundleID = switch target {
+        case .app(let id): id
+        }
+        guard let app = content.applications.first(where: { $0.bundleIdentifier == bundleID }) else {
+            throw SystemAudioCaptureError.targetNotFound(bundleID: bundleID)
         }
 
-        let filter = buildContentFilter(display: display, app: app, content: content)
+        let filter = SCContentFilter(display: display, including: [app], exceptingWindows: [])
 
         // Audio-only stream configuration (minimal video footprint)
         let config = SCStreamConfiguration()
@@ -142,57 +128,40 @@ actor SystemAudioCaptureService: SystemAudioCapture {
         }
         converter = conv
 
+        let session = SessionAudioStream(label: "system")
         // Create delegate bridge (NSObject, avoids actor isolation conflict with SCStreamOutput)
         let bridge = SCStreamOutputBridge(service: self)
         outputBridge = bridge
-
         let stream = SCStream(filter: filter, configuration: config, delegate: nil)
         do {
             try stream.addStreamOutput(bridge, type: .audio, sampleHandlerQueue: nil)
             try await stream.startCapture()
         } catch {
+            session.finish()
             converter = nil
             outputBridge = nil
             throw SystemAudioCaptureError.streamFailed(underlying: error)
         }
-
+        self.session = session
         captureStream = stream
-        isActive = true
-        logger.info("System audio capture activated (app: \(app?.applicationName ?? "all"))")
-    }
-
-    private func buildContentFilter(
-        display: SCDisplay,
-        app: SCRunningApplication?,
-        content: SCShareableContent
-    ) -> SCContentFilter {
-        if let app {
-            return SCContentFilter(display: display,
-                                   including: [app],
-                                   exceptingWindows: [])
-        }
-        let selfApp = content.applications.first {
-            $0.bundleIdentifier == Bundle.main.bundleIdentifier
-        }
-        let excluded = selfApp.map { [$0] } ?? []
-        return SCContentFilter(display: display,
-                               excludingApplications: excluded,
-                               exceptingWindows: [])
+        logger.info("System audio capture activated (app: \(bundleID, privacy: .public))")
+        return session.stream
     }
 
     // MARK: - Deactivation
 
     func deactivate() async {
-        guard isActive else { return }
+        guard let captureStream else { return }
         do {
-            try await captureStream?.stopCapture()
+            try await captureStream.stopCapture()
         } catch {
             logger.warning("SCStream stopCapture error (ignored): \(error.localizedDescription)")
         }
-        captureStream = nil
+        session?.finish()
+        session = nil
+        self.captureStream = nil
         outputBridge = nil
         converter = nil
-        isActive = false
         logger.info("System audio capture deactivated")
     }
 
@@ -200,7 +169,7 @@ actor SystemAudioCaptureService: SystemAudioCapture {
 
     func handleCapturedBuffer(_ input: AVAudioPCMBuffer) {
         guard let downsampled = downsample(input) else { return }
-        streamContinuation?.yield(downsampled)
+        session?.yield(downsampled)
     }
 
     // MARK: - Downsampling (internal, testable via actor isolation)
@@ -216,6 +185,7 @@ actor SystemAudioCaptureService: SystemAudioCapture {
         ) else { return nil }
 
         final class SyncBox<T>: @unchecked Sendable {
+            // SAFETY: the converter input block runs synchronously on this call's thread only.
             nonisolated(unsafe) var value: T
             nonisolated init(_ value: T) { self.value = value }
         }
@@ -265,7 +235,7 @@ actor SystemAudioCaptureService: SystemAudioCapture {
 /// Required because actors cannot directly conform to ObjC protocols under
 /// SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor without isolation conflicts.
 private final class SCStreamOutputBridge: NSObject, SCStreamOutput, @unchecked Sendable {
-    // nonisolated(unsafe): weak ref set once in nonisolated init, read in nonisolated callback
+    // SAFETY: weak ref set once in nonisolated init, only read afterwards in the nonisolated callback.
     nonisolated(unsafe) private weak var service: SystemAudioCaptureService?
 
     nonisolated init(service: SystemAudioCaptureService) {

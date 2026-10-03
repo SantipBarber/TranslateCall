@@ -130,7 +130,7 @@ final class AudioCoordinator: ObservableObject {
 
     /// Start both pipelines. Outgoing audio capture failure is fatal (early return, errorAlert set).
     /// All other outgoing failures and all incoming failures are non-fatal (errorAlert set, continue).
-    func start(captureApp: SCRunningApplication? = nil, blackHoleDeviceID: AudioDeviceID? = nil) async {
+    func start(captureTarget: CaptureTarget? = nil, blackHoleDeviceID: AudioDeviceID? = nil) async {
         guard !isOutgoingActive else { return }
         setupHalfDuplex()
         isStarting = true
@@ -144,7 +144,7 @@ final class AudioCoordinator: ObservableObject {
         }
 
         isOutgoingActive = true
-        await startIncomingPipeline(captureApp: captureApp)
+        await startIncomingPipeline(captureTarget: captureTarget)
     }
 
     func stop() async {

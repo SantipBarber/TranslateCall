@@ -67,7 +67,6 @@ func firstTranscript(of fixture: AudioFixture, using stt: any SpeechRecognizerSe
                      timeout: Duration = .seconds(30)) async throws -> TranscriptRun {
     let source = try FileAudioSource(url: Fixtures.url(for: fixture), realtime: true)
     let vad = EnergyVADService()
-    try await vad.activate(stream: source.audioStream16kHz)
 
     // Tee VAD segments so we can timestamp when the segment closed.
     let (segments, segCont) = AsyncStream.makeStream(of: SpeechSegment.self, bufferingPolicy: .unbounded)
@@ -82,7 +81,8 @@ func firstTranscript(of fixture: AudioFixture, using stt: any SpeechRecognizerSe
     try await stt.activate(stream: segments)
 
     let started = ContinuousClock.now
-    try await source.startCapture()
+    let audio = try await source.startCapture()
+    try await vad.activate(stream: audio)
     let speechEnd = started + .seconds(fixture.durationSeconds)
 
     let result = try await withThrowingTaskGroup(of: TranscriptionResult?.self) { group in

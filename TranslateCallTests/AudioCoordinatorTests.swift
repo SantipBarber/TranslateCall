@@ -4,6 +4,8 @@ import AVFoundation
 
 // MARK: - Helpers
 
+private let callTarget = CaptureTarget.app(bundleID: "com.test.call")
+
 /// All mocks for a single coordinator test scenario.
 @MainActor
 struct CoordinatorMocks {
@@ -69,12 +71,12 @@ struct AudioCoordinatorTests {
         #expect(!(await mocks.mockSystemCapture.activateCalled))
     }
 
-    @Test("start() also activates incoming pipeline by default", .disabled("F8.5.1: start() skips incoming without an SCRunningApplication (16e096c) and SCRunningApplication cannot be built in tests — needs an injectable capture target"))
+    @Test("start() also activates incoming pipeline by default")
     func startActivatesIncoming() async {
         let mocks = CoordinatorMocks()
         let coordinator = makeCoordinator(mocks)
 
-        await coordinator.start()
+        await coordinator.start(captureTarget: callTarget)
 
         #expect(await mocks.mockSystemCapture.activateCalled)
         #expect(await mocks.mockIncomingVAD.activateCalled)
@@ -82,25 +84,25 @@ struct AudioCoordinatorTests {
         #expect(coordinator.isIncomingActive)
     }
 
-    @Test("start() skips incoming pipeline when system capture activation fails", .disabled("F8.5.1: start() skips incoming without an SCRunningApplication (16e096c) and SCRunningApplication cannot be built in tests — needs an injectable capture target"))
+    @Test("start() skips incoming pipeline when system capture activation fails")
     func startSkipsIncomingOnPermissionDenied() async {
         let mocks = CoordinatorMocks()
         await mocks.mockSystemCapture.setThrowOnActivate(SystemAudioCaptureError.permissionDenied)
         let coordinator = makeCoordinator(mocks)
 
-        await coordinator.start()
+        await coordinator.start(captureTarget: callTarget)
 
         #expect(coordinator.isOutgoingActive)
         #expect(!coordinator.isIncomingActive)
         #expect(coordinator.errorAlert != nil)
     }
 
-    @Test("stop() deactivates all services and resets active flags", .disabled("F8.5.1: start() skips incoming without an SCRunningApplication (16e096c) and SCRunningApplication cannot be built in tests — needs an injectable capture target"))
+    @Test("stop() deactivates all services and resets active flags")
     func stopDeactivatesAll() async {
         let mocks = CoordinatorMocks()
         let coordinator = makeCoordinator(mocks)
 
-        await coordinator.start()
+        await coordinator.start(captureTarget: callTarget)
         await coordinator.stop()
 
         #expect(await mocks.mockOutgoingSTT.deactivateCalled)
@@ -112,11 +114,11 @@ struct AudioCoordinatorTests {
         #expect(!coordinator.isIncomingActive)
     }
 
-    @Test("updateLanguagePair() calls setLocale on both STT services", .disabled("F8.5.1: start() skips incoming without an SCRunningApplication (16e096c) and SCRunningApplication cannot be built in tests — needs an injectable capture target"))
+    @Test("updateLanguagePair() calls setLocale on both STT services")
     func updateLanguagePairReconfigures() async {
         let mocks = CoordinatorMocks()
         let coordinator = makeCoordinator(mocks)
-        await coordinator.start()
+        await coordinator.start(captureTarget: callTarget)
 
         await mocks.languagePairManager.swapLanguages()
         await coordinator.updateLanguagePair()
@@ -150,13 +152,13 @@ struct AudioCoordinatorTests {
         #expect(title.localizedCaseInsensitiveContains("Microphone") || title.localizedCaseInsensitiveContains("Access"))
     }
 
-    @Test("non-fatal outgoing STT error still allows incoming pipeline to activate", .disabled("F8.5.1: start() skips incoming without an SCRunningApplication (16e096c) and SCRunningApplication cannot be built in tests — needs an injectable capture target"))
+    @Test("non-fatal outgoing STT error still allows incoming pipeline to activate")
     func nonFatalOutgoingSTTErrorKeepsIncomingAlive() async {
         let mocks = CoordinatorMocks()
         await mocks.mockOutgoingSTT.setThrowOnActivate(STTError.permissionDenied)
         let coordinator = makeCoordinator(mocks)
 
-        await coordinator.start()
+        await coordinator.start(captureTarget: callTarget)
 
         // Outgoing is still active (audio capture + VAD succeeded)
         #expect(coordinator.isOutgoingActive)
@@ -172,12 +174,45 @@ struct AudioCoordinatorTests {
         let coordinator = makeCoordinator(mocks)
 
         await coordinator.start()
-        let firstCaptureCount = mocks.mockAudioCapture.startCaptureCalled ? 1 : 0
         await coordinator.start()  // should be a no-op
+        #expect(mocks.mockAudioCapture.startCount == 1)
+    }
 
-        // startCapture should have been called only once
-        let captureCallCount = mocks.mockAudioCapture.startCaptureCalled ? 1 : 0
-        #expect(firstCaptureCount == captureCallCount)
+    @Test("Stop → Start hands the incoming VAD a fresh, live stream (A1)")
+    func restartGivesFreshIncomingStream() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+
+        await coordinator.start(captureTarget: callTarget)
+        await coordinator.stop()
+        await coordinator.start(captureTarget: callTarget)
+        await mocks.mockSystemCapture.injectBuffer(makePCMBuffer())
+
+        #expect(await waitUntil { await mocks.mockIncomingVAD.receivedBufferCount == 1 })
+        #expect(await mocks.mockSystemCapture.activatedTargets == [callTarget, callTarget])
+        #expect(coordinator.isIncomingActive)
+    }
+
+    @Test("Stop → Start hands the outgoing VAD a fresh, live mic stream")
+    func restartGivesFreshMicStream() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+
+        await coordinator.start()
+        await coordinator.stop()
+        await coordinator.start()
+        mocks.mockAudioCapture.injectBuffer(makePCMBuffer())
+
+        #expect(await waitUntil { await mocks.mockVADFactory.receivedBufferCount == 1 })
+        #expect(mocks.mockAudioCapture.startCount == 2)
+    }
+
+    @Test("start() passes the capture target to system capture")
+    func startPassesCaptureTarget() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start(captureTarget: callTarget)
+        #expect(await mocks.mockSystemCapture.activatedTargets == [callTarget])
     }
 }
 

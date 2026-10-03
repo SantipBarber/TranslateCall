@@ -117,6 +117,13 @@ final class SetupManager: ObservableObject {
         defaults.set(app?.bundleIdentifier ?? "", forKey: Self.captureAppBundleKey)
     }
 
+    /// Incoming capture target from the persisted selection (F8.5.1 REQ-C-22). Independent of
+    /// whether the app is running now: a missing app becomes `targetNotFound` + Retry at start.
+    var captureTarget: CaptureTarget? {
+        let bundleID = defaults.string(forKey: Self.captureAppBundleKey) ?? ""
+        return bundleID.isEmpty ? nil : .app(bundleID: bundleID)
+    }
+
     // MARK: - Wizard completion
 
     func completeSetup() {

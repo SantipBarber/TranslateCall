@@ -5,6 +5,7 @@ enum AudioError: LocalizedError {
     case deviceUnavailable(String)
     case engineStartFailed(Error)
     case noInputDevice
+    case alreadyCapturing
 
     var errorDescription: String? {
         switch self {
@@ -16,6 +17,8 @@ enum AudioError: LocalizedError {
             return "Failed to start audio engine: \(error.localizedDescription)"
         case .noInputDevice:
             return "No input audio device selected or available."
+        case .alreadyCapturing:
+            return "Microphone capture is already running."
         }
     }
 }

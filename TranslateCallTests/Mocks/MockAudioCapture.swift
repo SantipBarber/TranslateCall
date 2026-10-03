@@ -1,38 +1,34 @@
 import AVFoundation
 @testable import TranslateCall
 
-/// Test double for `AudioCapture`. Runs on `@MainActor` to match the protocol's isolation.
+/// Test double for `AudioCapture`: a fresh stream per `startCapture()`, like `AudioManager`.
 @MainActor
 final class MockAudioCapture: AudioCapture {
+    private var continuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
 
-    let audioStream16kHz: AsyncStream<AVAudioPCMBuffer>
-    private var streamContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
-
-    // Call tracking
-    var startCaptureCalled = false
+    private(set) var startCount = 0
+    var startCaptureCalled: Bool { startCount > 0 }
     var stopCaptureCalled = false
-
-    // Configurable error
     var throwOnStartCapture: Error?
 
-    init() {
-        var cont: AsyncStream<AVAudioPCMBuffer>.Continuation?
-        audioStream16kHz = AsyncStream { cont = $0 }
-        streamContinuation = cont
-    }
-
-    func startCapture() async throws {
+    func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
         if let error = throwOnStartCapture { throw error }
-        startCaptureCalled = true
+        startCount += 1
+        let (stream, continuation) = AsyncStream.makeStream(
+            of: AVAudioPCMBuffer.self, bufferingPolicy: .bufferingNewest(SessionAudioStream.capacity)
+        )
+        self.continuation = continuation
+        return stream
     }
 
     func stopCapture() {
         stopCaptureCalled = true
-        streamContinuation?.finish()
+        continuation?.finish()
+        continuation = nil
     }
 
-    /// Inject a PCM buffer into the stream (simulates incoming mic audio).
+    /// Feeds a buffer into the current session's stream (simulated mic audio).
     func injectBuffer(_ buffer: AVAudioPCMBuffer) {
-        streamContinuation?.yield(buffer)
+        continuation?.yield(buffer)
     }
 }
