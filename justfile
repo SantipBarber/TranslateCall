@@ -39,3 +39,7 @@ scan:
 
 # Everything GitHub runs: lint + scan
 check: lint scan
+
+# Run selected unit tests, e.g. `just test-only WordErrorRateTests FileAudioSourceTests`
+test-only +suites:
+    tools/scripts/test-only.sh {{suites}}
