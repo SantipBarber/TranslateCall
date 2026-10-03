@@ -50,18 +50,17 @@ actor EdgeTTSWebSocket {
         request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
 
         // Create event stream for async bridging
-        var cont: AsyncStream<WebSocketEvent>.Continuation?
-        let stream = AsyncStream<WebSocketEvent> { cont = $0 }
+        let (stream, cont) = AsyncStream.makeStream(of: WebSocketEvent.self)
         self.eventStream = stream
         self.eventContinuation = cont
 
-        let bridge = WebSocketBridge(continuation: cont!)
+        let bridge = WebSocketBridge(continuation: cont)
         self.delegate = bridge
 
-        let ws = WebSocket(request: request)
-        ws.delegate = bridge
-        self.socket = ws
-        ws.connect()
+        let webSocket = WebSocket(request: request)
+        webSocket.delegate = bridge
+        self.socket = webSocket
+        webSocket.connect()
 
         // Wait for connection
         for await event in stream {
@@ -198,19 +197,13 @@ private final class WebSocketBridge: @unchecked Sendable, WebSocketDelegate {
         case .binary(let data):
             continuation.yield(.binary(data))
 
-        case .ping:
-            break // Starscream auto-responds with pong
-
-        case .pong:
-            break
+        case .ping, .pong, .reconnectSuggested:
+            break // Starscream auto-responds to pings; reconnection is handled by the caller
 
         case .viabilityChanged(let viable):
             if !viable {
                 logger.warning("WS viability lost")
             }
-
-        case .reconnectSuggested:
-            break
 
         case .cancelled:
             logger.info("WS cancelled")

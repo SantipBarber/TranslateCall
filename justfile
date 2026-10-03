@@ -28,3 +28,7 @@ test-integration:
     rm -rf build/logs/integration.xcresult
     mkdir -p build/logs build/reports
     {{xcb}} test -testPlan Integration -only-testing:TranslateCallTests/IntegrationTests -resultBundlePath build/logs/integration.xcresult 2>&1 | tee build/logs/test-integration.log | xcbeautify
+
+# SwiftLint, strict (warnings fail)
+lint:
+    swiftlint lint --strict --quiet
