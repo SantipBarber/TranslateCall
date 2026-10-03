@@ -62,8 +62,7 @@ struct KokoroModelManagerTests {
         }
 
         _ = try await manager.ensureReady()
-        try? await Task.sleep(for: .milliseconds(50))
-        task.cancel()
+        await finish(task)
 
         #expect(collectedStates.contains { if case .loading = $0 { true } else { false } })
         #expect(collectedStates.contains { if case .ready = $0 { true } else { false } })
@@ -101,8 +100,7 @@ struct KokoroModelManagerTests {
         }
 
         _ = try? await manager.ensureReady()
-        try? await Task.sleep(for: .milliseconds(50))
-        task.cancel()
+        await finish(task)
 
         #expect(collectedStates.contains { if case .loading = $0 { true } else { false } })
         #expect(collectedStates.contains { if case .failed = $0 { true } else { false } })

@@ -74,9 +74,7 @@ struct ParakeetModelManagerTests {
         // Trigger load
         _ = try? await manager.ensureReady()
 
-        // Give stream task a moment to process
-        try? await Task.sleep(for: .milliseconds(50))
-        task.cancel()
+        await finish(task)
 
         // Should have seen .loading then .failed
         #expect(collectedStates.contains { if case .loading = $0 { true } else { false } })
