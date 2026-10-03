@@ -74,13 +74,31 @@ struct VoicePreviewServiceTests {
         #expect(validStates, "Expected .playing(.recording) or .idle, got \(state)")
     }
 
+    @Test("previewClone uses the injected inferrer, never the real model")
+    func previewCloneUsesInjectedInferrer() async throws {
+        let store = MockVoiceProfileStore()
+        await store.forceStore(makeTestProfile())
+        let inferrer = MockQwenCloneInferrer()
+        let service = try VoicePreviewService(profileStore: store, inferrerProvider: { inferrer })
+
+        await service.previewClone(profileId: testProfileId, text: "Hello", language: "english")
+        let deadline = ContinuousClock.now + .seconds(5)
+        while await inferrer.callCount == 0, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        await service.stop()
+
+        #expect(await inferrer.callCount == 1)
+    }
+
     @Test("previewClone enters loadingModel state")
     func previewCloneRequiresModel() async throws {
         let store = MockVoiceProfileStore()
         let profile = makeTestProfile()
         await store.forceStore(profile)
 
-        let service = try VoicePreviewService(profileStore: store)
+        // Unit tier must never load the real Qwen3-TTS model (MLX crashed the test host).
+        let service = try VoicePreviewService(profileStore: store, inferrerProvider: { MockQwenCloneInferrer() })
 
         var emittedStates: [String] = []
         let collectTask = Task {

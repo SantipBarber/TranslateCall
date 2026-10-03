@@ -181,3 +181,6 @@ docs/.doctrees/
 
 # Claude Code local settings
 .claude/
+
+## Local tooling (tools/scripts/setup.sh)
+tools/bin/

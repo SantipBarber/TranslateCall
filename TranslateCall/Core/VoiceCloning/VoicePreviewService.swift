@@ -52,8 +52,20 @@ actor VoicePreviewService {
 
     // MARK: - Init
 
-    init(profileStore: any VoiceProfileStoring) throws {
+    /// Supplies the voice-clone inferrer. Injectable so tests never load the real Qwen3-TTS model.
+    typealias InferrerProvider = @Sendable () async throws -> any QwenCloneInferring
+
+    private let inferrerProvider: InferrerProvider
+
+    init(
+        profileStore: any VoiceProfileStoring,
+        inferrerProvider: @escaping InferrerProvider = {
+            try await QwenCloneModelManager.shared.ensureReady()
+            return try await QwenCloneModelManager.shared.getInferrer()
+        }
+    ) throws {
         self.profileStore = profileStore
+        self.inferrerProvider = inferrerProvider
 
         var cont: AsyncStream<PreviewState>.Continuation?
         stateStream = AsyncStream { cont = $0 }
@@ -106,8 +118,7 @@ actor VoicePreviewService {
         do {
             // Ensure model is ready
             transition(to: .loadingModel)
-            try await QwenCloneModelManager.shared.ensureReady()
-            let inferrer = try await QwenCloneModelManager.shared.getInferrer()
+            let inferrer = try await inferrerProvider()
 
             guard !Task.isCancelled else { return }
 
@@ -164,8 +175,7 @@ actor VoicePreviewService {
 
             // 3. Cloned voice
             transition(to: .loadingModel)
-            try await QwenCloneModelManager.shared.ensureReady()
-            let inferrer = try await QwenCloneModelManager.shared.getInferrer()
+            let inferrer = try await inferrerProvider()
 
             let profile = try await profileStore.load(id: profileId)
             guard let samples = profile.samples, let transcript = profile.transcript else {

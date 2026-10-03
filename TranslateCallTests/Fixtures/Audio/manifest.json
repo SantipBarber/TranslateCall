@@ -1,0 +1,8 @@
+[
+  { "id": "es-greeting", "lang": "es-ES", "voice": "Mónica",   "text": "Hola, ¿qué tal? Hoy vamos a revisar el proyecto.", "maxWer": 0.25 },
+  { "id": "es-meeting",  "lang": "es-ES", "voice": "Mónica",   "text": "La reunión empieza a las diez de la mañana.", "maxWer": 0.25 },
+  { "id": "en-hear",     "lang": "en-US", "voice": "Samantha", "text": "Can you hear me clearly? Let's start the meeting.", "maxWer": 0.20 },
+  { "id": "en-budget",   "lang": "en-US", "voice": "Samantha", "text": "We need to review the budget before Friday.", "maxWer": 0.20 },
+  { "id": "uk-greeting", "lang": "uk-UA", "voice": "Lesya",    "text": "Добрий день, як справи?", "maxWer": 0.35 },
+  { "id": "uk-thanks",   "lang": "uk-UA", "voice": "Lesya",    "text": "Дякую, мені дуже приємно вас чути.", "maxWer": 0.35 }
+]

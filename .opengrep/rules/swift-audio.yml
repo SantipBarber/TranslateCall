@@ -1,0 +1,13 @@
+rules:
+  - id: playernode-isplaying-poll
+    languages: [regex]
+    severity: WARNING
+    message: "AVAudioPlayerNode.isPlaying stays true until stop(); polling it never ends. Use scheduleBuffer(completionCallbackType: .dataPlayedBack)."
+    metadata: { audit_ref: "F8.5.1 / EdgeTTSService.swift:167" }
+    pattern-regex: 'while\s+\w+(\.\w+)*\.isPlaying\s*\{'
+  - id: buffer-nocopy-escape
+    languages: [regex]
+    severity: WARNING
+    message: "bufferListNoCopy aliases memory owned by the caller; copy before the buffer escapes the scope (audit 2026-10-03)."
+    metadata: { audit_ref: "F8.5.1 / SystemAudioCaptureService.swift:236" }
+    pattern-regex: 'bufferListNoCopy\s*:'

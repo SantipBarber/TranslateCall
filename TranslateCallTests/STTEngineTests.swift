@@ -68,7 +68,7 @@ struct STTEngineTests {
 
     @Test("CaseIterable covers both cases")
     func allCasesCount() {
-        #expect(STTEngine.allCases.count == 2)
+        #expect(STTEngine.allCases == [.appleSpeech, .parakeet, .whisper])
     }
 
     @Test("displayName is non-empty for all cases")

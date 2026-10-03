@@ -33,6 +33,10 @@ M8 (Full Language Coverage) implementado. Pipeline end-to-end **verificado**: ES
 ## Bloqueantes 🔴
 
 ### 1. Edge TTS WebSocket Connection
+
+> **Update 2026-10-03:** migrated to Starscream 4.0.8 in `d685654` (2026-04-11). End-to-end
+> verification and the playback-completion bug found in the 2026-10-03 audit are tracked in
+> M8.5 (`specs/m8.5-stabilization/`).
 **Problema**: El servidor de Microsoft (`speech.platform.bing.com`) rechaza el WebSocket handshake desde las APIs nativas de Apple.
 
 **Intentos fallidos**:

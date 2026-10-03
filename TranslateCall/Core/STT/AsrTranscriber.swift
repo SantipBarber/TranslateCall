@@ -20,7 +20,7 @@ struct ParakeetTranscriptionOutput: Sendable {
 ///
 /// Only the methods used by the service are exposed here;
 /// `AsrManager` satisfies this protocol via the extension below.
-protocol AsrTranscriber: Sendable {
+nonisolated protocol AsrTranscriber: Sendable {
     /// Transcribe 16 kHz mono Float32 samples and return text, confidence, and audio duration.
     func transcribeAudio(_ samples: [Float]) async throws -> ParakeetTranscriptionOutput
 

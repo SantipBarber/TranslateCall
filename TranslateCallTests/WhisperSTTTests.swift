@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+@preconcurrency import WhisperKit
 @testable import TranslateCall
 
 // MARK: - WhisperConfiguration Tests
@@ -91,9 +92,9 @@ struct WhisperModelManagerTests {
 
     @Test("ensureReady calls the pipe factory")
     func testEnsureReadyCallsFactory() async throws {
-        var factoryCalled = false
+        let factoryCalls = CallCounter()
         let manager = WhisperModelManager(pipeFactory: { _ in
-            factoryCalled = true
+            factoryCalls.increment()
             throw MockError.intentional
         })
         do {
@@ -101,7 +102,7 @@ struct WhisperModelManagerTests {
         } catch {
             // Expected — factory throws
         }
-        #expect(factoryCalled)
+        #expect(factoryCalls.value > 0)
     }
 
     @Test("Task coalescing — concurrent ensureReady calls share one factory invocation")

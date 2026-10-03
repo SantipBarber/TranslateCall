@@ -40,13 +40,13 @@ final class TTSEngineSelector: ObservableObject {
 
     /// True when Edge TTS consent is needed for current locale.
     var needsEdgeTTSConsent: Bool {
-        !AVSpeechService.hasVoice(for: currentTargetLocale)
+        !hasSystemVoice(currentTargetLocale)
             && !EdgeTTSConsentManager.consentGiven
     }
 
     /// True when Edge TTS is being used for the current locale.
     var isUsingEdgeTTS: Bool {
-        !AVSpeechService.hasVoice(for: currentTargetLocale)
+        !hasSystemVoice(currentTargetLocale)
             && EdgeTTSConsentManager.consentGiven
     }
 
@@ -64,6 +64,10 @@ final class TTSEngineSelector: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Factories (var — injectable for tests)
+
+    /// Whether a system (AVSpeech) voice exists for a locale. Injectable so tests don't depend
+    /// on which voices the machine has installed.
+    var hasSystemVoice: (Locale) -> Bool = { AVSpeechService.hasVoice(for: $0) }
 
     var avSpeechFactory: (AudioDeviceID?) throws -> any SynthesisService = { deviceID in
         try AVSpeechService(outputDeviceID: deviceID)
@@ -151,7 +155,7 @@ final class TTSEngineSelector: ObservableObject {
         }
 
         // Priority 3: AVSpeech (if usable voice exists)
-        if AVSpeechService.hasVoice(for: locale) {
+        if hasSystemVoice(locale) {
             return try avSpeechFactory(deviceID)
         }
 
@@ -178,7 +182,7 @@ final class TTSEngineSelector: ObservableObject {
                 outputDeviceID: deviceID, voiceName: voice.shortName
             )
         }
-        if AVSpeechService.hasVoice(for: locale) {
+        if hasSystemVoice(locale) {
             return try avSpeechFactory(deviceID)
         }
         if EdgeTTSConsentManager.consentGiven,

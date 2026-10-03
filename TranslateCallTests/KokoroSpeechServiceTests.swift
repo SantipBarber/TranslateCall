@@ -97,8 +97,7 @@ struct KokoroSpeechServiceTests {
         }
 
         await service.stopSpeaking()
-        try? await Task.sleep(for: .milliseconds(50))
-        streamTask.cancel()
+        await finish(streamTask)
 
         #expect(states.contains(false))
     }

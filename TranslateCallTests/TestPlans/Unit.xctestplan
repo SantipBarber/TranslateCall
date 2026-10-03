@@ -1,0 +1,27 @@
+{
+  "configurations": [
+    {
+      "id": "8F5A0C1E-0000-4000-8000-000000000001",
+      "name": "Default",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "environmentVariableEntries": [
+      {
+        "key": "TC_TEST_TIER",
+        "value": "unit"
+      }
+    ]
+  },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:TranslateCall.xcodeproj",
+        "identifier": "6D67201A2F5B6CC10023D811",
+        "name": "TranslateCallTests"
+      }
+    }
+  ],
+  "version": 1
+}

@@ -7,7 +7,7 @@ import Foundation
 ///
 /// Isolates the FluidAudioEspeak dependency from KokoroSpeechService,
 /// exactly as AsrTranscriber isolates FluidAudio from ParakeetSpeechService.
-protocol KokoroTtsManaging: Sendable {
+nonisolated protocol KokoroTtsManaging: Sendable {
     /// Synthesises `text` and returns raw PCM samples at 24 kHz mono Float32.
     func synthesizeSamples(text: String, voice: String?) async throws -> [Float]
 }

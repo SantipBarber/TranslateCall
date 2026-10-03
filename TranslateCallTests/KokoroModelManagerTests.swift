@@ -62,8 +62,7 @@ struct KokoroModelManagerTests {
         }
 
         _ = try await manager.ensureReady()
-        try? await Task.sleep(for: .milliseconds(50))
-        task.cancel()
+        await finish(task)
 
         #expect(collectedStates.contains { if case .loading = $0 { true } else { false } })
         #expect(collectedStates.contains { if case .ready = $0 { true } else { false } })
@@ -101,8 +100,7 @@ struct KokoroModelManagerTests {
         }
 
         _ = try? await manager.ensureReady()
-        try? await Task.sleep(for: .milliseconds(50))
-        task.cancel()
+        await finish(task)
 
         #expect(collectedStates.contains { if case .loading = $0 { true } else { false } })
         #expect(collectedStates.contains { if case .failed = $0 { true } else { false } })
@@ -112,9 +110,9 @@ struct KokoroModelManagerTests {
 
     @Test("Concurrent callers share the same in-flight task")
     func concurrentCallersShareTask() async throws {
-        var factoryCallCount = 0
+        let factoryCallCount = CallCounter()
         let manager = makeManager { _ in
-            factoryCallCount += 1
+            factoryCallCount.increment()
             try await Task.sleep(for: .milliseconds(30))
             throw TestError.synthesizeFailed
         }
@@ -127,7 +125,7 @@ struct KokoroModelManagerTests {
             }
         }
 
-        #expect(factoryCallCount == 1)
+        #expect(factoryCallCount.value == 1)
     }
 
     // MARK: - unload
@@ -148,52 +146,52 @@ struct KokoroModelManagerTests {
 
     @Test("After unload, ensureReady can be called again (retry)")
     func afterUnloadCanRetry() async {
-        var callCount = 0
+        let callCount = CallCounter()
         let manager = makeManager { _ in
-            callCount += 1
+            callCount.increment()
             throw TestError.synthesizeFailed
         }
 
         _ = try? await manager.ensureReady()
-        #expect(callCount == 1)
+        #expect(callCount.value == 1)
 
         await manager.unload()
 
         _ = try? await manager.ensureReady()
-        #expect(callCount == 2)
+        #expect(callCount.value == 2)
     }
 
     // MARK: - redownload
 
     @Test("redownload unloads then reloads — factory called twice across two calls")
     func redownloadCallsFactoryAgain() async {
-        var callCount = 0
+        let callCount = CallCounter()
         let manager = makeManager { _ in
-            callCount += 1
+            callCount.increment()
             throw TestError.synthesizeFailed
         }
 
         _ = try? await manager.ensureReady()
-        #expect(callCount == 1)
+        #expect(callCount.value == 1)
 
         _ = try? await manager.redownload()
-        #expect(callCount == 2)
+        #expect(callCount.value == 2)
     }
 
     // MARK: - Second ensureReady hits .ready fast path
 
     @Test("Second ensureReady returns cached manager without re-loading")
     func secondEnsureReadyReturnsCached() async throws {
-        var callCount = 0
+        let callCount = CallCounter()
         let mock = MockKokoroTtsManager()
         let manager = makeManager { _ in
-            callCount += 1
+            callCount.increment()
             return mock
         }
 
         _ = try await manager.ensureReady()
         _ = try await manager.ensureReady()
 
-        #expect(callCount == 1) // factory called only once
+        #expect(callCount.value == 1) // factory called only once
     }
 }

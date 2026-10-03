@@ -92,9 +92,7 @@ struct QwenCloneModelManagerTests {
         _ = try? await manager.ensureReady()
         await manager.unload()
 
-        // Give stream time to deliver
-        try? await Task.sleep(for: .milliseconds(50))
-        collectTask.cancel()
+        await finish(collectTask)
 
         // Should have seen: downloading → failed → idle
         #expect(emitted.contains("downloading"))
