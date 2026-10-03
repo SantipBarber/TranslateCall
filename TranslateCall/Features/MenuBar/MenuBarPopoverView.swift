@@ -31,6 +31,7 @@ struct MenuBarPopoverView: View {
                 halfDuplexState: viewModel.halfDuplexState,
                 isIncomingActive: viewModel.isIncomingActive
             )
+            IncomingStatusBanner(status: viewModel.incomingStatus) { viewModel.retryIncoming() }
 
             // Language pair
             HStack(spacing: 6) {

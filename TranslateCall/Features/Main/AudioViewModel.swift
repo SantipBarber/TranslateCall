@@ -44,6 +44,7 @@ final class AudioViewModel: ObservableObject {
     @Published private(set) var incomingTranscription: String?
     @Published private(set) var incomingTranslation: String?
     @Published private(set) var isIncomingActive: Bool = false
+    @Published private(set) var incomingStatus: IncomingStatus = .idle
 
     // MARK: - Half-duplex state (from coordinator)
 
@@ -168,6 +169,10 @@ final class AudioViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
+    func retryIncoming() {
+        coordinator.retryIncoming()
+    }
+
     private func bindCoordinator() {
         coordinator.$isSpeechActive.assign(to: &$isSpeechActive)
         coordinator.$outgoingTranscription.assign(to: &$latestTranscription)
@@ -177,6 +182,7 @@ final class AudioViewModel: ObservableObject {
         coordinator.$incomingTranscription.assign(to: &$incomingTranscription)
         coordinator.$incomingTranslation.assign(to: &$incomingTranslation)
         coordinator.$isIncomingActive.assign(to: &$isIncomingActive)
+        coordinator.$incomingStatus.assign(to: &$incomingStatus)
         coordinator.$halfDuplexState.assign(to: &$halfDuplexState)
         coordinator.$ttsMonitorEnabled.assign(to: &$ttsMonitorEnabled)
         coordinator.$ttsMonitorRecording.assign(to: &$ttsMonitorRecording)
