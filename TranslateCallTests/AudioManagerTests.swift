@@ -249,3 +249,100 @@ struct AudioManagerDevicePersistenceTests {
         #expect(defs.string(forKey: Self.inputKey) == device.uid)
     }
 }
+
+// MARK: - Input choice and device switching (F8.5.1 A5, A5b)
+
+@Suite("AudioManager input choice") @MainActor
+struct AudioManagerInputChoiceTests {
+    private let usb = AudioDevice(id: 10, name: "USB Mic", uid: "usb", hasInput: true, hasOutput: false)
+    private let builtIn = AudioDevice(id: 20, name: "MacBook Mic", uid: "builtin", hasInput: true, hasOutput: false)
+    private let blackHole = AudioDevice(id: 30, name: "BlackHole 2ch", uid: "bh", hasInput: true, hasOutput: true)
+
+    @Test("selected device wins when present")
+    func selectedWins() {
+        #expect(AudioManager.chooseInput(selectedUID: "usb", available: [builtIn, usb], defaultID: 20) == usb)
+    }
+
+    @Test("missing selected device falls back to the system default")
+    func fallsBackToDefault() {
+        #expect(AudioManager.chooseInput(selectedUID: "usb", available: [blackHole, builtIn], defaultID: 20) == builtIn)
+    }
+
+    @Test("no default falls back to the first input; nothing available → nil")
+    func fallsBackToFirst() {
+        #expect(AudioManager.chooseInput(selectedUID: nil, available: [blackHole, builtIn], defaultID: nil) == blackHole)
+        #expect(AudioManager.chooseInput(selectedUID: "usb", available: [], defaultID: 20) == nil)
+    }
+}
+
+@Suite("AudioManager device switching") @MainActor
+struct AudioManagerSwitchTests {
+    /// Records configure calls and fails for device IDs in `failing`.
+    final class ConfigureSpy {
+        var calls: [AudioDeviceID] = []
+        var failing: Set<AudioDeviceID> = []
+        func configure(_ id: AudioDeviceID, _ session: SessionAudioStream) throws {
+            calls.append(id)
+            if failing.contains(id) { throw CoreAudioError.status(-1) }
+        }
+    }
+
+    private func makeManager(_ spy: ConfigureSpy) -> AudioManager {
+        let defaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        return AudioManager(defaults: defaults, configure: { try spy.configure($0, $1) })
+    }
+
+    private let micA = AudioDevice(id: 101, name: "Mic A", uid: "a", hasInput: true, hasOutput: false)
+    private let micB = AudioDevice(id: 102, name: "Mic B", uid: "b", hasInput: true, hasOutput: false)
+
+    @Test("switch failure keeps the previous device and the session stream alive")
+    func switchFailureKeepsPreviousDevice() async throws {
+        let spy = ConfigureSpy()
+        let manager = makeManager(spy)
+        manager.injectInputDevicesForTesting([micA, micB])
+        try manager.selectInput(micA)
+        let stream = try await manager.startCaptureSkippingPermissionForTesting()
+        spy.failing = [micB.id]
+
+        #expect(throws: AudioError.self) { try manager.selectInput(micB) }
+
+        #expect(manager.selectedInput == micA)
+        #expect(manager.isCapturing)
+        #expect(spy.calls == [micA.id, micB.id, micA.id])
+        manager.stopCapture()
+        for await _ in stream {}   // returns only because stopCapture finished the still-open stream
+    }
+
+    @Test("a configuration change for the active, still-present device is ignored")
+    func configChangeForActiveDeviceIsIgnored() async throws {
+        let spy = ConfigureSpy()
+        let manager = makeManager(spy)
+        manager.injectInputDevicesForTesting([micA, micB])
+        try manager.selectInput(micA)
+        _ = try await manager.startCaptureSkippingPermissionForTesting()
+        spy.calls.removeAll()
+
+        manager.handleConfigurationChange(engineRunning: true)
+
+        #expect(spy.calls.isEmpty)
+        #expect(manager.deviceNotice == nil)
+        manager.stopCapture()
+    }
+
+    @Test("the active device disappearing falls back and publishes a notice")
+    func activeDeviceGoneFallsBack() async throws {
+        let spy = ConfigureSpy()
+        let manager = makeManager(spy)
+        manager.injectInputDevicesForTesting([micA, micB])
+        try manager.selectInput(micA)
+        _ = try await manager.startCaptureSkippingPermissionForTesting()
+
+        manager.injectInputDevicesForTesting([micB])       // A unplugged
+        manager.handleConfigurationChange(engineRunning: false)
+
+        #expect(spy.calls.last == micB.id)
+        #expect(manager.selectedInput == micB)
+        #expect(manager.deviceNotice?.contains("Mic A") == true)
+        manager.stopCapture()
+    }
+}

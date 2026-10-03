@@ -149,6 +149,12 @@ final class AudioViewModel: ObservableObject {
         audioManager.$selectedOutput.assign(to: &$selectedOutput)
         audioManager.$inputLevel.assign(to: &$inputLevel)
         audioManager.$isCapturing.assign(to: &$isCapturing)
+        audioManager.$deviceNotice
+            .compactMap { $0 }
+            .sink { [weak self] notice in
+                self?.errorAlert = AlertItem(title: "Microphone", message: notice, action: nil)
+            }
+            .store(in: &cancellables)
     }
 
     private func bindCoordinator() {
@@ -270,10 +276,14 @@ final class AudioViewModel: ObservableObject {
     // MARK: - Device selection
 
     func selectInput(_ device: AudioDevice) {
+        // The picker's onChange also fires for changes that came from AudioManager (fallback,
+        // failure resync): those are already applied and must not be persisted as the user's choice.
+        guard device != audioManager.selectedInput else { return }
         do {
             try audioManager.selectInput(device)
         } catch {
-            errorAlert = AlertItem(title: "Device Error", message: error.localizedDescription, action: nil)
+            selectedInput = audioManager.selectedInput   // picker back to the device actually in use
+            errorAlert = AlertItem(title: "Microphone", message: error.localizedDescription, action: nil)
         }
     }
 
