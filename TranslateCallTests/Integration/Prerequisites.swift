@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import Speech
 import SwiftUI
 import Testing
@@ -106,4 +107,45 @@ func firstTranscript(of fixture: AudioFixture, using stt: any SpeechRecognizerSe
     return TranscriptRun(result: result,
                          vadMs: speechEnd.duration(to: closed).milliseconds,
                          sttMs: closed.duration(to: gotAt).milliseconds)
+}
+
+/// Microphone (TCC) permission for the test host — required to open any input device, BlackHole included.
+func requireMicrophoneAuthorization() async throws {
+    var status = AVCaptureDevice.authorizationStatus(for: .audio)
+    if status == .notDetermined {
+        _ = await AVCaptureDevice.requestAccess(for: .audio)
+        status = AVCaptureDevice.authorizationStatus(for: .audio)
+    }
+    try requirePrerequisite(status == .authorized, "Microphone permission for TranslateCall (status \(status.rawValue))")
+}
+
+/// BlackHole 2ch as both a playback target and a capture source.
+func requireBlackHole(in devices: [AudioDevice]) throws -> AudioDevice {
+    guard let device = devices.first(where: { $0.isBlackHole && $0.hasInput }) else {
+        try requirePrerequisite(false, "BlackHole 2ch audio driver (brew install blackhole-2ch)")
+        throw MissingPrerequisite(description: "BlackHole 2ch")
+    }
+    return device
+}
+
+/// A second capture device whose hardware rate differs from BlackHole's (here EShareAudio, 44.1 kHz),
+/// for the different-rate hot-swap regression test.
+func requireInputDevice(named name: String, in devices: [AudioDevice],
+                        rateDifferentFrom other: AudioDevice) throws -> AudioDevice {
+    let device = devices.first { $0.name == name && $0.hasInput }
+    try requirePrerequisite(device != nil, "input device '\(name)' (a virtual input at a rate other than BlackHole's)")
+    let rate = nominalSampleRate(of: device!.id), otherRate = nominalSampleRate(of: other.id)
+    try requirePrerequisite(rate > 0 && rate != otherRate,
+                            "'\(name)' at a sample rate other than \(other.name)'s (\(rate) vs \(otherRate) Hz)")
+    return device!
+}
+
+/// Read-only HAL query of a device's nominal sample rate (0 when unavailable).
+func nominalSampleRate(of id: AudioDeviceID) -> Float64 {
+    var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyNominalSampleRate,
+                                             mScope: kAudioObjectPropertyScopeGlobal,
+                                             mElement: kAudioObjectPropertyElementMain)
+    var rate: Float64 = 0
+    var size = UInt32(MemoryLayout<Float64>.size)
+    return AudioObjectGetPropertyData(id, &address, 0, nil, &size, &rate) == noErr ? rate : 0
 }
