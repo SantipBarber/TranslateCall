@@ -275,8 +275,15 @@ final class AudioManager: ObservableObject {
         } catch {
             throw AudioError.engineStartFailed(error)
         }
-        let captureFormat = inputNode.outputFormat(forBus: 0)   // read AFTER binding: the rate may change
-        guard captureFormat.sampleRate > 0, captureFormat.channelCount > 0 else {
+        // After rebinding, outputFormat(forBus:) keeps the rate of the device the node was created on
+        // (even on a fresh engine), while inputFormat(forBus:) reports the new hardware. Tap at the
+        // hardware rate, otherwise a different-rate mic hears nothing or installTap throws (Task 8).
+        let clientFormat = inputNode.outputFormat(forBus: 0)
+        let hardwareRate = inputNode.inputFormat(forBus: 0).sampleRate   // read AFTER binding
+        guard hardwareRate > 0, clientFormat.channelCount > 0,
+              let captureFormat = AVAudioFormat(commonFormat: clientFormat.commonFormat, sampleRate: hardwareRate,
+                                                channels: clientFormat.channelCount,
+                                                interleaved: clientFormat.isInterleaved) else {
             throw AudioError.engineStartFailed(NSError(domain: "AudioManager", code: -3,
                 userInfo: [NSLocalizedDescriptionKey: "Device \(deviceID) reports no input format"]))
         }
