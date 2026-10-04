@@ -13,7 +13,7 @@ Each `rules/<name>.yml` has a sibling `rules/<name>.swift` with `// ruleid:` / `
 | `asyncstream-force-unwrap` | WARNING | `cont!` after `AsyncStream { cont = $0 }` | 6 occurrences; use `AsyncStream.makeStream` |
 | `nonisolated-unsafe-justified` | WARNING | `nonisolated(unsafe)` without a `// SAFETY:` comment on the previous line | 41 occurrences |
 | `playernode-isplaying-poll` | WARNING | `AVAudioPlayerNode.isPlaying` stays true until `stop()` — polling never ends | `EdgeTTSService.swift:167` |
-| `buffer-nocopy-escape` | WARNING | `bufferListNoCopy` buffers alias caller memory | `SystemAudioCaptureService.swift:236` |
+| `buffer-nocopy-escape` | ERROR (F8.5.1) | `bufferListNoCopy` buffers alias caller memory | `SystemAudioCaptureService.swift:236` |
 | `no-print` | ERROR | Use `os.Logger` | clean |
 | `hardcoded-secret` | ERROR | Credentials in source | clean (one justified suppression) |
 
