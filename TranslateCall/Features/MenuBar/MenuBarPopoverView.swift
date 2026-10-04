@@ -61,6 +61,7 @@ struct MenuBarPopoverView: View {
             .tint(viewModel.isCapturing ? .red : .accentColor)
             .controlSize(.large)
             .keyboardShortcut("t", modifiers: [.command, .shift])
+            .disabled(viewModel.isStarting)   // start() in flight: no Stop/Start until it settles
 
             // Open main window
             Button("Open Main Window") {

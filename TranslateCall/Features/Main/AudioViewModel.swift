@@ -208,8 +208,11 @@ final class AudioViewModel: ObservableObject {
     /// Set to true when waiting for consent before starting pipeline.
     private var pendingStartAfterConsent: Bool = false
 
+    /// Decides on the coordinator's session state, not on the mic: the mic goes live while
+    /// start() is still loading models, and may stop on its own while the session lives on.
+    /// A toggle while starting stops (start() is then superseded); the controls are disabled then.
     func toggleCapture() async {
-        if isCapturing {
+        if coordinator.isOutgoingActive || coordinator.isStarting {
             await coordinator.stop()
         } else {
             // Check Edge TTS consent BEFORE starting
