@@ -3,7 +3,7 @@ import Foundation
 // MARK: - TTSMetrics
 
 /// Synthesis performance record for one utterance.
-struct TTSMetrics: Sendable {
+nonisolated struct TTSMetrics: Sendable {
     let engine: TTSEngine
     /// Wall-clock milliseconds from `speak()` call to first audio sample scheduled.
     let synthesisLatencyMs: Int
@@ -16,7 +16,7 @@ struct TTSMetrics: Sendable {
 // MARK: - TTSMetricsSummary
 
 /// Aggregated TTS performance summary for one engine.
-struct TTSMetricsSummary: Sendable, Equatable {
+nonisolated struct TTSMetricsSummary: Sendable, Equatable {
     let avgLatencyMs: Double
     let count: Int
 

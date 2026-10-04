@@ -7,7 +7,7 @@ import Foundation
 /// Mirrors the `STTEngine` pattern from F6.1.
 /// `avSpeech` supports all languages; `kokoro` is English-only (American English, beta).
 /// `voiceClone` uses Qwen3-TTS for voice-cloned synthesis (10 languages).
-enum TTSEngine: String, Codable, Sendable, CaseIterable {
+nonisolated enum TTSEngine: String, Codable, Sendable, CaseIterable {
     case avSpeech
     case kokoro
     case voiceClone
