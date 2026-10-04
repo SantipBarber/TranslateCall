@@ -224,6 +224,9 @@ actor TTSPlaybackService: SynthesisService {
     private func speakWithFallback(
         _ fallback: any UtteranceSynthesizer, _ utterance: Utterance, gen: UInt64
     ) async -> Outcome {
+        // A stopSpeaking() that landed while the primary attempt was awaited must not leave a
+        // spurious "fell back" notice behind: stop already reported and cleared this utterance.
+        guard gen == generation else { return .stale }
         eventsContinuation.yield(.fellBack(from: primary.engine, to: fallback.engine))
         let end = await runAttempt(fallback, utterance, gen: gen)
         if case .failed(let message) = end, attemptBufferCount == 0 {

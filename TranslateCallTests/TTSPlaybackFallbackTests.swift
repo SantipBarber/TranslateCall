@@ -152,4 +152,14 @@ struct TTSAudioMonitorFormatTests {
         #expect(!TTSAudioMonitor.needsReconnect(current: edge, incoming: edge))
         #expect(TTSAudioMonitor.needsReconnect(current: edge, incoming: system))
     }
+
+    @Test("Review focus: the recording keeps its first format; a fallback-format buffer is skipped, not mis-written")
+    func recordingSkipsOtherFormat() throws {
+        let edge = try #require(AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1))
+        let system = try #require(AVAudioFormat(standardFormatWithSampleRate: 22_050, channels: 1))
+        #expect(TTSAudioMonitor.recordingAction(pending: false, fileFormat: nil, incoming: edge) == .none)
+        #expect(TTSAudioMonitor.recordingAction(pending: true, fileFormat: nil, incoming: edge) == .create)
+        #expect(TTSAudioMonitor.recordingAction(pending: false, fileFormat: edge, incoming: edge) == .write)
+        #expect(TTSAudioMonitor.recordingAction(pending: false, fileFormat: edge, incoming: system) == .skip)
+    }
 }

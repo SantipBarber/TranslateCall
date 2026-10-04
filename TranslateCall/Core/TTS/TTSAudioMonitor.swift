@@ -19,6 +19,8 @@ nonisolated final class TTSAudioMonitor: @unchecked Sendable {
     // MARK: - Recording
 
     private let lock = NSLock()
+    /// Logs the first skipped buffer of a recording only (guarded by `lock`).
+    private var loggedFormatSkip = false
     private var recordingFile: AVAudioFile?
     private var recordingURL: URL?
     /// When true, the file will be created lazily on the first buffer in `process(_:)`.
@@ -28,7 +30,9 @@ nonisolated final class TTSAudioMonitor: @unchecked Sendable {
 
     /// Master toggle. When false, `process(_:)` is a no-op.
     var isEnabled: Bool = false
-    /// Format the player is connected with; nil until the first buffer.
+    /// Serializes connect/start/schedule/play on the player (see `schedule(_:restartingPlayer:)`).
+    private let playerLock = NSLock()
+    /// Format the player is connected with; nil until the first buffer. Guarded by `playerLock`.
     private var playerFormat: AVAudioFormat?
 
     /// True while recording to file (or pending first buffer).
@@ -59,46 +63,90 @@ nonisolated final class TTSAudioMonitor: @unchecked Sendable {
     /// Safe to call from any actor / thread.
     func process(_ buffer: AVAudioPCMBuffer) {
         guard isEnabled, buffer.frameLength > 0 else { return }
+        guard schedule(buffer, restartingPlayer: false) else { return }
+        record(buffer)
+    }
 
-        // The player must be connected with the buffer's format, and that format changes when the
-        // playback service falls back to another engine mid-session (F8.5.2): reconnect then, so a
-        // mismatched buffer is never scheduled (that raises an exception and crashes the app).
-        connectPlayer(for: buffer.format)
-
-        // Restart engine if it was invalidated (e.g. after stop/start cycle).
-        if !engine.isRunning {
-            do {
-                try engine.start()
-                logger.info("Monitor engine restarted")
-            } catch {
-                logger.warning("Monitor engine restart failed: \(error.localizedDescription)")
-                return
+    /// Connects the player for `buffer.format`, (re)starts the engine and schedules the buffer, all
+    /// under `playerLock`: `process` runs on the playback service's executor and `playLastRecording`
+    /// on the main actor, so without the lock one path could schedule a buffer on a player the other
+    /// just reconnected at another format (that raises an exception and crashes the app).
+    /// Only the player→mixer connection changes; no HAL/AU format is ever written.
+    private func schedule(_ buffer: AVAudioPCMBuffer, restartingPlayer: Bool) -> Bool {
+        playerLock.withLock {
+            if restartingPlayer { playerNode.stop() }
+            // The player must be connected with the buffer's format, and that format changes when the
+            // playback service falls back to another engine mid-session (F8.5.2).
+            connectPlayer(for: buffer.format)
+            // Restart engine if it was invalidated (e.g. after stop/start cycle).
+            if !engine.isRunning {
+                do {
+                    try engine.start()
+                    logger.info("Monitor engine restarted")
+                } catch {
+                    logger.warning("Monitor engine restart failed: \(error.localizedDescription)")
+                    return false
+                }
             }
+            playerNode.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
+            if !playerNode.isPlaying { playerNode.play() }
+            return true
         }
+    }
 
-        playerNode.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
-        if !playerNode.isPlaying { playerNode.play() }
-
+    /// Writes `buffer` to the recording file, creating it lazily on the first buffer.
+    private func record(_ buffer: AVAudioPCMBuffer) {
         lock.lock()
-        // Lazily create the recording file on the first buffer so the format matches.
-        if recordingPending, recordingFile == nil, let url = recordingURL {
+        defer { lock.unlock() }
+        switch Self.recordingAction(pending: recordingPending && recordingURL != nil,
+                                    fileFormat: recordingFile?.processingFormat,
+                                    incoming: buffer.format) {
+        case .none:
+            return
+        case .create:
+            guard let url = recordingURL else { return }
+            recordingPending = false
             do {
-                recordingFile = try AVAudioFile(forWriting: url, settings: buffer.format.settings)
-                recordingPending = false
+                // The processing format is the buffer's own, so `write(from:)` accepts it as is.
+                recordingFile = try AVAudioFile(forWriting: url, settings: buffer.format.settings,
+                                                commonFormat: buffer.format.commonFormat,
+                                                interleaved: buffer.format.isInterleaved)
                 logger.info("Recording file created with format: \(buffer.format.description)")
             } catch {
                 logger.warning("Failed to create recording file: \(error.localizedDescription)")
-                recordingPending = false
+                return
             }
-        }
-        if let file = recordingFile {
-            do {
-                try file.write(from: buffer)
-            } catch {
-                logger.warning("Failed to write buffer to recording: \(error.localizedDescription)")
+        case .write:
+            break
+        case .skip:
+            if !loggedFormatSkip {
+                loggedFormatSkip = true
+                let format = buffer.format.description
+                logger.info("Recording skips audio in another format (fallback engine): \(format)")
             }
+            return
         }
-        lock.unlock()
+        do {
+            try recordingFile?.write(from: buffer)
+        } catch {
+            logger.warning("Failed to write buffer to recording: \(error.localizedDescription)")
+        }
+    }
+
+    /// What `process` does with a buffer for the recording.
+    enum RecordingAction: Equatable {
+        case none, create, write, skip
+    }
+
+    /// The recording file keeps the format of its first buffer. A buffer in another format (the
+    /// playback service fell back mid-session, e.g. 24 kHz Edge → 22.05 kHz AVSpeech) is skipped
+    /// rather than written at the wrong rate or split into segments: skipping is the simpler choice
+    /// and keeps "Play last recording" meaningful — one file, played back at its true speed, with the
+    /// audio of the engine the recording started on.
+    static func recordingAction(pending: Bool, fileFormat: AVAudioFormat?,
+                                incoming: AVAudioFormat) -> RecordingAction {
+        guard let fileFormat else { return pending ? .create : .none }
+        return fileFormat == incoming ? .write : .skip
     }
 
     /// True when the player has to be (re)connected before scheduling a buffer of `incoming` format.
@@ -106,6 +154,7 @@ nonisolated final class TTSAudioMonitor: @unchecked Sendable {
         current != incoming
     }
 
+    /// Caller holds `playerLock`.
     private func connectPlayer(for format: AVAudioFormat) {
         guard Self.needsReconnect(current: playerFormat, incoming: format) else { return }
         playerNode.stop()
@@ -133,6 +182,7 @@ nonisolated final class TTSAudioMonitor: @unchecked Sendable {
         recordingFile = nil
         recordingURL = url
         recordingPending = true
+        loggedFormatSkip = false
         lock.unlock()
 
         logger.info("Recording started (pending first buffer): \(url.lastPathComponent)")
@@ -183,10 +233,7 @@ nonisolated final class TTSAudioMonitor: @unchecked Sendable {
             ) else { return }
             try audioFile.read(into: buffer)
 
-            playerNode.stop()
-            connectPlayer(for: buffer.format)
-            playerNode.scheduleBuffer(buffer, at: nil, options: [])
-            playerNode.play()
+            guard schedule(buffer, restartingPlayer: true) else { return }
             logger.info("Playing recording: \(url.lastPathComponent)")
         } catch {
             logger.error("Failed to play recording: \(error.localizedDescription)")

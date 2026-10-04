@@ -269,6 +269,7 @@ final class AudioCoordinator: ObservableObject {
         let duration = ttsNoticeDuration
         ttsNoticeTask = Task { [weak self] in
             do { try await clock.sleep(for: duration) } catch { return }
+            guard !Task.isCancelled else { return }   // a newer notice replaced this one
             self?.ttsNotice = nil
         }
     }

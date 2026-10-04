@@ -57,6 +57,28 @@ struct AudioCoordinatorTTSTests {
         await coordinator.stop()
     }
 
+    @Test("incoming sentences are still dropped while incomingCaptureSuppressed is true (REQ-T-43)")
+    func incomingDroppedWhileSuppressed() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks, noticeClock: TestClock())
+        await coordinator.start(captureTarget: .app(bundleID: "com.test.call"))
+        #expect(await waitUntil { coordinator.isIncomingActive })
+        coordinator.suppressIncomingPipeline(true)
+
+        await mocks.mockIncomingSTT.injectTranscription(transcript("hello"))
+
+        // Negative check: bounded wait; the suppressed sentence must never reach incoming TTS.
+        #expect(!(await waitUntil(timeout: .milliseconds(300)) {
+            await !mocks.mockIncomingTTS.speakCalls.isEmpty
+        }))
+
+        // Control: the same path speaks once suppression lifts, so the drop above was the guard.
+        coordinator.suppressIncomingPipeline(false)
+        await mocks.mockIncomingSTT.injectTranscription(transcript("goodbye"))
+        #expect(await waitUntil { await mocks.mockIncomingTTS.speakCalls.count == 1 })
+        await coordinator.stop()
+    }
+
     @Test("a TTS event becomes the notice line, never an alert, and clears itself after 5 s (REQ-T-41)")
     func noticeAutoClears() async {
         let mocks = CoordinatorMocks()
