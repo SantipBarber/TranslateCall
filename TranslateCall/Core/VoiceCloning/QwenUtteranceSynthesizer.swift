@@ -48,9 +48,11 @@ nonisolated final class QwenUtteranceSynthesizer: UtteranceSynthesizer {
                     text: input, referenceAudio: samples, referenceTranscript: transcript, language: language
                 )
                 try Task.checkCancellation()
-                if let buffer = PCMBufferFactory.mono(audio, sampleRate: Double(inferrer.sampleRate)) {
-                    continuation.yield(buffer)
+                guard !audio.isEmpty,
+                      let buffer = PCMBufferFactory.mono(audio, sampleRate: Double(inferrer.sampleRate)) else {
+                    throw QwenCloneError.emptyOutput
                 }
+                continuation.yield(buffer)
                 continuation.finish()
             } catch {
                 continuation.finish(throwing: error)

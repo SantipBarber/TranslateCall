@@ -37,6 +37,10 @@ actor MLXInferenceGate {
         _ work: @escaping @Sendable () async throws -> T
     ) async throws -> T {
         try await acquire(waitLimit: wait)
+        if Task.isCancelled {                 // cancelled while being handed the gate: never start MLX
+            release()
+            throw CancellationError()
+        }
         let delivery = GateDelivery<T>()
         // Detached: the inference must not run on (or be cancelled with) any caller's executor.
         Task.detached { [weak self] in
@@ -76,7 +80,23 @@ actor MLXInferenceGate {
         }
         defer { timer.cancel() }
         // Resumed by `release()` (the gate is handed over, still busy) or by `expireWaiter` (gateBusy).
-        try await withCheckedThrowingContinuation { waiters.append(Waiter(id: id, continuation: $0)) }
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else {
+                    waiters.append(Waiter(id: id, continuation: continuation))
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelWaiter(id) }
+        }
+    }
+
+    /// Removing the waiter from the queue is the once-only guard: whoever removes it resumes it.
+    private func cancelWaiter(_ id: UInt64) {
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        waiters.remove(at: index).continuation.resume(throwing: CancellationError())
     }
 
     private func expireWaiter(_ id: UInt64) {

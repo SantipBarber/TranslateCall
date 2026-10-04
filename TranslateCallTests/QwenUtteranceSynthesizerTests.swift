@@ -71,6 +71,17 @@ struct QwenUtteranceSynthesizerTests {
         #expect(await inferrer.callCount == 0)
     }
 
+    @Test("empty model output fails the stream instead of finishing silently")
+    func emptyOutputThrows() async {
+        let inferrer = MockQwenCloneInferrer()
+        await inferrer.setStubSamples([])
+        let store = MockVoiceProfileStore()
+        await store.forceStore(profile())
+        await #expect(throws: QwenCloneError.emptyOutput) {
+            _ = try await collect(make(inferrer, store: store).synthesize(text: "Hello", locale: english))
+        }
+    }
+
     @Test("supports the Qwen languages only")
     func canSpeak() {
         let synthesizer = make(MockQwenCloneInferrer(), store: MockVoiceProfileStore())

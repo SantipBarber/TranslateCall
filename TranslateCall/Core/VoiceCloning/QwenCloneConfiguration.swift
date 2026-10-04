@@ -95,6 +95,8 @@ nonisolated enum QwenCloneError: LocalizedError, Sendable, Equatable {
     case unsupportedLocale
     /// Another Qwen inference held `MLXInferenceGate` longer than the wait limit (F8.5.2 REQ-T-32).
     case gateBusy
+    /// The model returned no audio.
+    case emptyOutput
 
     var errorDescription: String? {
         switch self {
@@ -103,6 +105,7 @@ nonisolated enum QwenCloneError: LocalizedError, Sendable, Equatable {
         case .downloadFailed(let reason): return "Voice clone model download failed: \(reason)"
         case .unsupportedLocale: return "Voice clone does not support this language."
         case .gateBusy: return "The voice clone model is busy. Try again in a moment."
+        case .emptyOutput: return "Voice clone synthesis produced no audio."
         }
     }
 }

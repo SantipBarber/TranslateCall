@@ -107,4 +107,28 @@ struct MLXInferenceGateTests {
         _ = try await running.value
         #expect(!(await gate.isBusy))
     }
+
+    @Test("a cancelled queued caller leaves the queue, never runs, and the next caller gets the gate")
+    func cancelledWaiterLeavesQueue() async throws {
+        let gate = MLXInferenceGate(clock: TestClock())
+        let hold = AsyncGate()
+        let ran = ConcurrencyProbe()
+        let first = Task { try await gate.run(wait: .seconds(2), inference: .seconds(10)) { await hold.wait(); return 1 } }
+        #expect(await waitUntil { await gate.isBusy })
+        let cancelled = Task { try await gate.run(wait: .seconds(2), inference: .seconds(10)) { ran.enter(); return 2 } }
+        #expect(await waitUntil { await gate.waitingCount == 1 })
+        let next = Task { try await gate.run(wait: .seconds(2), inference: .seconds(10)) { return 3 } }
+        #expect(await waitUntil { await gate.waitingCount == 2 })
+
+        cancelled.cancel()
+        await #expect(throws: CancellationError.self) { try await cancelled.value }
+        #expect(await waitUntil { await gate.waitingCount == 1 })
+
+        hold.open()
+        #expect(try await first.value == 1)
+        #expect(try await next.value == 3)
+        // Negative check: the cancelled work must not have run (bounded wait, nothing to wait for).
+        #expect(!(await waitUntil(timeout: .milliseconds(200)) { ran.started > 0 }))
+        #expect(!(await gate.isBusy))
+    }
 }

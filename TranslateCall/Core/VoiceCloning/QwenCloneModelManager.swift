@@ -47,7 +47,7 @@ actor QwenCloneModelManager {
 
     typealias ModelLoader = @Sendable (String) async throws -> any QwenCloneInferring
 
-    nonisolated static let defaultLoader: ModelLoader = { modelRepo in
+    nonisolated private static let defaultLoader: ModelLoader = { modelRepo in
         let model = try await TTS.loadModel(modelRepo: modelRepo)
         return QwenCloneClient(model: model)
     }
