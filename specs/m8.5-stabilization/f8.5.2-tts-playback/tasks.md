@@ -5749,11 +5749,12 @@ Build and run the app (`just build`, then open `build/DerivedData/Build/Products
 | M3 | AVSpeech, a long sentence (≥ 25 s of speech) | Spoken to the end, not truncated | |
 | M4 | Outgoing: say four sentences quickly | None is cut off; at most 3 wait; if one is dropped, "Speaking behind — skipped an older sentence" shows | |
 | M5 | Kokoro English session; press Stop mid-sentence, then Start and speak | Nothing of the stopped sentence plays after Stop; the new session speaks normally | |
+| M6 | Incoming (D-7, REQ-T-43): the remote party says two sentences quickly | Both translations are spoken in order; the second is not dropped while the first is playing | |
 
 - [ ] **Step 8: Full gate (done by the controller with the user)**
 
 Run: `just pr`
-Expected: build → check → test → test-integration all pass; `local/just-pr` status = success on HEAD; PR created against `main` with the template filled in (spec + this plan, tests, `just pr`, manual checklist M1–M5). Then put the PR number into the backlog rows of Step 5 (amend or a follow-up commit, and run `just pr` again).
+Expected: build → check → test → test-integration all pass; `local/just-pr` status = success on HEAD; PR created against `main` with the template filled in (spec + this plan, tests, `just pr`, manual checklist M1–M6). Then put the PR number into the backlog rows of Step 5 (amend or a follow-up commit, and run `just pr` again).
 
 ---
 
@@ -5798,5 +5799,5 @@ Expected: build → check → test → test-integration all pass; `local/just-pr
 | NFR-T-02 `isSpeaking` false within 150 ms of the last sample | 4 | `TTSPlaybackIntegrationTests.avSpeechThroughBlackHole` |
 | NFR-T-03 unit tests: no network, no models, no audio device | all | fakes everywhere; device tests live in the integration tier |
 | AC 3 Edge "hello" within 10 s, missing network fails | 7 | `EdgeTTSIntegrationTests.hello` |
-| AC 4 manual checklist | 10 | M1–M5 |
+| AC 4 manual checklist | 10 | M1–M6 |
 | AC 6 backlog | 10 | Step 5 |

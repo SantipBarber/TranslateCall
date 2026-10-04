@@ -5,7 +5,7 @@ import Foundation
 /// Manages one-time user consent for Edge TTS (cloud-based synthesis).
 /// Edge TTS sends text to Microsoft servers — user must explicitly opt in.
 enum EdgeTTSConsentManager {
-    nonisolated(unsafe) private static let consentKey = "tlk.edgeTTS.consentGiven"
+    nonisolated private static let consentKey = "tlk.edgeTTS.consentGiven"
 
     static var consentGiven: Bool {
         UserDefaults.standard.bool(forKey: consentKey)

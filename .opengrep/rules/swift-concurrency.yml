@@ -1,7 +1,7 @@
 rules:
   - id: asyncstream-unbounded
     languages: [regex]
-    severity: WARNING
+    severity: ERROR
     message: "AsyncStream without bufferingPolicy buffers without limit (audit 2026-10-03 — 48 kHz stream leak). Pass bufferingPolicy explicitly."
     metadata: { audit_ref: "F8.5.1 / AudioManager.swift:148" }
     patterns:
@@ -11,10 +11,10 @@ rules:
       - pattern-not-regex: '->\s*AsyncStream(<[^>]*>)?\s*\{'
       - pattern-not-regex: 'AsyncStream(<[^>]*>)?\s*\{\s*get\b'
     paths:
-      include: ["TranslateCall/Core/Audio/", "TranslateCall/Core/TTS/", ".opengrep/rules/"]
+      include: ["TranslateCall/Core/Audio/", "TranslateCall/Core/TTS/", "TranslateCall/Core/VoiceCloning/", ".opengrep/rules/"]
   - id: asyncstream-force-unwrap
     languages: [regex]
-    severity: WARNING
+    severity: ERROR
     message: "Force-unwrapping an AsyncStream continuation. Use AsyncStream.makeStream(of:bufferingPolicy:)."
     metadata: { audit_ref: "F8.5.1 / cont! pattern" }
     pattern-regex: '\bcont!'
