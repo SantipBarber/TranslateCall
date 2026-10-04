@@ -10,7 +10,7 @@
 |-------------|------|-------|
 | F8.5.1 Capture & streams | `f8.5.1-capture-streams/` | A1, A1b, A2, A4, A5, A5b, T1, A10 (Core/Audio) |
 | F8.5.2 TTS playback | `f8.5.2-tts-playback/` | A3, A3b–e, A9, A9b, A12, A11, T6, A10 (Core/TTS, VoiceCloning) |
-| F8.5.3 Half-duplex + VAD | — | A6, A7, A13, T3, T4 (VAD silence), T2 (evaluation) |
+| F8.5.3 Half-duplex + VAD | — | A6, A7, A13, A14, A15, T3, T4 (VAD silence), T2 (evaluation) |
 | F8.5.4 Translation | — | A8, T4 (`invalidate()`), T5 |
 
 Out of M8.5 (strategic, later): min macOS 26 / SpeechAnalyzer, WhisperKit → Argmax SDK, own virtual audio driver.
@@ -56,3 +56,11 @@ Out of M8.5 (strategic, later): min macOS 26 / SpeechAnalyzer, WhisperKit → Ar
 | # | Finding | Where | Guard in place |
 |---|---------|-------|----------------|
 | A13 | Two-way TTS queueing (D-3/D-7) × half-duplex suppression: while incoming TTS speaks a backlog (up to 4 sentences) `outgoingCaptureSuppressed` drops the user's translated sentences silently (and vice versa for incoming while the user's backlog plays); Edge-only locale with Edge down keeps `isSpeaking` true during silent failed attempts. Options: shrink suppression to the echo-risky case, flush the other direction's queue when the user starts speaking, show a "not sent" notice. Owner: F8.5.3 | `AudioCoordinator+Pipeline.swift` (`handleIncomingTranslation` guard), `HalfDuplexManager.swift`, `TTSPlaybackService.swift` | `AudioCoordinatorTTSTests.incomingDroppedWhileSuppressed` (pins today's drop, REQ-T-43); manual M6 |
+
+## From the F8.5.2 manual checklist (2026-10-04)
+
+| # | Finding | Where | Guard in place |
+|---|---------|-------|----------------|
+| A14 | No way for one person to hear the translated voice end to end. Outgoing TTS goes to BlackHole (it is heard only through the call app or the **Monitor** toggle); incoming needs a remote party. Solo procedure, until a test harness exists: (1) outgoing: turn **Monitor** on in the main window and speak; (2) incoming: quit Zoom/Teams so every running app is listed as capture app, pick Safari/Chrome, play speech in the remote language in it; the translation plays on the default output. Idea: a "loopback test" mode or a call-simulation container (see dev-workflow future idea). Owner: F8.5.3 (decide) | `SetupManager.swift:72-81` (capture-app list), `ContentView.swift` monitor row | manual only |
+| A15 | Long speech is split into many short sentences: the VAD ends a segment at short pauses (minSilence 0.75 s), so a long sentence is translated in pieces (F8.5.2 M3). Same knob as T4. Owner: F8.5.3 | `VADConfiguration` | manual M3 |
+| A16 | Kokoro judged "not very good" (F8.5.2 M5) — quality vs. Stop/Start behaviour not yet separated. Detail before deciding. Owner: unassigned | `KokoroUtteranceSynthesizer` | — |
