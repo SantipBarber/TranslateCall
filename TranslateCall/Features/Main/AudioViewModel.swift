@@ -38,6 +38,11 @@ final class AudioViewModel: ObservableObject {
     @Published private(set) var latestTranslation: String?
     @Published private(set) var isSpeaking: Bool = false
     @Published private(set) var isStarting = false
+    /// One-line TTS notice (skip, fallback, drop) from the coordinator; clears itself (F8.5.2 REQ-T-41).
+    @Published private(set) var ttsNotice: String?
+
+    /// A translation session is running or starting: the voice preview stays disabled (REQ-T-33).
+    var isSessionActive: Bool { isCapturing || isStarting }
 
     // MARK: - Incoming pipeline state (from coordinator)
 
@@ -200,6 +205,7 @@ final class AudioViewModel: ObservableObject {
         coordinator.$outgoingTranslation.assign(to: &$latestTranslation)
         coordinator.$isOutgoingSpeaking.assign(to: &$isSpeaking)
         coordinator.$isStarting.assign(to: &$isStarting)
+        coordinator.$ttsNotice.assign(to: &$ttsNotice)
         coordinator.$incomingTranscription.assign(to: &$incomingTranscription)
         coordinator.$incomingTranslation.assign(to: &$incomingTranslation)
         coordinator.$isIncomingActive.assign(to: &$isIncomingActive)

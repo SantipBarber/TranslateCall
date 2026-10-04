@@ -143,4 +143,31 @@ struct AudioViewModelTests {
 
         #expect(await waitUntil { harness.coordinator.incomingStatus == .disabled })
     }
+
+    @Test("the voice preview counts as blocked while the session starts and while the mic captures (REQ-T-33)")
+    func sessionActiveWhileStartingOrCapturing() async throws {
+        let harness = ViewModelHarness()
+        #expect(!harness.viewModel.isSessionActive)
+
+        await harness.mocks.mockVADFactory.holdNextActivation()
+        let starting = Task { await harness.coordinator.start() }
+        #expect(await waitUntil { harness.viewModel.isStarting })
+        #expect(harness.viewModel.isSessionActive)
+        await harness.mocks.mockVADFactory.releaseActivation()
+        await starting.value
+        await harness.coordinator.stop()
+        #expect(await waitUntil { !harness.viewModel.isStarting })
+
+        _ = try await harness.audioManager.startCaptureSkippingPermissionForTesting()
+        #expect(await waitUntil { harness.viewModel.isCapturing })
+        #expect(harness.viewModel.isSessionActive)
+        harness.audioManager.stopCapture()
+    }
+
+    @Test("the coordinator's TTS notice reaches the view model")
+    func ttsNoticeIsBound() async {
+        let harness = ViewModelHarness()
+        harness.coordinator.showTTSNotice("Speech failed — sentence skipped")
+        #expect(await waitUntil { harness.viewModel.ttsNotice == "Speech failed — sentence skipped" })
+    }
 }

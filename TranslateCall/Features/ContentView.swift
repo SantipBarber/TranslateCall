@@ -59,6 +59,7 @@ struct ContentView: View {
                 incomingTranslation: viewModel.incomingTranslation,
                 isIncomingActive: viewModel.isIncomingActive
             )
+            TTSNoticeLine(text: viewModel.ttsNotice)
 
             STTMetricsView()
                 .padding(.horizontal, 2)
@@ -103,7 +104,7 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showVoiceProfiles) {
             NavigationStack {
-                VoiceProfileListView()
+                VoiceProfileListView(isSessionActive: viewModel.isSessionActive)
                     .environmentObject(voiceProfileManager)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
