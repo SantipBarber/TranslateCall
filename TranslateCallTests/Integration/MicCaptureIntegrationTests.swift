@@ -68,8 +68,7 @@ extension IntegrationTests {
             try await requireMicrophoneAuthorization()
             let manager = AudioManager(defaults: isolatedDefaults())
             let blackHole = try requireBlackHole(in: manager.inputDevices)
-            let other = try requireInputDevice(named: "EShareAudio", in: manager.inputDevices,
-                                               rateDifferentFrom: blackHole)
+            let other = try requireInputDevice(in: manager.inputDevices, rateDifferentFrom: blackHole)
             let player = try BlackHolePlayer(fixtureURL: try fixtureURL(), deviceID: blackHole.id)
             defer { player.stop() }
 
@@ -80,7 +79,7 @@ extension IntegrationTests {
             #expect(await waitUntil(timeout: .seconds(3)) { log.loudCount(since: start) > 0 })
 
             // Before the fix the engine kept the old 48 kHz client format: silence on a 16 kHz mic,
-            // an installTap format-mismatch exception (crash) on this 44.1 kHz stereo device.
+            // an installTap format-mismatch exception (crash) on a 44.1 kHz stereo one.
             let toOther = ContinuousClock.now
             try manager.selectInput(other)
             #expect(manager.activeInputDeviceID == other.id)

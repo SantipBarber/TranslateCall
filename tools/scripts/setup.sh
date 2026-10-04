@@ -57,6 +57,13 @@ ok "Metal Toolchain"
 # Informational only (needed by `just fixtures` / manual call tests)
 audio=$(system_profiler SPAudioDataType 2>/dev/null || true)  # informational probe only
 if [[ "$audio" == *"BlackHole 2ch"* ]]; then ok "BlackHole 2ch"; else info "BlackHole 2ch not found (brew install blackhole-2ch) — only needed for live calls"; fi
+# Integration tier (MicCapture different-rate hot swap): an input whose rate differs from BlackHole's.
+other_rate_input=$(awk '
+  /^        [^ ].*:$/ { name = $0; sub(/^ +/, "", name); sub(/:$/, "", name); inp = 0 }
+  /Input Channels:/ { inp = 1 }
+  /Current SampleRate:/ { if (name ~ /BlackHole/) bh = $3; else if (inp && $3 > 0) { n++; names[n] = name; rates[n] = $3 } }
+  END { for (i = 1; i <= n; i++) if (bh != "" && rates[i] != bh) { print names[i] " (" rates[i] " Hz)"; exit } }' <<<"$audio")
+if [[ -n "$other_rate_input" ]]; then ok "input at a rate other than BlackHole's: $other_rate_input"; else info "no input device at a rate other than BlackHole's (e.g. EShareAudio, a USB mic or headset) — needed by just test-integration (MicCapture hot swap)"; fi
 voices=$(say -v '?')
 for v in "Mónica" "Samantha" "Lesya"; do
   if grep -q "^$v " <<<"$voices"; then ok "voice $v"; else info "voice $v missing — install it from System Settings (search \"Voices\"); needed by just fixtures"; fi

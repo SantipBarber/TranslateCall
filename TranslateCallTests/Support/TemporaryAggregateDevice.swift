@@ -8,8 +8,10 @@ final class TemporaryAggregateDevice {
     let id: AudioDeviceID
     let uid: String
 
+    static let uidPrefix = "com.spbarber.TranslateCall.tests.aggregate."
+
     init(wrapping subDeviceUID: String) throws {
-        uid = "com.spbarber.TranslateCall.tests.aggregate.\(UUID().uuidString)"
+        uid = Self.uidPrefix + UUID().uuidString
         let description: [String: Any] = [
             kAudioAggregateDeviceNameKey: "TranslateCall Test Input",
             kAudioAggregateDeviceUIDKey: uid,

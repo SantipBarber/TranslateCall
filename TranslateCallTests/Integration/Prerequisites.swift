@@ -128,16 +128,22 @@ func requireBlackHole(in devices: [AudioDevice]) throws -> AudioDevice {
     return device
 }
 
-/// A second capture device whose hardware rate differs from BlackHole's (here EShareAudio, 44.1 kHz),
-/// for the different-rate hot-swap regression test.
-func requireInputDevice(named name: String, in devices: [AudioDevice],
-                        rateDifferentFrom other: AudioDevice) throws -> AudioDevice {
-    let device = devices.first { $0.name == name && $0.hasInput }
-    try requirePrerequisite(device != nil, "input device '\(name)' (a virtual input at a rate other than BlackHole's)")
-    let rate = nominalSampleRate(of: device!.id), otherRate = nominalSampleRate(of: other.id)
-    try requirePrerequisite(rate > 0 && rate != otherRate,
-                            "'\(name)' at a sample rate other than \(other.name)'s (\(rate) vs \(otherRate) Hz)")
-    return device!
+/// Any input device whose nominal rate differs from BlackHole's (for the different-rate hot-swap
+/// regression test). Excludes BlackHole and our private test aggregates; picks the first by name, then UID.
+/// Not provisioned by `just setup`: any USB mic/webcam, headset or virtual input at another rate will do.
+func requireInputDevice(in devices: [AudioDevice], rateDifferentFrom blackHole: AudioDevice) throws -> AudioDevice {
+    let blackHoleRate = nominalSampleRate(of: blackHole.id)
+    let candidates = devices
+        .filter { $0.hasInput && !$0.isBlackHole && !$0.uid.hasPrefix(TemporaryAggregateDevice.uidPrefix) }
+        .filter { let rate = nominalSampleRate(of: $0.id); return rate > 0 && rate != blackHoleRate }
+        .sorted { ($0.name, $0.uid) < ($1.name, $1.uid) }
+    guard let device = candidates.first else {
+        let what = "an input device whose nominal rate differs from BlackHole's (\(Int(blackHoleRate)) Hz)"
+            + " — e.g. EShareAudio, a USB mic or headset"
+        Issue.record("Missing prerequisite: \(what)")
+        throw MissingPrerequisite(description: what)
+    }
+    return device
 }
 
 /// Read-only HAL query of a device's nominal sample rate (0 when unavailable).
