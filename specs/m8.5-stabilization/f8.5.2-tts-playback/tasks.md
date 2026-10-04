@@ -5749,7 +5749,7 @@ Build and run the app (`just build`, then open `build/DerivedData/Build/Products
 | M3 | AVSpeech, a long sentence (≥ 25 s of speech) | Spoken to the end, not truncated | |
 | M4 | Outgoing: say four sentences quickly | None is cut off; at most 3 wait; if one is dropped, "Speaking behind — skipped an older sentence" shows | |
 | M5 | Kokoro English session; press Stop mid-sentence, then Start and speak | Nothing of the stopped sentence plays after Stop; the new session speaks normally | |
-| M6 | Incoming (D-7, REQ-T-43): the remote party says two sentences quickly | Both translations are spoken in order; the second is not dropped while the first is playing | |
+| M6 | Incoming (D-7, REQ-T-43): the remote party says two sentences quickly; then the remote speaks 3 sentences and the user replies while they play | Both translations are spoken in order; the second is not dropped while the first is playing; then record what happens to the user's reply (expected today: dropped silently while incoming TTS speaks — backlog F8.5.3, A13) | |
 
 - [ ] **Step 8: Full gate (done by the controller with the user)**
 

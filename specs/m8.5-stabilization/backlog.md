@@ -10,7 +10,7 @@
 |-------------|------|-------|
 | F8.5.1 Capture & streams | `f8.5.1-capture-streams/` | A1, A1b, A2, A4, A5, A5b, T1, A10 (Core/Audio) |
 | F8.5.2 TTS playback | `f8.5.2-tts-playback/` | A3, A3b–e, A9, A9b, A12, A11, T6, A10 (Core/TTS, VoiceCloning) |
-| F8.5.3 Half-duplex + VAD | — | A6, A7, T3, T4 (VAD silence), T2 (evaluation) |
+| F8.5.3 Half-duplex + VAD | — | A6, A7, A13, T3, T4 (VAD silence), T2 (evaluation) |
 | F8.5.4 Translation | — | A8, T4 (`invalidate()`), T5 |
 
 Out of M8.5 (strategic, later): min macOS 26 / SpeechAnalyzer, WhisperKit → Argmax SDK, own virtual audio driver.
@@ -50,3 +50,9 @@ Out of M8.5 (strategic, later): min macOS 26 / SpeechAnalyzer, WhisperKit → Ar
 | T4 | VAD silence wait (~700 ms) dominates latency; translation 300–960 ms per call (`invalidate()` each time) | `build/reports/latency.json` | latency recorded, not enforced |
 | T5 | `TranslationService.supports` defaults to `true` for Apple Translation | `TranslationService.swift:51` | tests use `LanguageAvailability` directly |
 | T6 | Qwen3-TTS (MLX) crashes the process when two inferences overlap; `VoicePreviewService.stop()` cancels the Task but not the running MLX inference, so rapid preview clicks can crash the app | crash reports 2026-10-03 17:10/17:14 (`mlx_slice_update` via `QwenCloneClient.synthesize`) | fixed in F8.5.2 — `MLXInferenceGateTests.oneAtATime`, `.timeoutKeepsGateClosed`, `.gateBusy`; manual M2 |
+
+## Found by the F8.5.2 review (2026-10-04)
+
+| # | Finding | Where | Guard in place |
+|---|---------|-------|----------------|
+| A13 | Two-way TTS queueing (D-3/D-7) × half-duplex suppression: while incoming TTS speaks a backlog (up to 4 sentences) `outgoingCaptureSuppressed` drops the user's translated sentences silently (and vice versa for incoming while the user's backlog plays); Edge-only locale with Edge down keeps `isSpeaking` true during silent failed attempts. Options: shrink suppression to the echo-risky case, flush the other direction's queue when the user starts speaking, show a "not sent" notice. Owner: F8.5.3 | `AudioCoordinator+Pipeline.swift` (`handleIncomingTranslation` guard), `HalfDuplexManager.swift`, `TTSPlaybackService.swift` | `AudioCoordinatorTTSTests.incomingDroppedWhileSuppressed` (pins today's drop, REQ-T-43); manual M6 |
