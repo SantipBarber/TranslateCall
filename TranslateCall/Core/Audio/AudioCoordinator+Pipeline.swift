@@ -55,6 +55,7 @@ extension AudioCoordinator {
             observeTTSState(tts, onSpeakingChange: { [weak self] speaking in
                 self?.isOutgoingSpeaking = speaking
             }, into: &outgoingTasks)
+            observeTTSEvents(tts, language: languagePairManager.targetLanguage, into: &outgoingTasks)
             logger.info("Outgoing: TTS activated")
         } catch {
             errorAlert = makeAlertItem(for: error)
@@ -115,6 +116,7 @@ extension AudioCoordinator {
             observeTTSState(tts, onSpeakingChange: { [weak self] speaking in
                 self?.isIncomingSpeaking = speaking
             }, into: &incomingTasks)
+            observeTTSEvents(tts, language: languagePairManager.sourceLanguage, into: &incomingTasks)
 
             if let reason = pendingStopReason {
                 await abandonIncomingActivation()
@@ -231,6 +233,21 @@ extension AudioCoordinator {
         })
     }
 
+    /// Skips, fallbacks and drops of a `TTSPlaybackService` → the notice line (REQ-T-41).
+    private func observeTTSEvents(
+        _ tts: some SynthesisService,
+        language: Locale.Language,
+        into tasks: inout [Task<Void, Never>]
+    ) {
+        guard let events = tts.ttsEvents else { return }
+        let languageName = languagePairManager.displayName(for: language)
+        tasks.append(Task { [weak self] in
+            for await event in events {
+                self?.showTTSNotice(event.noticeText(language: languageName))
+            }
+        })
+    }
+
     func cancelAllTasks() {
         outgoingTasks.forEach { $0.cancel() }
         outgoingTasks.removeAll()
@@ -249,7 +266,7 @@ extension AudioCoordinator {
         }
         // Suppress when incoming TTS is playing on speakers — prevents mic-pickup feedback loop.
         guard !text.isEmpty, !outgoingCaptureSuppressed else { return }
-        await outgoingTTS?.stopSpeaking()
+        // No stopSpeaking() first: sentences queue (≤ 3 pending) instead of cutting each other (D-3).
         do {
             let translated = try await outgoingTranslationService.translate(
                 text: text,
@@ -265,8 +282,9 @@ extension AudioCoordinator {
     }
 
     private func handleIncomingTranslation(of text: String) async {
-        // Suppress when outgoing TTS is active (BlackHole loopback prevention) or self is speaking.
-        guard !text.isEmpty, !incomingCaptureSuppressed, !isIncomingSpeaking else { return }
+        // Suppress while outgoing TTS is active (BlackHole loopback prevention, F8.5.3). No
+        // isIncomingSpeaking guard: remote sentences queue (≤ 3 pending) like outgoing ones (D-3, D-7).
+        guard !text.isEmpty, !incomingCaptureSuppressed else { return }
         do {
             let translated = try await incomingTranslationService.translate(
                 text: text,

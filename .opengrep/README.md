@@ -9,10 +9,10 @@ Each `rules/<name>.yml` has a sibling `rules/<name>.swift` with `// ruleid:` / `
 
 | Rule | Severity | Why | Audit reference |
 |------|----------|-----|-----------------|
-| `asyncstream-unbounded` | WARNING | Unbounded `AsyncStream` in audio/TTS code grows without limit | 48 kHz stream leak, `AudioManager.swift:148` |
-| `asyncstream-force-unwrap` | WARNING | `cont!` after `AsyncStream { cont = $0 }` | 6 occurrences; use `AsyncStream.makeStream` |
-| `nonisolated-unsafe-justified` | WARNING | `nonisolated(unsafe)` without a `// SAFETY:` comment on the previous line | 41 occurrences |
-| `playernode-isplaying-poll` | WARNING | `AVAudioPlayerNode.isPlaying` stays true until `stop()` — polling never ends | `EdgeTTSService.swift:167` |
+| `asyncstream-unbounded` | ERROR (F8.5.2) | Unbounded `AsyncStream` in audio/TTS/voice-cloning code grows without limit | 48 kHz stream leak, `AudioManager.swift:148` |
+| `asyncstream-force-unwrap` | ERROR (F8.5.2) | `cont!` after `AsyncStream { cont = $0 }` | 6 occurrences, all removed in F8.5.1–F8.5.2; use `AsyncStream.makeStream` |
+| `nonisolated-unsafe-justified` | WARNING | `nonisolated(unsafe)` without a `// SAFETY:` comment on the previous line | clean in Core/Audio, Core/TTS, Core/VoiceCloning; 4 left in Core/STT and Core/Translation |
+| `playernode-isplaying-poll` | ERROR (F8.5.2) | `AVAudioPlayerNode.isPlaying` stays true until `stop()` — polling never ends | `EdgeTTSService.swift:167` (deleted in F8.5.2) |
 | `buffer-nocopy-escape` | ERROR (F8.5.1) | `bufferListNoCopy` buffers alias caller memory | `SystemAudioCaptureService.swift:236` |
 | `no-print` | ERROR | Use `os.Logger` | clean |
 | `hardcoded-secret` | ERROR | Credentials in source | clean (one justified suppression) |

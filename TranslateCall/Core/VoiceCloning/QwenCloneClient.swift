@@ -13,7 +13,7 @@ import MLXLMCommon
 /// actor triggers "sending non-Sendable value" errors. Instead, this is a plain
 /// class with `@unchecked Sendable`. Thread safety is guaranteed by the underlying
 /// model (`Qwen3TTSModel` is `@unchecked Sendable`) and by the caller serializing
-/// access through `QwenCloneSpeechService` (which is an actor).
+/// access through `MLXInferenceGate` (`QwenCloneModelManager.gatedInferrer()`).
 nonisolated final class QwenCloneClient: QwenCloneInferring, @unchecked Sendable {
 
     private let model: any SpeechGenerationModel

@@ -1,7 +1,7 @@
 rules:
   - id: playernode-isplaying-poll
     languages: [regex]
-    severity: WARNING
+    severity: ERROR
     message: "AVAudioPlayerNode.isPlaying stays true until stop(); polling it never ends. Use scheduleBuffer(completionCallbackType: .dataPlayedBack)."
     metadata: { audit_ref: "F8.5.1 / EdgeTTSService.swift:167" }
     pattern-regex: 'while\s+\w+(\.\w+)*\.isPlaying\s*\{'

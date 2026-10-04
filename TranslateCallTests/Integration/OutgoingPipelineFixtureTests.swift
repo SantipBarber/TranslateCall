@@ -26,12 +26,13 @@ extension IntegrationTests {
             let text = try await translator.translate(text: run.result.text, from: src, to: dst)
             let translateMs = translateStart.duration(to: .now).milliseconds
 
-            let tts = try AVSpeechService(outputDeviceID: nil)
-            var events = tts.isSpeakingStream.makeAsyncIterator()
+            // First TTS audio = the first buffer handed to the device (speak() only enqueues).
+            let output = RecordingOutput(wrapping: try TTSOutput(deviceID: nil))
+            let tts = TTSPlaybackService(primary: AVSpeechUtteranceSynthesizer(), output: output)
             let ttsStart = ContinuousClock.now
             await tts.speak(text: text, locale: Locale(identifier: "en-US"))
-            while let speaking = await events.next(), !speaking {}
-            let ttsMs = ttsStart.duration(to: .now).milliseconds
+            #expect(await waitUntil(timeout: .seconds(15)) { output.firstScheduleAt != nil }, "no TTS audio within 15 s")
+            let ttsMs = ttsStart.duration(to: output.firstScheduleAt ?? .now).milliseconds
             await tts.deactivate()
 
             let total = run.vadMs + run.sttMs + translateMs + ttsMs

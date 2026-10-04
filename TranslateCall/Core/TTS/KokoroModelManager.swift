@@ -55,10 +55,9 @@ actor KokoroModelManager {
 
     init(managerFactory: @escaping ManagerFactory = KokoroModelManager.defaultFactory) {
         self.managerFactory = managerFactory
-        var cont: AsyncStream<ModelState>.Continuation?
-        stateStream = AsyncStream { cont = $0 }
-        // swiftlint:disable:next force_unwrapping
-        stateContinuation = cont!
+        (stateStream, stateContinuation) = AsyncStream.makeStream(
+            of: ModelState.self, bufferingPolicy: .bufferingNewest(8)
+        )
     }
 
     // MARK: - Public API

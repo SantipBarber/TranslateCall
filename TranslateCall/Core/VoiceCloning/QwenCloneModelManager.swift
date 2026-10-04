@@ -15,6 +15,9 @@ nonisolated private let logger = Logger(
 /// - State machine: .idle → .downloading → .loading → .ready / .failed
 /// - Concurrent callers to `ensureReady()` share a single in-flight Task (coalescing)
 /// - `modelLoader` is injectable for unit tests (no real model download needed)
+///
+/// The loaded client is private: inference is only reachable through `synthesize`, which goes through
+/// `MLXInferenceGate`, so no two MLX inferences ever overlap (F8.5.2 REQ-T-31, backlog T6).
 actor QwenCloneModelManager {
 
     // MARK: - State machine
@@ -35,38 +38,37 @@ actor QwenCloneModelManager {
 
     private(set) var state: ModelState = .idle
     private var loadTask: Task<Void, Error>?
-    private var inferrer: QwenCloneClient?
-
-    // Nonisolated copy for synchronous factory access (QwenCloneClient is Sendable)
-    nonisolated(unsafe) private(set) var cachedInferrer: QwenCloneClient?
+    private var inferrer: (any QwenCloneInferring)?
 
     private let stateContinuation: AsyncStream<ModelState>.Continuation
     nonisolated let stateStream: AsyncStream<ModelState>
 
     // MARK: - Factory
 
-    typealias ModelLoader = @Sendable (String) async throws -> QwenCloneClient
+    typealias ModelLoader = @Sendable (String) async throws -> any QwenCloneInferring
 
-    nonisolated static let defaultLoader: ModelLoader = { modelRepo in
+    nonisolated private static let defaultLoader: ModelLoader = { modelRepo in
         let model = try await TTS.loadModel(modelRepo: modelRepo)
         return QwenCloneClient(model: model)
     }
 
     private let modelLoader: ModelLoader
     private let config: QwenCloneConfiguration
+    private let gate: MLXInferenceGate
 
     // MARK: - Init
 
     init(
         config: QwenCloneConfiguration = .default,
-        modelLoader: @escaping ModelLoader = QwenCloneModelManager.defaultLoader
+        modelLoader: @escaping ModelLoader = QwenCloneModelManager.defaultLoader,
+        gate: MLXInferenceGate = .shared
     ) {
         self.config = config
         self.modelLoader = modelLoader
-        var cont: AsyncStream<ModelState>.Continuation?
-        stateStream = AsyncStream { cont = $0 }
-        // swiftlint:disable:next force_unwrapping
-        stateContinuation = cont!
+        self.gate = gate
+        (stateStream, stateContinuation) = AsyncStream.makeStream(
+            of: ModelState.self, bufferingPolicy: .bufferingNewest(8)
+        )
     }
 
     // MARK: - Public API
@@ -87,30 +89,40 @@ actor QwenCloneModelManager {
         }
     }
 
-    /// Returns the client when the model is ready.
-    func getInferrer() throws -> QwenCloneClient {
-        guard case .ready = state, let inferrer else {
-            throw QwenCloneError.modelNotReady
+    /// One Qwen3-TTS inference, through the process-wide gate (REQ-T-30…32): waits at most 2 s for
+    /// another inference, and gives up after `config.inferenceTimeoutSeconds` (the gate stays closed
+    /// until MLX actually returns).
+    func synthesize(
+        text: String,
+        referenceAudio: [Float],
+        referenceTranscript: String,
+        language: String
+    ) async throws -> [Float] {
+        guard case .ready = state, let inferrer else { throw QwenCloneError.modelNotReady }
+        return try await gate.run(inference: .seconds(config.inferenceTimeoutSeconds)) {
+            try await inferrer.synthesize(
+                text: text,
+                referenceAudio: referenceAudio,
+                referenceTranscript: referenceTranscript,
+                language: language
+            )
         }
-        return inferrer
     }
 
-    /// Nonisolated sync accessor for the factory closure in TTSEngineSelector.
-    /// Returns the cached inferrer if model is ready, nil otherwise.
-    nonisolated func getInferrerSync() throws -> QwenCloneClient {
-        guard let client = cachedInferrer else {
-            throw QwenCloneError.modelNotReady
-        }
-        return client
+    /// A `QwenCloneInferring` for `QwenUtteranceSynthesizer` and `VoicePreviewService` whose every
+    /// call goes through `synthesize`, i.e. through the gate.
+    nonisolated func gatedInferrer() -> any QwenCloneInferring {
+        GatedQwenInferrer(manager: self, sampleRate: config.outputSampleRate)
     }
 
-    /// Unloads the model and releases resources.
-    func unload() {
+    /// Unloads the model. New inferences fail from the first line on; the client is released only
+    /// once the gate is idle, never under a running MLX inference (design §6).
+    func unload() async {
         loadTask?.cancel()
         loadTask = nil
-        inferrer = nil
-        cachedInferrer = nil
         transition(to: .idle)
+        await gate.waitUntilIdle()
+        if case .idle = state { inferrer = nil }   // a reload during the wait keeps its new client
     }
 
     /// Checks whether the HuggingFace model cache directory exists.
@@ -132,7 +144,6 @@ actor QwenCloneModelManager {
         let task = Task<Void, Error> {
             let client = try await loader(repo)
             self.inferrer = client
-            self.cachedInferrer = client
             self.transition(to: .ready)
         }
         loadTask = task
@@ -153,5 +164,27 @@ actor QwenCloneModelManager {
         state = newState
         stateContinuation.yield(newState)
         logger.debug("QwenCloneModelManager → \(String(describing: newState))")
+    }
+}
+
+// MARK: - GatedQwenInferrer
+
+/// `QwenCloneInferring` over `QwenCloneModelManager.synthesize` (and so over `MLXInferenceGate`).
+nonisolated struct GatedQwenInferrer: QwenCloneInferring {
+    let manager: QwenCloneModelManager
+    let sampleRate: Int
+
+    func synthesize(
+        text: String,
+        referenceAudio: [Float],
+        referenceTranscript: String,
+        language: String
+    ) async throws -> [Float] {
+        try await manager.synthesize(
+            text: text,
+            referenceAudio: referenceAudio,
+            referenceTranscript: referenceTranscript,
+            language: language
+        )
     }
 }

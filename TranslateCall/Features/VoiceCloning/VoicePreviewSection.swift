@@ -98,11 +98,18 @@ struct VoicePreviewSection: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .disabled(isPlaying)
+            .disabled(isPlaying || isSessionActive)
+
+            if isSessionActive {
+                Text(Self.sessionActiveHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             // Status label
             statusLabel
         }
+        .help(isSessionActive ? Self.sessionActiveHelp : "")
         .task {
             for await newState in previewService.stateStream {
                 previewState = newState
@@ -123,8 +130,15 @@ struct VoicePreviewSection: View {
     }
 
     private var canPreview: Bool {
+        Self.canPreview(isPlaying: isPlaying, isSessionActive: isSessionActive)
+    }
+
+    /// Previews share the MLX gate with session TTS; during a session they are off (F8.5.2 REQ-T-33).
+    static func canPreview(isPlaying: Bool, isSessionActive: Bool) -> Bool {
         !isPlaying && !isSessionActive
     }
+
+    static let sessionActiveHelp = "Preview is unavailable while a translation session is running."
 
     private var previewButtonIcon: String {
         if case .synthesizing(.cloned) = previewState { return "ellipsis" }

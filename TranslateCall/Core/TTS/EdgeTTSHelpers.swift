@@ -77,19 +77,28 @@ enum EdgeTTSConstants: Sendable {
 
 // MARK: - EdgeTTSError
 
-enum EdgeTTSError: LocalizedError {
+nonisolated enum EdgeTTSError: LocalizedError, Equatable {
     case invalidURL
     case notConnected
+    case connectTimeout
+    case firstChunkTimeout
     case synthesisTimeout
-    case handshakeRejected(String)
+    case connectionClosed
+    case connectionFailed(String)
+    case emptyAudio
+    case decodeFailed(OSStatus)
 
     var errorDescription: String? {
         switch self {
         case .invalidURL: return "Invalid Edge TTS endpoint URL."
         case .notConnected: return "Edge TTS not connected."
+        case .connectTimeout: return "Edge TTS did not connect in time."
+        case .firstChunkTimeout: return "Edge TTS sent no audio in time."
         case .synthesisTimeout: return "Edge TTS synthesis timed out."
-        case .handshakeRejected(let response):
-            return "Edge TTS handshake rejected: \(response.prefix(100))"
+        case .connectionClosed: return "The Edge TTS connection closed."
+        case .connectionFailed(let reason): return "The Edge TTS connection failed: \(reason)"
+        case .emptyAudio: return "Edge TTS returned no audio."
+        case .decodeFailed(let status): return "Edge TTS audio could not be decoded (\(status))."
         }
     }
 }

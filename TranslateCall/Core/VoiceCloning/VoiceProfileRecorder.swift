@@ -16,7 +16,7 @@ actor VoiceProfileRecorder {
 
     // MARK: - Engine state
 
-    nonisolated(unsafe) private var engine: AVAudioEngine?
+    private var engine: AVAudioEngine?
     private var capturedSamples: [Float] = []
     private let targetSampleRate: Double = 24_000
 
@@ -29,10 +29,9 @@ actor VoiceProfileRecorder {
 
     init(isSessionActive: @escaping @Sendable () -> Bool = { false }) {
         self.isSessionActive = isSessionActive
-        var cont: AsyncStream<Float>.Continuation?
-        levelStream = AsyncStream { cont = $0 }
-        // swiftlint:disable:next force_unwrapping
-        levelContinuation = cont!
+        (levelStream, levelContinuation) = AsyncStream.makeStream(
+            of: Float.self, bufferingPolicy: .bufferingNewest(8)
+        )
     }
 
     // MARK: - Public API
@@ -211,6 +210,7 @@ actor VoiceProfileRecorder {
             pcmFormat: targetFormat, frameCapacity: outFrames
         ) else { return nil }
 
+        // SAFETY: the converter calls this input block synchronously, on this thread, within convert().
         nonisolated(unsafe) var consumed = false
         let status = converter.convert(to: out, error: nil) { _, outStatus in
             if consumed {

@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct VoiceProfileListView: View {
+    /// A translation session is running or starting: previews are disabled (F8.5.2 REQ-T-33).
+    var isSessionActive: Bool = false
+
     @EnvironmentObject private var profileManager: VoiceProfileManager
 
     @State private var showRecording = false
@@ -82,7 +85,7 @@ struct VoiceProfileListView: View {
         List {
             ForEach(profileManager.profiles) { header in
                 NavigationLink {
-                    VoiceProfileDetailView(header: header)
+                    VoiceProfileDetailView(header: header, isSessionActive: isSessionActive)
                         .environmentObject(profileManager)
                 } label: {
                     profileRow(header)

@@ -64,6 +64,15 @@ final class AudioCoordinator: ObservableObject {
     @Published private(set) var ttsMonitorRecording: Bool = false
     private(set) var ttsMonitor: TTSAudioMonitor?
 
+    // MARK: - TTS notice (F8.5.2 REQ-T-41)
+
+    /// Latest TTS skip / fallback / drop, as one line; clears itself after `ttsNoticeDuration`.
+    /// Never an alert. Written by AudioCoordinator+Pipeline.swift, hence not `private(set)`.
+    @Published var ttsNotice: String?
+    private var ttsNoticeTask: Task<Void, Never>?
+    private let noticeClock: any Clock<Duration>
+    private let ttsNoticeDuration: Duration
+
     // MARK: - Injected dependencies
 
     let audioCapture: any AudioCapture
@@ -130,7 +139,9 @@ final class AudioCoordinator: ObservableObject {
         outgoingTTSFactory: @escaping (Locale, AudioDeviceID?) throws -> any SynthesisService,
         incomingTTSFactory: @escaping (Locale, AudioDeviceID?) throws -> any SynthesisService,
         languagePairManager: LanguagePairManager,
-        halfDuplexTransitionDelay: Duration = .milliseconds(300)
+        halfDuplexTransitionDelay: Duration = .milliseconds(300),
+        noticeClock: any Clock<Duration> = ContinuousClock(),
+        ttsNoticeDuration: Duration = .seconds(5)
     ) {
         self.audioCapture = audioCapture
         self.systemCapture = systemCapture
@@ -144,6 +155,8 @@ final class AudioCoordinator: ObservableObject {
         self.incomingTTSFactory = incomingTTSFactory
         self.languagePairManager = languagePairManager
         self.halfDuplexTransitionDelay = halfDuplexTransitionDelay
+        self.noticeClock = noticeClock
+        self.ttsNoticeDuration = ttsNoticeDuration
     }
 
     // MARK: - Public actions
@@ -210,6 +223,8 @@ final class AudioCoordinator: ObservableObject {
         incomingTranscription = nil
         incomingTranslation = nil
         suppressNextOutgoingTurnFlag = false
+        ttsNoticeTask?.cancel()
+        ttsNotice = nil
 
         logger.info("AudioCoordinator stopped")
     }
@@ -242,6 +257,21 @@ final class AudioCoordinator: ObservableObject {
     func suppressNextOutgoingTurn() {
         suppressNextOutgoingTurnFlag = true
         logger.debug("Next outgoing turn will be suppressed")
+    }
+
+    // MARK: - TTS notice
+
+    /// Shows `text` in the notice line, replacing any earlier notice and restarting its timer.
+    func showTTSNotice(_ text: String) {
+        ttsNotice = text
+        ttsNoticeTask?.cancel()
+        let clock = noticeClock
+        let duration = ttsNoticeDuration
+        ttsNoticeTask = Task { [weak self] in
+            do { try await clock.sleep(for: duration) } catch { return }
+            guard !Task.isCancelled else { return }   // a newer notice replaced this one
+            self?.ttsNotice = nil
+        }
     }
 
     // MARK: - TTS Monitor actions

@@ -8,8 +8,9 @@ extension IntegrationTests {
         @Test("AVSpeech produces audio", arguments: ["es-ES", "en-US", "uk-UA"])
         func avSpeech(_ lang: String) async throws {
             let locale = Locale(identifier: lang)
-            try requirePrerequisite(AVSpeechService.hasVoice(for: locale), "system voice for \(lang)")
-            let tts = try AVSpeechService(outputDeviceID: nil) // default output: audible during the run
+            try requirePrerequisite(AVSpeechUtteranceSynthesizer.hasVoice(for: locale), "system voice for \(lang)")
+            // Default output: audible during the run.
+            let tts = TTSPlaybackService(primary: AVSpeechUtteranceSynthesizer(), output: try TTSOutput(deviceID: nil))
             let monitor = try TTSAudioMonitor()
             monitor.isEnabled = true
             let file = try monitor.startRecording()

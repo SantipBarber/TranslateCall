@@ -5,7 +5,7 @@ import Foundation
 
 /// Minimal protocol over KokoroTtsManager for dependency injection and testing.
 ///
-/// Isolates the FluidAudioEspeak dependency from KokoroSpeechService,
+/// Isolates the FluidAudioEspeak dependency from KokoroUtteranceSynthesizer,
 /// exactly as AsrTranscriber isolates FluidAudio from ParakeetSpeechService.
 nonisolated protocol KokoroTtsManaging: Sendable {
     /// Synthesises `text` and returns raw PCM samples at 24 kHz mono Float32.
