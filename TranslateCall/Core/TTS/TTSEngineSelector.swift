@@ -77,7 +77,7 @@ final class TTSEngineSelector: ObservableObject {
     }
     // swiftlint:disable:next line_length
     var voiceCloneFactory: (AudioDeviceID?, UUID, any VoiceProfileStoring) throws -> any SynthesisService = { deviceID, profileId, store in
-        let inferrer = try QwenCloneModelManager.shared.getInferrerSync()
+        let inferrer = QwenCloneModelManager.shared.gatedInferrer()
         return try QwenCloneSpeechService(
             outputDeviceID: deviceID,
             activeProfileId: profileId,

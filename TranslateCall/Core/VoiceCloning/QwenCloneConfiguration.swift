@@ -11,6 +11,8 @@ nonisolated struct QwenCloneConfiguration: Sendable {
     var repetitionPenalty: Float = 1.5
     var inferenceTimeoutSeconds: Int = 10
     var textTruncationLimit: Int = 200
+    /// Qwen3-TTS (12 Hz codec) output rate, as `QwenCloneClient.sampleRate` reports it.
+    var outputSampleRate: Int = 24_000
 
     nonisolated static let `default` = QwenCloneConfiguration()
 
@@ -86,9 +88,21 @@ nonisolated struct QwenCloneConfiguration: Sendable {
 
 // MARK: - QwenCloneError
 
-enum QwenCloneError: Error, Sendable {
+nonisolated enum QwenCloneError: LocalizedError, Sendable, Equatable {
     case modelNotReady
     case inferenceTimeout
     case downloadFailed(String)
     case unsupportedLocale
+    /// Another Qwen inference held `MLXInferenceGate` longer than the wait limit (F8.5.2 REQ-T-32).
+    case gateBusy
+
+    var errorDescription: String? {
+        switch self {
+        case .modelNotReady: return "The voice clone model is not loaded."
+        case .inferenceTimeout: return "Voice clone synthesis took too long."
+        case .downloadFailed(let reason): return "Voice clone model download failed: \(reason)"
+        case .unsupportedLocale: return "Voice clone does not support this language."
+        case .gateBusy: return "The voice clone model is busy. Try again in a moment."
+        }
+    }
 }

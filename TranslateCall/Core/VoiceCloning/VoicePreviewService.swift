@@ -40,10 +40,10 @@ actor VoicePreviewService {
     nonisolated let stateStream: AsyncStream<PreviewState>
     private let stateContinuation: AsyncStream<PreviewState>.Continuation
 
-    // MARK: - Audio engine (nonisolated(unsafe): set in init, read from actor — safe)
+    // MARK: - Audio engine (the preview's own player: system default output, never BlackHole)
 
-    nonisolated(unsafe) private let engine = AVAudioEngine()
-    nonisolated(unsafe) private let playerNode = AVAudioPlayerNode()
+    private let engine = AVAudioEngine()
+    private let playerNode = AVAudioPlayerNode()
 
     // MARK: - Dependencies
 
@@ -53,6 +53,7 @@ actor VoicePreviewService {
     // MARK: - Init
 
     /// Supplies the voice-clone inferrer. Injectable so tests never load the real Qwen3-TTS model.
+    /// The default goes through `MLXInferenceGate`, shared with session TTS (F8.5.2 REQ-T-30, T6).
     typealias InferrerProvider = @Sendable () async throws -> any QwenCloneInferring
 
     private let inferrerProvider: InferrerProvider
@@ -61,16 +62,15 @@ actor VoicePreviewService {
         profileStore: any VoiceProfileStoring,
         inferrerProvider: @escaping InferrerProvider = {
             try await QwenCloneModelManager.shared.ensureReady()
-            return try await QwenCloneModelManager.shared.getInferrer()
+            return QwenCloneModelManager.shared.gatedInferrer()
         }
     ) throws {
         self.profileStore = profileStore
         self.inferrerProvider = inferrerProvider
 
-        var cont: AsyncStream<PreviewState>.Continuation?
-        stateStream = AsyncStream { cont = $0 }
-        // swiftlint:disable:next force_unwrapping
-        stateContinuation = cont!
+        (stateStream, stateContinuation) = AsyncStream.makeStream(
+            of: PreviewState.self, bufferingPolicy: .bufferingNewest(8)
+        )
 
         try setupAudioEngine()
     }
@@ -239,6 +239,7 @@ actor VoicePreviewService {
             var collectedSamples: [Float] = []
 
             // Hold synthesizer reference until completion
+            // SAFETY: only the write callback touches it, and AVSpeech calls that callback serially.
             nonisolated(unsafe) var retainedSynthesizer: AVSpeechSynthesizer? = synthesizer
 
             synthesizer.write(utterance) { buffer in
@@ -328,6 +329,7 @@ actor VoicePreviewService {
             return nil
         }
 
+        // SAFETY: the converter calls this input block synchronously, on this thread, within convert().
         nonisolated(unsafe) var inputConsumed = false
         let status = converter.convert(to: outBuf, error: nil) { _, outStatus in
             if inputConsumed {
