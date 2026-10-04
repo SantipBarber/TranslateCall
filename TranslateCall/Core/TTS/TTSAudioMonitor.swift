@@ -28,8 +28,8 @@ nonisolated final class TTSAudioMonitor: @unchecked Sendable {
 
     /// Master toggle. When false, `process(_:)` is a no-op.
     var isEnabled: Bool = false
-    /// Whether playerNode→mixer has been reconnected with the actual TTS buffer format.
-    private var playerFormatConfigured = false
+    /// Format the player is connected with; nil until the first buffer.
+    private var playerFormat: AVAudioFormat?
 
     /// True while recording to file (or pending first buffer).
     var isRecording: Bool { lock.withLock { recordingFile != nil || recordingPending } }
@@ -60,14 +60,10 @@ nonisolated final class TTSAudioMonitor: @unchecked Sendable {
     func process(_ buffer: AVAudioPCMBuffer) {
         guard isEnabled, buffer.frameLength > 0 else { return }
 
-        // On first buffer, reconnect playerNode→mixer with the actual TTS format
-        // (e.g. mono 22 kHz). format:nil at init resolves to stereo from outputNode.
-        if !playerFormatConfigured {
-            engine.disconnectNodeOutput(playerNode)
-            engine.connect(playerNode, to: mixer, format: buffer.format)
-            playerFormatConfigured = true
-            logger.info("Monitor player format configured: \(buffer.format.description)")
-        }
+        // The player must be connected with the buffer's format, and that format changes when the
+        // playback service falls back to another engine mid-session (F8.5.2): reconnect then, so a
+        // mismatched buffer is never scheduled (that raises an exception and crashes the app).
+        connectPlayer(for: buffer.format)
 
         // Restart engine if it was invalidated (e.g. after stop/start cycle).
         if !engine.isRunning {
@@ -103,6 +99,20 @@ nonisolated final class TTSAudioMonitor: @unchecked Sendable {
             }
         }
         lock.unlock()
+    }
+
+    /// True when the player has to be (re)connected before scheduling a buffer of `incoming` format.
+    static func needsReconnect(current: AVAudioFormat?, incoming: AVAudioFormat) -> Bool {
+        current != incoming
+    }
+
+    private func connectPlayer(for format: AVAudioFormat) {
+        guard Self.needsReconnect(current: playerFormat, incoming: format) else { return }
+        playerNode.stop()
+        engine.disconnectNodeOutput(playerNode)
+        engine.connect(playerNode, to: mixer, format: format)
+        playerFormat = format
+        logger.info("Monitor player format configured: \(format.description)")
     }
 
     // MARK: - Recording API
@@ -174,6 +184,7 @@ nonisolated final class TTSAudioMonitor: @unchecked Sendable {
             try audioFile.read(into: buffer)
 
             playerNode.stop()
+            connectPlayer(for: buffer.format)
             playerNode.scheduleBuffer(buffer, at: nil, options: [])
             playerNode.play()
             logger.info("Playing recording: \(url.lastPathComponent)")

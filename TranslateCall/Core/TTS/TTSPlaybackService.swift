@@ -88,6 +88,11 @@ actor TTSPlaybackService: SynthesisService {
     private var attemptTask: Task<AttemptEnd, Never>?
     private var bufferObserver: (@Sendable (AVAudioPCMBuffer) -> Void)?
 
+    // Circuit breaker on the primary (REQ-T-23).
+    private var consecutiveFailures = 0
+    private(set) var isBreakerOpen = false
+    private var breakerTask: Task<Void, Never>?
+
     // The attempt in flight. Only the worker starts attempts, one at a time.
     private var attemptStartedAt = ContinuousClock.now
     private var attemptFirstBufferAt: ContinuousClock.Instant?
@@ -149,6 +154,7 @@ actor TTSPlaybackService: SynthesisService {
         guard !isDeactivated else { return }
         isDeactivated = true
         await stopSpeaking()
+        breakerTask?.cancel()
         output.shutdown()
         await primary.shutdown()
         await fallback?.shutdown()
@@ -193,12 +199,58 @@ actor TTSPlaybackService: SynthesisService {
     }
 
     private func perform(_ utterance: Utterance, gen: UInt64) async -> Outcome {
-        guard primary.canSpeak(utterance.locale) else { return .skipped(.noVoice) }
+        let fallbackReady = fallback?.canSpeak(utterance.locale) ?? false
+        // The breaker only diverts when the fallback can take the sentence: with no usable
+        // fallback the primary is the only voice there is, so it keeps being tried.
+        guard primary.canSpeak(utterance.locale), !(isBreakerOpen && fallbackReady) else {
+            guard let fallback, fallbackReady else { return .skipped(.noVoice) }
+            return await speakWithFallback(fallback, utterance, gen: gen)
+        }
         let end = await runAttempt(primary, utterance, gen: gen)
+        let heardNothing = attemptBufferCount == 0
+        switch end {
+        case .finished: consecutiveFailures = 0
+        case .failed, .timedOut: if heardNothing { recordPrimaryFailure() }
+        case .outputFailed, .cancelled: break
+        }
+        if case .failed(let message) = end, heardNothing {
+            guard let fallback, fallbackReady else { return .skipped(.primaryFailed(message)) }
+            return await speakWithFallback(fallback, utterance, gen: gen)
+        }
+        return await conclude(end, engine: primary.engine, utterance: utterance, gen: gen)
+    }
+
+    /// The same utterance again, on the fallback (REQ-T-20/22). The fallback has no fallback.
+    private func speakWithFallback(
+        _ fallback: any UtteranceSynthesizer, _ utterance: Utterance, gen: UInt64
+    ) async -> Outcome {
+        eventsContinuation.yield(.fellBack(from: primary.engine, to: fallback.engine))
+        let end = await runAttempt(fallback, utterance, gen: gen)
         if case .failed(let message) = end, attemptBufferCount == 0 {
             return .skipped(.primaryFailed(message))
         }
-        return await conclude(end, engine: primary.engine, utterance: utterance, gen: gen)
+        return await conclude(end, engine: fallback.engine, utterance: utterance, gen: gen)
+    }
+
+    private func recordPrimaryFailure() {
+        consecutiveFailures += 1
+        guard consecutiveFailures >= limits.breakerThreshold, !isBreakerOpen else { return }
+        isBreakerOpen = true
+        let failures = consecutiveFailures
+        logger.warning("TTS primary failed \(failures) times in a row: fallback only for the cooldown")
+        let clock = self.clock
+        let cooldown = limits.breakerCooldown
+        breakerTask = Task { [weak self] in
+            do { try await clock.sleep(for: cooldown) } catch { return }
+            await self?.halfOpenBreaker()
+        }
+    }
+
+    /// Cooldown over: the primary is tried again, and one more failure reopens the breaker at once.
+    private func halfOpenBreaker() {
+        isBreakerOpen = false
+        consecutiveFailures = limits.breakerThreshold - 1
+        breakerTask = nil
     }
 
     private func setSpeaking(_ speaking: Bool) {
