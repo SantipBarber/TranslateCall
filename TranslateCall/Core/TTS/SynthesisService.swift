@@ -2,7 +2,7 @@ import AVFoundation
 
 // MARK: - SynthesisConfiguration
 
-struct SynthesisConfiguration: Sendable {
+nonisolated struct SynthesisConfiguration: Sendable {
     /// Speech rate. Matches AVSpeechUtteranceDefaultSpeechRate = 0.5
     var rate: Float = 0.5
     /// Pitch multiplier (0.5 – 2.0). Default: 1.0 (unchanged).
@@ -15,10 +15,12 @@ struct SynthesisConfiguration: Sendable {
 
 // MARK: - STSError
 
-enum STSError: LocalizedError, Equatable {
+nonisolated enum STSError: LocalizedError, Equatable {
     case voiceUnavailable(Locale)
     case engineStartFailed(Error)
     case deviceRoutingFailed
+    /// The output device is gone or the engine could not restart (F8.5.2).
+    case outputUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -28,6 +30,8 @@ enum STSError: LocalizedError, Equatable {
             return "Audio engine failed to start: \(error.localizedDescription)"
         case .deviceRoutingFailed:
             return "Failed to route audio to the specified output device."
+        case .outputUnavailable:
+            return "The audio output device is unavailable."
         }
     }
 
@@ -36,6 +40,7 @@ enum STSError: LocalizedError, Equatable {
         case (.voiceUnavailable(let lhs), .voiceUnavailable(let rhs)): return lhs == rhs
         case (.engineStartFailed, .engineStartFailed): return true
         case (.deviceRoutingFailed, .deviceRoutingFailed): return true
+        case (.outputUnavailable, .outputUnavailable): return true
         default: return false
         }
     }

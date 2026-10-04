@@ -55,6 +55,12 @@ struct STSErrorDeviceRoutingTests {
         #expect(error.errorDescription != nil)
         #expect(!(error.errorDescription ?? "").isEmpty)
     }
+
+    @Test func outputUnavailableHasDescription() {
+        #expect(STSError.outputUnavailable.errorDescription?.isEmpty == false)
+        #expect(STSError.outputUnavailable == .outputUnavailable)
+        #expect(STSError.outputUnavailable != .deviceRoutingFailed)
+    }
 }
 
 // MARK: - T2: AVSpeechService output device routing
