@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import Speech
 import SwiftUI
 import Testing
@@ -67,7 +68,6 @@ func firstTranscript(of fixture: AudioFixture, using stt: any SpeechRecognizerSe
                      timeout: Duration = .seconds(30)) async throws -> TranscriptRun {
     let source = try FileAudioSource(url: Fixtures.url(for: fixture), realtime: true)
     let vad = EnergyVADService()
-    try await vad.activate(stream: source.audioStream16kHz)
 
     // Tee VAD segments so we can timestamp when the segment closed.
     let (segments, segCont) = AsyncStream.makeStream(of: SpeechSegment.self, bufferingPolicy: .unbounded)
@@ -82,7 +82,8 @@ func firstTranscript(of fixture: AudioFixture, using stt: any SpeechRecognizerSe
     try await stt.activate(stream: segments)
 
     let started = ContinuousClock.now
-    try await source.startCapture()
+    let audio = try await source.startCapture()
+    try await vad.activate(stream: audio)
     let speechEnd = started + .seconds(fixture.durationSeconds)
 
     let result = try await withThrowingTaskGroup(of: TranscriptionResult?.self) { group in
@@ -106,4 +107,71 @@ func firstTranscript(of fixture: AudioFixture, using stt: any SpeechRecognizerSe
     return TranscriptRun(result: result,
                          vadMs: speechEnd.duration(to: closed).milliseconds,
                          sttMs: closed.duration(to: gotAt).milliseconds)
+}
+
+/// Microphone (TCC) permission for the test host — required to open any input device, BlackHole included.
+func requireMicrophoneAuthorization() async throws {
+    var status = AVCaptureDevice.authorizationStatus(for: .audio)
+    if status == .notDetermined {
+        _ = await AVCaptureDevice.requestAccess(for: .audio)
+        status = AVCaptureDevice.authorizationStatus(for: .audio)
+    }
+    try requirePrerequisite(status == .authorized, "Microphone permission for TranslateCall (status \(status.rawValue))")
+}
+
+/// BlackHole 2ch as both a playback target and a capture source.
+func requireBlackHole(in devices: [AudioDevice]) throws -> AudioDevice {
+    guard let device = devices.first(where: { $0.isBlackHole && $0.hasInput }) else {
+        try requirePrerequisite(false, "BlackHole 2ch audio driver (brew install blackhole-2ch)")
+        throw MissingPrerequisite(description: "BlackHole 2ch")
+    }
+    return device
+}
+
+/// Any input device whose nominal rate differs from BlackHole's (for the different-rate hot-swap
+/// regression test). Excludes BlackHole and our private test aggregates; picks the first by name, then UID.
+/// Not provisioned by `just setup`: any USB mic/webcam, headset or virtual input at another rate will do.
+func requireInputDevice(in devices: [AudioDevice], rateDifferentFrom blackHole: AudioDevice) throws -> AudioDevice {
+    let blackHoleRate = nominalSampleRate(of: blackHole.id)
+    let candidates = devices
+        .filter { $0.hasInput && !$0.isBlackHole && !$0.uid.hasPrefix(TemporaryAggregateDevice.uidPrefix) }
+        .filter { let rate = nominalSampleRate(of: $0.id); return rate > 0 && rate != blackHoleRate }
+        .sorted { ($0.name, $0.uid) < ($1.name, $1.uid) }
+    guard let device = candidates.first else {
+        let what = "an input device whose nominal rate differs from BlackHole's (\(Int(blackHoleRate)) Hz)"
+            + " — e.g. EShareAudio, a USB mic or headset"
+        Issue.record("Missing prerequisite: \(what)")
+        throw MissingPrerequisite(description: what)
+    }
+    return device
+}
+
+/// Any input device whose input channel count differs from BlackHole's (for the mono↔stereo hot-swap
+/// regression). Prefers one at BlackHole's rate so only the channel count changes; then by name, UID.
+func requireInputDevice(in devices: [AudioDevice], channelsDifferentFrom blackHole: AudioDevice) throws -> AudioDevice {
+    let blackHoleChannels = CoreAudioDevices.inputChannelCount(of: blackHole.id)
+    let blackHoleRate = nominalSampleRate(of: blackHole.id)
+    let candidates = devices
+        .filter { $0.hasInput && !$0.isBlackHole && !$0.uid.hasPrefix(TemporaryAggregateDevice.uidPrefix) }
+        .filter { let channels = CoreAudioDevices.inputChannelCount(of: $0.id)
+                  return channels > 0 && channels != blackHoleChannels && nominalSampleRate(of: $0.id) > 0 }
+        .sorted { (nominalSampleRate(of: $0.id) == blackHoleRate ? 0 : 1, $0.name, $0.uid)
+                < (nominalSampleRate(of: $1.id) == blackHoleRate ? 0 : 1, $1.name, $1.uid) }
+    guard let device = candidates.first else {
+        let what = "an input device whose channel count differs from BlackHole's (\(blackHoleChannels))"
+            + " — e.g. a mono USB mic or webcam"
+        Issue.record("Missing prerequisite: \(what)")
+        throw MissingPrerequisite(description: what)
+    }
+    return device
+}
+
+/// Read-only HAL query of a device's nominal sample rate (0 when unavailable).
+func nominalSampleRate(of id: AudioDeviceID) -> Float64 {
+    var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyNominalSampleRate,
+                                             mScope: kAudioObjectPropertyScopeGlobal,
+                                             mElement: kAudioObjectPropertyElementMain)
+    var rate: Float64 = 0
+    var size = UInt32(MemoryLayout<Float64>.size)
+    return AudioObjectGetPropertyData(id, &address, 0, nil, &size, &rate) == noErr ? rate : 0
 }

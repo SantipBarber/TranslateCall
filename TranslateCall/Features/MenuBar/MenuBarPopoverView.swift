@@ -31,6 +31,7 @@ struct MenuBarPopoverView: View {
                 halfDuplexState: viewModel.halfDuplexState,
                 isIncomingActive: viewModel.isIncomingActive
             )
+            IncomingStatusBanner(status: viewModel.incomingStatus) { viewModel.retryIncoming() }
 
             // Language pair
             HStack(spacing: 6) {
@@ -60,6 +61,7 @@ struct MenuBarPopoverView: View {
             .tint(viewModel.isCapturing ? .red : .accentColor)
             .controlSize(.large)
             .keyboardShortcut("t", modifiers: [.command, .shift])
+            .disabled(viewModel.isStarting)   // start() in flight: no Stop/Start until it settles
 
             // Open main window
             Button("Open Main Window") {

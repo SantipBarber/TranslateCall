@@ -6,7 +6,7 @@ import Foundation
 
 /// A complete detected utterance, ready for STT.
 ///
-/// `audio` is 16 kHz mono Float32 — the same format as `AudioManager.audioStream16kHz`.
+/// `audio` is 16 kHz mono Float32 — the same format as the stream returned by `AudioCapture.startCapture()`.
 /// It can be appended directly to `SFSpeechAudioBufferRecognitionRequest`.
 struct SpeechSegment: Sendable {
     let audio: AVAudioPCMBuffer

@@ -27,7 +27,27 @@ final class AudioCoordinator: ObservableObject {
     @Published var incomingTranscription: String?
     @Published var incomingTranslation: String?
     @Published var isIncomingSpeaking: Bool = false
-    @Published var isIncomingActive: Bool = false
+    /// Written only by the coordinator (here and in AudioCoordinator+Pipeline.swift); the setter is
+    /// internal rather than `private(set)` because the extension lives in another file.
+    @Published var incomingStatus: IncomingStatus = .idle {
+        didSet { isIncomingActive = (incomingStatus == .active) }
+    }
+    /// Derived from `incomingStatus`; kept as its own publisher for existing bindings.
+    @Published private(set) var isIncomingActive: Bool = false
+
+    /// Bumped by start() and stop(); an activation that sees a different value was superseded.
+    var sessionGeneration: UInt64 = 0
+    var captureTarget: CaptureTarget?
+    /// Subscribed once to `systemCapture.events` and never cancelled: cancelling the iterating
+    /// task would terminate the service's long-lived stream (the A1 bug class).
+    var incomingEventsTask: Task<Void, Never>?
+    var incomingActivationTask: Task<Void, Never>?
+    /// A `.stopped` event that arrived while incoming was `.starting`.
+    var pendingStopReason: IncomingStopReason?
+    var pendingStopReasonForTesting: IncomingStopReason? { pendingStopReason }
+    /// True for the whole of `stop()`, so a Retry cannot start a session that stop() would not see.
+    /// Readable from AudioCoordinator+Pipeline.swift (handleIncomingEvent ignores events meanwhile).
+    private(set) var isStopping = false
 
     // MARK: - Shared state
 
@@ -130,11 +150,17 @@ final class AudioCoordinator: ObservableObject {
 
     /// Start both pipelines. Outgoing audio capture failure is fatal (early return, errorAlert set).
     /// All other outgoing failures and all incoming failures are non-fatal (errorAlert set, continue).
-    func start(captureApp: SCRunningApplication? = nil, blackHoleDeviceID: AudioDeviceID? = nil) async {
-        guard !isOutgoingActive else { return }
-        setupHalfDuplex()
+    /// A call while another start() is running is a no-op. A stop() (or the mic ending) while the
+    /// outgoing pipeline is still coming up supersedes this start: it releases what it created and
+    /// returns without going active.
+    func start(captureTarget: CaptureTarget? = nil, blackHoleDeviceID: AudioDeviceID? = nil) async {
+        guard !isOutgoingActive, !isStarting else { return }
         isStarting = true
         defer { isStarting = false }
+        sessionGeneration &+= 1
+        let generation = sessionGeneration
+        self.captureTarget = captureTarget
+        setupHalfDuplex()
 
         do {
             try await startOutgoingPipeline(blackHoleDeviceID: blackHoleDeviceID)
@@ -142,35 +168,39 @@ final class AudioCoordinator: ObservableObject {
             errorAlert = makeAlertItem(for: error)
             return
         }
+        guard generation == sessionGeneration, audioCapture.isCapturing else {
+            logger.info("start() superseded (stop or mic ended) — releasing outgoing")
+            await teardownOutgoingServices()
+            teardownHalfDuplex()
+            return
+        }
 
         isOutgoingActive = true
-        await startIncomingPipeline(captureApp: captureApp)
+        subscribeToIncomingEvents()
+        let activation = Task { await self.activateIncoming() }
+        incomingActivationTask = activation
+        await activation.value
     }
 
     func stop() async {
+        isStopping = true   // set before any await: blocks retryIncoming() for the whole teardown
+        defer { isStopping = false }
+        sessionGeneration &+= 1
+        let pendingActivation = incomingActivationTask
+        incomingActivationTask = nil
+        await pendingActivation?.value   // a superseded activation tears itself down
+
         cancelAllTasks()
         teardownHalfDuplex()
-
-        // Outgoing pipeline
-        await outgoingSTT?.deactivate()
-        await outgoingVAD?.deactivate()
-        audioCapture.stopCapture()
-        await outgoingTTS?.deactivate()
-        outgoingSTT = nil
-        outgoingVAD = nil
-        outgoingTTS = nil
+        await teardownOutgoingServices()
 
         // Incoming pipeline
         await systemCapture.deactivate()
-        await incomingVAD?.deactivate()
-        await incomingSTT?.deactivate()
-        await incomingTTS?.deactivate()
-        incomingVAD = nil
-        incomingSTT = nil
-        incomingTTS = nil
+        await teardownIncomingServices()
 
         isOutgoingActive = false
-        isIncomingActive = false
+        incomingStatus = .idle
+        pendingStopReason = nil
         isSpeechActive = false
         isOutgoingSpeaking = false
         isIncomingSpeaking = false
@@ -182,6 +212,28 @@ final class AudioCoordinator: ObservableObject {
         suppressNextOutgoingTurnFlag = false
 
         logger.info("AudioCoordinator stopped")
+    }
+
+    /// AudioManager stopped the mic on its own (device lost, switch and restore failed):
+    /// tear the whole session down so the UI can Start again. No-op during a user stop().
+    func handleOutgoingCaptureEnded() async {
+        guard isOutgoingActive, !isStopping else { return }
+        await stop()
+    }
+
+    /// Re-runs incoming activation on `captureTarget` (the call app chosen now, which may differ
+    /// from the one start() saw) during a session (REQ-C-34). Allowed from `.stopped`, and from
+    /// `.disabled` once a target exists; a no-op otherwise, so a double Retry activates once.
+    func retryIncoming(captureTarget target: CaptureTarget?) {
+        guard isOutgoingActive, !isStopping else { return }
+        switch incomingStatus {
+        case .stopped: break
+        case .disabled where target != nil: break
+        default: return
+        }
+        captureTarget = target
+        incomingStatus = .starting
+        incomingActivationTask = Task { await self.activateIncoming() }
     }
 
     /// Silently drops the next outgoing utterance from STT (one-shot mute turn).

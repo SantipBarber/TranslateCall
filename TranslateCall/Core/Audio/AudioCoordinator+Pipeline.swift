@@ -15,14 +15,14 @@ extension AudioCoordinator {
     /// without the failed component so the incoming pipeline can still start.
     func startOutgoingPipeline(blackHoleDeviceID: AudioDeviceID?) async throws {
         // Fatal: mic permission required for the app to function at all.
-        try await audioCapture.startCapture()
+        let micStream = try await audioCapture.startCapture()
         logger.info("Outgoing: audio capture started")
 
         // VAD (non-fatal)
         let vad = outgoingVADFactory()
         outgoingVAD = vad
         do {
-            try await vad.activate(stream: audioCapture.audioStream16kHz)
+            try await vad.activate(stream: micStream)
             observeVADState(vad)
             logger.info("Outgoing: VAD activated")
         } catch {
@@ -62,28 +62,52 @@ extension AudioCoordinator {
         }
     }
 
-    /// Starts the incoming pipeline. All failures are non-fatal — errorAlert is set
-    /// and `isIncomingActive` remains false if activation fails.
-    func startIncomingPipeline(captureApp: SCRunningApplication?) async {
-        guard captureApp != nil else {
-            logger.info("Incoming: skipped — no capture app selected")
+    /// Deactivates and releases the outgoing VAD/STT/TTS and their observation tasks, and stops
+    /// the mic. Takes ownership synchronously before awaiting (like `teardownIncomingServices`).
+    func teardownOutgoingServices() async {
+        outgoingTasks.forEach { $0.cancel() }
+        outgoingTasks.removeAll()
+        let (stt, vad, tts) = (outgoingSTT, outgoingVAD, outgoingTTS)
+        outgoingSTT = nil
+        outgoingVAD = nil
+        outgoingTTS = nil
+        await stt?.deactivate()
+        await vad?.deactivate()
+        audioCapture.stopCapture()
+        await tts?.deactivate()
+    }
+
+    private struct SupersededActivation: Error {}
+
+    private func ensureCurrent(_ generation: UInt64) throws {
+        guard generation == sessionGeneration else { throw SupersededActivation() }
+    }
+
+    /// Starts (or restarts) the incoming pipeline. Never throws: the outcome is `incomingStatus`.
+    func activateIncoming() async {
+        guard let captureTarget else {
+            incomingStatus = .disabled
+            logger.info("Incoming: disabled — no capture target")
             return
         }
+        incomingStatus = .starting
+        pendingStopReason = nil
+        let generation = sessionGeneration
         do {
-            try await systemCapture.activate(app: captureApp)
-            logger.info("Incoming: system audio capture started")
+            let systemStream = try await systemCapture.activate(target: captureTarget)
+            try ensureCurrent(generation)
 
             let vad = incomingVADFactory()
             incomingVAD = vad
-            try await vad.activate(stream: systemCapture.audioStream16kHz)
-            logger.info("Incoming: VAD activated")
+            try await vad.activate(stream: systemStream)
+            try ensureCurrent(generation)
 
             let targetLocale = Locale(identifier: languagePairManager.targetLanguage.minimalIdentifier)
             let stt = incomingSTTFactory(targetLocale)
             incomingSTT = stt
             try await stt.activate(stream: vad.speechSegments)
+            try ensureCurrent(generation)
             observeIncomingTranscriptions(stt)
-            logger.info("Incoming: STT activated for \(targetLocale.identifier)")
 
             let sourceLocaleForTTS = Locale(identifier: languagePairManager.sourceLanguage.minimalIdentifier)
             let tts = try incomingTTSFactory(sourceLocaleForTTS, nil)
@@ -91,13 +115,77 @@ extension AudioCoordinator {
             observeTTSState(tts, onSpeakingChange: { [weak self] speaking in
                 self?.isIncomingSpeaking = speaking
             }, into: &incomingTasks)
-            logger.info("Incoming: TTS activated")
 
-            isIncomingActive = true
+            if let reason = pendingStopReason {
+                await abandonIncomingActivation()
+                incomingStatus = .stopped(reason)
+                return
+            }
+            incomingStatus = .active
+            logger.info("Incoming: active")
+        } catch is SupersededActivation {
+            await abandonIncomingActivation()
+            logger.info("Incoming: activation superseded by stop()")
         } catch {
-            errorAlert = makeAlertItem(for: error)
-            logger.warning("Incoming pipeline failed — \(error.localizedDescription)")
+            await abandonIncomingActivation()   // the thrown error wins over a pending stop event
+            if case SystemAudioCaptureError.permissionDenied = error {
+                errorAlert = makeAlertItem(for: error)
+            }
+            incomingStatus = .stopped(IncomingStopReason(error: error))
+            logger.warning("Incoming: stopped — \(error.localizedDescription)")
         }
+    }
+
+    /// Undoes a partial or doomed activation: drops any pending stop event, releases the incoming
+    /// services and stops system capture.
+    private func abandonIncomingActivation() async {
+        pendingStopReason = nil
+        await teardownIncomingServices()
+        await systemCapture.deactivate()
+    }
+
+    func subscribeToIncomingEvents() {
+        guard incomingEventsTask == nil else { return }
+        let events = systemCapture.events
+        incomingEventsTask = Task { [weak self] in
+            for await event in events {
+                await self?.handleIncomingEvent(event)
+            }
+        }
+    }
+
+    func handleIncomingEvent(_ event: SystemCaptureEvent) async {
+        // During stop() the session is going away: a late .stopped must not leave a stale banner.
+        guard case .stopped(let reason) = event, !isStopping else { return }
+        switch incomingStatus {
+        case .starting:
+            pendingStopReason = reason
+        case .active:
+            let generation = sessionGeneration
+            await teardownIncomingServices()
+            // A stop() (or Retry) that interleaved with the teardown already owns the status.
+            guard generation == sessionGeneration, incomingStatus == .active, !isStopping else { return }
+            isIncomingSpeaking = false
+            incomingStatus = .stopped(reason)
+            logger.warning("Incoming: stopped mid-session — \(reason.message)")
+        default:
+            break
+        }
+    }
+
+    /// Deactivates and releases incoming VAD/STT/TTS and their observation tasks.
+    /// Takes ownership synchronously before awaiting, so services a newer activation assigns
+    /// meanwhile are never cleared without being deactivated.
+    func teardownIncomingServices() async {
+        incomingTasks.forEach { $0.cancel() }
+        incomingTasks.removeAll()
+        let (vad, stt, tts) = (incomingVAD, incomingSTT, incomingTTS)
+        incomingVAD = nil
+        incomingSTT = nil
+        incomingTTS = nil
+        await vad?.deactivate()
+        await stt?.deactivate()
+        await tts?.deactivate()
     }
 
     // MARK: - Observation helpers

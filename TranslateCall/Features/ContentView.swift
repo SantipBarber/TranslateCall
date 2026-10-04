@@ -50,6 +50,7 @@ struct ContentView: View {
             // Capture app selector (compact, single row)
             captureAppRow
 
+            IncomingStatusBanner(status: viewModel.incomingStatus) { viewModel.retryIncoming() }
             TranscriptionView(
                 text: viewModel.latestTranscription,
                 isTranscribing: false,

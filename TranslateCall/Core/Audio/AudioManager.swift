@@ -1,4 +1,3 @@
-import Accelerate
 import AVFoundation
 import Combine
 import CoreAudio
@@ -14,25 +13,19 @@ extension AVAudioPCMBuffer: @unchecked @retroactive Sendable {}
 /// Allows mock injection for unit tests without requiring real hardware.
 @MainActor
 protocol AudioCapture: AnyObject {
-    var audioStream16kHz: AsyncStream<AVAudioPCMBuffer> { get }
-    func startCapture() async throws
+    /// Starts a capture session and returns its 16 kHz mono stream; `stopCapture()` finishes it.
+    func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer>
     func stopCapture()
+    /// True while a capture session is live; false once it stopped (asked for or on its own).
+    var isCapturing: Bool { get }
 }
 
 extension AudioManager: AudioCapture {}
 
-// Minimal box to pass mutable state into @Sendable callbacks that are guaranteed
-// to be called synchronously (e.g. AVAudioConverterInputBlock). Thread-safe by
-// design: the callback runs on the same thread as the caller, never concurrently.
-private final class SyncBox<T>: @unchecked Sendable {
-    nonisolated(unsafe) var value: T
-    nonisolated init(_ value: T) { self.value = value }
-}
-
 /// Central audio hub: device enumeration, capture, routing, sample-rate conversion, and metering.
 ///
 /// All public API is `@MainActor` for safe use from SwiftUI.
-/// Audio tap callbacks run on a real-time thread and use `nonisolated(unsafe)` storage.
+/// Audio tap callbacks run on a real-time thread via `MicTap`, which holds no MainActor state.
 @MainActor
 final class AudioManager: ObservableObject {
 
@@ -44,28 +37,26 @@ final class AudioManager: ObservableObject {
     @Published var selectedOutput: AudioDevice?
     @Published private(set) var inputLevel: Float = -160     // RMS dBFS
     @Published private(set) var isCapturing = false
+    /// User-facing notice about an automatic device change or a capture stop (REQ-C-13).
+    @Published private(set) var deviceNotice: String?
 
-    // MARK: - Audio streams
+    // MARK: - Capture session
 
-    /// Raw 48 kHz PCM stream — for routing / future full-quality processing.
-    /// Recreated on each `startCapture()` so downstream consumers get a fresh iterator.
-    private(set) var audioStream48kHz: AsyncStream<AVAudioPCMBuffer> = AsyncStream { _ in }
-
-    /// Downsampled 16 kHz mono PCM stream — for VAD and STT.
-    /// Recreated on each `startCapture()` so downstream consumers get a fresh iterator.
-    private(set) var audioStream16kHz: AsyncStream<AVAudioPCMBuffer> = AsyncStream { _ in }
-
-    // MARK: - Private — real-time thread storage (set on MainActor, read on audio thread)
-
-    nonisolated(unsafe) private var _continuation48: AsyncStream<AVAudioPCMBuffer>.Continuation?
-    nonisolated(unsafe) private var _continuation16: AsyncStream<AVAudioPCMBuffer>.Continuation?
-    nonisolated(unsafe) private var _converter: AVAudioConverter?
+    /// The current capture session's 16 kHz stream; created per `startCapture()`, finished by `stopCapture()`.
+    private var session: SessionAudioStream?
+    /// The device the engine input unit is currently bound to (nil when not capturing).
+    private var activeDevice: AudioDevice?
+    private var configChangeObserver: NSObjectProtocol?
+    /// Engine (re)configuration; injectable so tests can exercise switching without hardware.
+    /// `var` (not `let`) because the default captures `self`, which needs two-phase init.
+    private var configure: (AudioDeviceID, SessionAudioStream) throws -> Void
+    /// When true, refreshDevices() keeps the injected list (tests only).
+    private var devicesInjected = false
 
     // MARK: - Private — engine (nonisolated so configureEngine can be nonisolated too)
 
-    // The engine is created on MainActor and reconfigured only from MainActor callers.
-    // nonisolated(unsafe) lets configureEngine() (nonisolated) access it without an
-    // actor hop, which is required so the tap closure does NOT inherit @MainActor.
+    // SAFETY: mutated only from MainActor callers; `configureEngine` is nonisolated solely so the
+    // tap closure does not inherit @MainActor (AVAudioEngine calls it off the main thread).
     nonisolated(unsafe) private let engine = AVAudioEngine()
     private let monitor = DeviceMonitor()
     private let defaults: UserDefaults
@@ -77,99 +68,74 @@ final class AudioManager: ObservableObject {
 
     // MARK: - Init
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard,
+         configure: ((AudioDeviceID, SessionAudioStream) throws -> Void)? = nil) {
         self.defaults = defaults
-        // Create initial streams so continuations are populated before any audio thread access.
-        recreateStreams()
+        self.configure = configure ?? { _, _ in }   // replaced below; Swift needs all stored props first
 
         monitor.onDevicesChanged = { [weak self] in
             self?.refreshDevices()
         }
         refreshDevices()
         restoreSelection()
+        if configure == nil {
+            self.configure = { [unowned self] id, session in
+                try self.configureEngine(deviceID: id, session: session)
+            }
+        }
     }
 
     // MARK: - Device enumeration (T4)
 
     private func refreshDevices() {
-        let all = enumerateCoreAudioDevices()
+        guard !devicesInjected else { return }
+        let all = CoreAudioDevices.allDevices()
         inputDevices = all.filter(\.hasInput)
         outputDevices = all.filter(\.hasOutput)
     }
 
-    private func enumerateCoreAudioDevices() -> [AudioDevice] {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDevices,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-
-        var dataSize: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(
-            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize
-        ) == noErr else { return [] }
-
-        let count = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
-        var ids = [AudioDeviceID](repeating: 0, count: count)
-        guard AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize, &ids
-        ) == noErr else { return [] }
-
-        return ids.compactMap { makeDevice(id: $0) }
-    }
-
-    private func makeDevice(id: AudioDeviceID) -> AudioDevice? {
-        guard
-            let name = stringProperty(
-                id, selector: kAudioDevicePropertyDeviceNameCFString,
-                scope: kAudioObjectPropertyScopeGlobal
-            ),
-            let uid = stringProperty(
-                id, selector: kAudioDevicePropertyDeviceUID,
-                scope: kAudioObjectPropertyScopeGlobal
-            )
-        else { return nil }
-
-        let hasInput = channelCount(id, scope: kAudioDevicePropertyScopeInput) > 0
-        let hasOutput = channelCount(id, scope: kAudioDevicePropertyScopeOutput) > 0
-        guard hasInput || hasOutput else { return nil }
-
-        return AudioDevice(id: id, name: name, uid: uid, hasInput: hasInput, hasOutput: hasOutput)
-    }
-
-    // MARK: - Stream lifecycle
-
-    /// Creates fresh AsyncStreams and continuations. Must be called on @MainActor
-    /// before `configureEngine()` so the nonisolated tap callback has valid continuations.
-    private func recreateStreams() {
-        // Finish old continuations so any existing for-await loops exit cleanly.
-        _continuation48?.finish()
-        _continuation16?.finish()
-        audioStream48kHz = AsyncStream { self._continuation48 = $0 }
-        audioStream16kHz = AsyncStream { self._continuation16 = $0 }
-    }
-
     // MARK: - Capture control (T5)
 
-    func startCapture() async throws {
-        guard !isCapturing else { return }
+    func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
+        guard !isCapturing else { throw AudioError.alreadyCapturing }
+        guard await requestMicrophonePermission() else { throw AudioError.permissionDenied }
+        guard !isCapturing else { throw AudioError.alreadyCapturing }   // re-check after the await
+        guard let device = Self.chooseInput(selectedUID: selectedInput?.uid, available: inputDevices,
+                                            defaultID: CoreAudioDevices.defaultInputDeviceID())
+        else { throw AudioError.noInputDevice }
+        return try beginSession(on: device)
+    }
 
-        guard await requestMicrophonePermission() else {
-            throw AudioError.permissionDenied
+    /// Test-only: same as startCapture() without the TCC microphone prompt.
+    func startCaptureSkippingPermissionForTesting() async throws -> AsyncStream<AVAudioPCMBuffer> {
+        guard !isCapturing else { throw AudioError.alreadyCapturing }
+        guard let device = Self.chooseInput(selectedUID: selectedInput?.uid, available: inputDevices, defaultID: nil)
+        else { throw AudioError.noInputDevice }
+        return try beginSession(on: device)
+    }
+
+    /// Test-only: replaces the enumerated input devices; refreshDevices() then leaves them alone.
+    func injectInputDevicesForTesting(_ devices: [AudioDevice]) {
+        devicesInjected = true
+        inputDevices = devices
+    }
+
+    private func beginSession(on device: AudioDevice) throws -> AsyncStream<AVAudioPCMBuffer> {
+        let session = SessionAudioStream(label: "mic")
+        do {
+            try configure(device.id, session)
+        } catch {
+            session.finish()
+            if error is AudioError { throw error }
+            throw AudioError.engineStartFailed(error)
         }
-
-        guard selectedInput != nil || !inputDevices.isEmpty else {
-            throw AudioError.noInputDevice
-        }
-
-        if selectedInput == nil {
-            selectedInput = inputDevices.first
-        }
-
-        // Fresh streams so downstream (VAD, STT) get a new iterator each session.
-        recreateStreams()
-        try configureEngine()
+        self.session = session
+        activeDevice = device
+        // Reflect the device actually in use (e.g. selection unplugged while idle); not persisted.
+        if selectedInput != device { selectedInput = device }
         isCapturing = true
+        observeConfigurationChanges()
+        return session.stream
     }
 
     func stopCapture() {
@@ -177,24 +143,25 @@ final class AudioManager: ObservableObject {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         engine.reset()      // clean state so next configureEngine() starts fresh
-        // Finish continuations so downstream for-await loops exit.
-        _continuation48?.finish()
-        _continuation16?.finish()
+        session?.finish()   // downstream for-await loops exit
+        session = nil
+        activeDevice = nil
         isCapturing = false
         inputLevel = -160
     }
 
     // MARK: - Device selection (T8)
 
+    /// Selects (and persists) the mic; mid-session it hot-swaps synchronously on the same stream.
     func selectInput(_ device: AudioDevice) throws {
         guard inputDevices.contains(device) else {
             throw AudioError.deviceUnavailable(device.name)
         }
-        let wasCapturing = isCapturing
-        if wasCapturing { stopCapture() }
+        if isCapturing, let session, device != activeDevice {
+            try switchCapture(to: device, session: session)
+        }
         selectedInput = device
         defaults.set(device.uid, forKey: Self.inputDeviceUIDKey)
-        if wasCapturing { Task { try await self.startCapture() } }
     }
 
     func selectOutput(_ device: AudioDevice) throws {
@@ -205,6 +172,88 @@ final class AudioManager: ObservableObject {
         defaults.set(device.uid, forKey: Self.outputDeviceUIDKey)
     }
 
+    // MARK: - Device choice, hot swap and fallback (A5, A5b, REQ-C-10…13)
+
+    /// Selected device if present, else the system default input, else the first input.
+    /// Automatic fallback never picks BlackHole (it carries our own TTS: capturing it would loop);
+    /// an explicitly selected BlackHole is still honored.
+    nonisolated static func chooseInput(selectedUID: String?, available: [AudioDevice],
+                                        defaultID: AudioDeviceID?) -> AudioDevice? {
+        if let selectedUID, let selected = available.first(where: { $0.uid == selectedUID }) { return selected }
+        let candidates = available.filter { !$0.isBlackHole }
+        if let defaultID, let fallback = candidates.first(where: { $0.id == defaultID }) { return fallback }
+        return candidates.first
+    }
+
+    /// The device the engine's input unit is bound to (reads `CurrentDevice`; integration tests).
+    var activeInputDeviceID: AudioDeviceID? {
+        engine.inputNode.audioUnit.flatMap(CoreAudioDevices.currentDevice(of:))
+    }
+
+    /// Hot swap (REQ-C-11/12): same session stream, engine reconfigured on the new device;
+    /// on failure the previous device is restored and the error rethrown.
+    private func switchCapture(to device: AudioDevice, session: SessionAudioStream) throws {
+        let previous = activeDevice
+        engine.stop()
+        do {
+            try configure(device.id, session)
+            activeDevice = device
+        } catch {
+            if let previous {
+                engine.stop()
+                do {
+                    try configure(previous.id, session)
+                } catch let restoreError {
+                    stopCapture()
+                    deviceNotice = "Microphone capture stopped: \(restoreError.localizedDescription)"
+                    throw AudioError.deviceSwitchFailedCaptureStopped(device.name, error)
+                }
+            }
+            throw AudioError.deviceSwitchFailed(device.name, error)
+        }
+    }
+
+    private func observeConfigurationChanges() {
+        guard configChangeObserver == nil else { return }
+        configChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.handleConfigurationChange(engineRunning: self.engine.isRunning)
+            }
+        }
+    }
+
+    /// REQ-C-13: keep the session alive on the selected device if present, else the default.
+    func handleConfigurationChange(engineRunning: Bool) {
+        guard isCapturing, let session else { return }
+        refreshDevices()
+        guard let target = Self.chooseInput(selectedUID: selectedInput?.uid, available: inputDevices,
+                                            defaultID: CoreAudioDevices.defaultInputDeviceID())
+        else {
+            stopCapture()
+            deviceNotice = "No microphone available — capture stopped."
+            return
+        }
+        // Our own reconfiguration also posts this notification: nothing to do if unchanged.
+        if engineRunning, target.id == activeDevice?.id { return }
+        let previous = activeDevice
+        engine.stop()
+        do {
+            try configure(target.id, session)
+        } catch {
+            stopCapture()
+            deviceNotice = "Microphone capture stopped: \(error.localizedDescription)"
+            return
+        }
+        activeDevice = target
+        if let previous, previous.id != target.id {
+            selectedInput = target   // not persisted: the saved choice is restored on next launch
+            deviceNotice = "Microphone '\(previous.name)' disconnected — using '\(target.name)'."
+        }
+    }
+
     // MARK: - Engine configuration
     //
     // nonisolated is REQUIRED here. Because this function is nonisolated, any closure
@@ -213,99 +262,67 @@ final class AudioManager: ObservableObject {
     // and AVAudioEngine would crash with _dispatch_assert_queue_fail when it calls the
     // tap from the audio thread (not the main thread).
 
-    nonisolated private func configureEngine() throws {
-        // Engine is already stopped by stopCapture() or was never started.
-        // Do NOT call engine.stop() here — doing so before outputFormat(forBus:) can
+    nonisolated private func configureEngine(deviceID: AudioDeviceID, session: SessionAudioStream) throws {
+        // Engine is already stopped by the caller (stopCapture / switch / config change) or was never
+        // started. Do NOT call engine.stop() here — doing so before outputFormat(forBus:) can
         // return a zeroed-out format which causes installTap to assert internally.
         engine.inputNode.removeTap(onBus: 0)
-
         let inputNode = engine.inputNode
-        let captureFormat = inputNode.outputFormat(forBus: 0)
-
-        guard let targetFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: 16_000,
-            channels: 1,
-            interleaved: false
-        ) else {
+        guard let unit = inputNode.audioUnit else {
+            throw AudioError.engineStartFailed(NSError(domain: "AudioManager", code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "Input node has no audio unit"]))
+        }
+        do {
+            try CoreAudioDevices.setCurrentDevice(deviceID, on: unit)
+        } catch {
+            throw AudioError.engineStartFailed(error)
+        }
+        // After rebinding, outputFormat(forBus:) keeps the format of the device the node was created on
+        // (even on a fresh engine), while inputFormat(forBus:) reports the new hardware. Tap at the
+        // hardware rate, otherwise a different-rate mic hears nothing or installTap throws (Task 8),
+        // and never with more channels than the hardware has (installTap would raise an NSException).
+        let clientFormat = inputNode.outputFormat(forBus: 0)
+        let hardwareFormat = inputNode.inputFormat(forBus: 0)   // read AFTER binding
+        guard let captureFormat = Self.tapFormat(commonFormat: clientFormat.commonFormat,
+                                                 interleaved: clientFormat.isInterleaved,
+                                                 clientChannels: clientFormat.channelCount,
+                                                 hardwareRate: hardwareFormat.sampleRate,
+                                                 hardwareChannels: hardwareFormat.channelCount) else {
+            throw AudioError.engineStartFailed(NSError(domain: "AudioManager", code: -3,
+                userInfo: [NSLocalizedDescriptionKey: "Device \(deviceID) reports no input format"]))
+        }
+        guard let tap = MicTap(session: session, inputFormat: captureFormat, onLevel: { [weak self] rms in
+            Task { @MainActor [weak self] in self?.inputLevel = rms }
+        }) else {
             throw AudioError.engineStartFailed(
                 NSError(domain: "AudioManager", code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "Could not create 16 kHz target format"])
+                        userInfo: [NSLocalizedDescriptionKey: "Could not create 16 kHz converter for \(captureFormat)"])
             )
         }
-
-        _converter = AVAudioConverter(from: captureFormat, to: targetFormat)
-
-        // Continuations were set by recreateStreams() (called from startCapture on @MainActor)
-        // before this nonisolated method runs. Do NOT access the stream vars here.
-
-        inputNode.installTap(
-            onBus: 0, bufferSize: 1024, format: captureFormat
-        ) { [weak self] buffer, _ in
-            // Closure is nonisolated (defined in nonisolated context) — safe to call
-            // from AVAudioEngine's real-time audio thread without queue assertions.
-            self?.handleBuffer(buffer)
+        // Closure is nonisolated (defined in nonisolated context) — safe to call
+        // from AVAudioEngine's real-time audio thread without queue assertions.
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: captureFormat) { buffer, _ in
+            tap.process(buffer)
         }
-
+        engine.prepare()
         do {
             try engine.start()
         } catch {
-            engine.inputNode.removeTap(onBus: 0)
+            inputNode.removeTap(onBus: 0)
             throw AudioError.engineStartFailed(error)
         }
     }
 
-    // MARK: - Real-time buffer handler (nonisolated — runs on audio thread)
-
-    nonisolated private func handleBuffer(_ buffer: AVAudioPCMBuffer) {
-        _continuation48?.yield(buffer)
-
-        if let converted = downsample(buffer) {
-            _continuation16?.yield(converted)
-        }
-
-        let rms = computeRMS(buffer)
-        Task { @MainActor [weak self] in
-            self?.inputLevel = rms
-        }
-    }
-
-    // MARK: - Sample-rate conversion (T6)
-
-    nonisolated private func downsample(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-        guard let converter = _converter else { return nil }
-
-        let ratio = converter.outputFormat.sampleRate / buffer.format.sampleRate
-        let outputFrames = AVAudioFrameCount(ceil(Double(buffer.frameLength) * ratio)) + 1
-
-        guard let output = AVAudioPCMBuffer(
-            pcmFormat: converter.outputFormat, frameCapacity: outputFrames
-        ) else { return nil }
-
-        // convert(to:from:) does NOT support sample rate conversion — use callback API.
-        // The callback is invoked synchronously (once) on the same thread as this call.
-        let provided = SyncBox(false)
-        var conversionError: NSError?
-        converter.convert(to: output, error: &conversionError) { _, outStatus in
-            guard !provided.value else {
-                outStatus.pointee = .noDataNow
-                return nil
-            }
-            provided.value = true
-            outStatus.pointee = .haveData
-            return buffer
-        }
-        return conversionError == nil && output.frameLength > 0 ? output : nil
-    }
-
-    // MARK: - Level metering (T7)
-
-    nonisolated private func computeRMS(_ buffer: AVAudioPCMBuffer) -> Float {
-        guard let data = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return -160 }
-        var rms: Float = 0
-        vDSP_measqv(data, 1, &rms, vDSP_Length(buffer.frameLength))
-        guard rms > 0 else { return -160 }
-        return max(-160, 10 * log10f(rms))
+    /// The tap format for a freshly bound device: the hardware's rate, and the client's channel count
+    /// capped by the hardware's (the hardware's when the client reports none). Nil when the hardware
+    /// reports no rate or no channels, so `installTap` is never reached with an impossible format.
+    nonisolated static func tapFormat(commonFormat: AVAudioCommonFormat, interleaved: Bool,
+                                      clientChannels: AVAudioChannelCount, hardwareRate: Double,
+                                      hardwareChannels: AVAudioChannelCount) -> AVAudioFormat? {
+        guard hardwareRate > 0, hardwareChannels > 0 else { return nil }
+        let channels = clientChannels == 0 ? hardwareChannels : min(clientChannels, hardwareChannels)
+        return AVAudioFormat(commonFormat: commonFormat, sampleRate: hardwareRate,
+                             channels: channels, interleaved: interleaved)
     }
 
     // MARK: - Permissions
@@ -338,45 +355,5 @@ final class AudioManager: ObservableObject {
                 defaults.removeObject(forKey: Self.outputDeviceUIDKey)
             }
         }
-    }
-
-    // MARK: - CoreAudio helpers
-
-    private func stringProperty(
-        _ id: AudioDeviceID,
-        selector: AudioObjectPropertySelector,
-        scope: AudioObjectPropertyScope
-    ) -> String? {
-        var address = AudioObjectPropertyAddress(
-            mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain
-        )
-        var dataSize = UInt32(MemoryLayout<CFString>.size)
-        var value: CFString = "" as CFString
-        let status = withUnsafeMutablePointer(to: &value) {
-            AudioObjectGetPropertyData(id, &address, 0, nil, &dataSize, $0)
-        }
-        return status == noErr ? (value as String) : nil
-    }
-
-    private func channelCount(_ id: AudioDeviceID, scope: AudioObjectPropertyScope) -> Int {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyStreamConfiguration,
-            mScope: scope,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var dataSize: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(
-            id, &address, 0, nil, &dataSize
-        ) == noErr, dataSize > 0 else { return 0 }
-
-        let bufferList = UnsafeMutablePointer<AudioBufferList>.allocate(capacity: Int(dataSize))
-        defer { bufferList.deallocate() }
-        guard AudioObjectGetPropertyData(
-            id, &address, 0, nil, &dataSize, bufferList
-        ) == noErr else { return 0 }
-
-        // UnsafeMutableAudioBufferListPointer is the safe way to iterate AudioBufferList
-        return UnsafeMutableAudioBufferListPointer(bufferList)
-            .reduce(0) { $0 + Int($1.mNumberChannels) }
     }
 }

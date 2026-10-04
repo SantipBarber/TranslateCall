@@ -68,9 +68,12 @@ final class MenuBarController: NSObject {
 
     private func showContextMenu(_ sender: NSStatusBarButton) {
         let menu = NSMenu()
+        menu.autoenablesItems = false   // isEnabled below is authoritative
 
         let toggleTitle = viewModel.isCapturing ? "Stop Translation" : "Start Translation"
-        menu.addItem(NSMenuItem(title: toggleTitle, action: #selector(toggleCapture), keyEquivalent: ""))
+        let toggleItem = NSMenuItem(title: toggleTitle, action: #selector(toggleCapture), keyEquivalent: "")
+        toggleItem.isEnabled = !viewModel.isStarting   // start() in flight: no Stop/Start until it settles
+        menu.addItem(toggleItem)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Open Main Window", action: #selector(openMainWindow), keyEquivalent: ""))
         menu.addItem(.separator())
@@ -88,6 +91,7 @@ final class MenuBarController: NSObject {
     }
 
     @objc private func toggleCapture() {
+        guard !viewModel.isStarting else { return }
         Task { await viewModel.toggleCapture() }
     }
 

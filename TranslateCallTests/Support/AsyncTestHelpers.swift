@@ -9,3 +9,18 @@ func finish(_ task: Task<Void, Never>, within timeout: Duration = .seconds(5)) a
     await task.value
     timer.cancel()
 }
+
+/// Polls `condition` until it holds or `timeout` elapses; returns the final value.
+/// Use instead of fixed sleeps: it waits on the observable outcome, not on a guessed delay.
+func waitUntil(
+    timeout: Duration = .seconds(2),
+    isolation: isolated (any Actor)? = #isolation,
+    _ condition: () async -> Bool
+) async -> Bool {
+    let deadline = ContinuousClock.now + timeout
+    while ContinuousClock.now < deadline {
+        if await condition() { return true }
+        try? await Task.sleep(for: .milliseconds(5))
+    }
+    return await condition()
+}

@@ -44,6 +44,7 @@ final class AudioViewModel: ObservableObject {
     @Published private(set) var incomingTranscription: String?
     @Published private(set) var incomingTranslation: String?
     @Published private(set) var isIncomingActive: Bool = false
+    @Published private(set) var incomingStatus: IncomingStatus = .idle
 
     // MARK: - Half-duplex state (from coordinator)
 
@@ -91,6 +92,7 @@ final class AudioViewModel: ObservableObject {
         self.voiceProfileManager = voiceProfileManager
         bindAudioManager()
         bindCoordinator()
+        bindSetupManager()
         bindVoiceProfileManager()
     }
 
@@ -149,6 +151,47 @@ final class AudioViewModel: ObservableObject {
         audioManager.$selectedOutput.assign(to: &$selectedOutput)
         audioManager.$inputLevel.assign(to: &$inputLevel)
         audioManager.$isCapturing.assign(to: &$isCapturing)
+        // AudioManager may stop the mic on its own (device lost, failed switch): end the
+        // coordinator session too, or the UI is stuck (Start no-ops while isOutgoingActive).
+        audioManager.$isCapturing
+            .removeDuplicates()
+            .dropFirst()
+            .filter { !$0 }
+            .sink { [weak self] _ in
+                guard let self, self.coordinator.isOutgoingActive else { return }
+                Task { await self.coordinator.handleOutgoingCaptureEnded() }
+            }
+            .store(in: &cancellables)
+        audioManager.$deviceNotice
+            .compactMap { $0 }
+            .sink { [weak self] notice in
+                self?.errorAlert = AlertItem(title: "Microphone", message: notice, action: nil)
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Banner Retry: re-activates incoming on the call app chosen now.
+    func retryIncoming() {
+        coordinator.retryIncoming(captureTarget: setupManager.captureTarget)
+    }
+
+    /// The call app selection changed: if incoming is off (.disabled) or stopped, try it now.
+    /// An active incoming session keeps its app until the next Start.
+    func captureAppChanged() {
+        switch coordinator.incomingStatus {
+        case .disabled, .stopped: retryIncoming()
+        default: break
+        }
+    }
+
+    private func bindSetupManager() {
+        // @Published fires in willSet, before selectCaptureApp persists the bundle ID that
+        // `captureTarget` reads: hop to the next main-queue turn first.
+        setupManager.$selectedCaptureApp
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.captureAppChanged() }
+            .store(in: &cancellables)
     }
 
     private func bindCoordinator() {
@@ -160,6 +203,7 @@ final class AudioViewModel: ObservableObject {
         coordinator.$incomingTranscription.assign(to: &$incomingTranscription)
         coordinator.$incomingTranslation.assign(to: &$incomingTranslation)
         coordinator.$isIncomingActive.assign(to: &$isIncomingActive)
+        coordinator.$incomingStatus.assign(to: &$incomingStatus)
         coordinator.$halfDuplexState.assign(to: &$halfDuplexState)
         coordinator.$ttsMonitorEnabled.assign(to: &$ttsMonitorEnabled)
         coordinator.$ttsMonitorRecording.assign(to: &$ttsMonitorRecording)
@@ -185,8 +229,11 @@ final class AudioViewModel: ObservableObject {
     /// Set to true when waiting for consent before starting pipeline.
     private var pendingStartAfterConsent: Bool = false
 
+    /// Decides on the coordinator's session state, not on the mic: the mic goes live while
+    /// start() is still loading models, and may stop on its own while the session lives on.
+    /// A toggle while starting stops (start() is then superseded); the controls are disabled then.
     func toggleCapture() async {
-        if isCapturing {
+        if coordinator.isOutgoingActive || coordinator.isStarting {
             await coordinator.stop()
         } else {
             // Check Edge TTS consent BEFORE starting
@@ -217,7 +264,7 @@ final class AudioViewModel: ObservableObject {
 
     private func startPipeline() async {
         await coordinator.start(
-            captureApp: setupManager.selectedCaptureApp,
+            captureTarget: setupManager.captureTarget,
             blackHoleDeviceID: setupManager.isBlackHolePresent
                 ? AudioDevice.deviceID(forNameContaining: "BlackHole")
                 : nil
@@ -270,10 +317,14 @@ final class AudioViewModel: ObservableObject {
     // MARK: - Device selection
 
     func selectInput(_ device: AudioDevice) {
+        // The picker's onChange also fires for changes that came from AudioManager (fallback,
+        // failure resync): those are already applied and must not be persisted as the user's choice.
+        guard device != audioManager.selectedInput else { return }
         do {
             try audioManager.selectInput(device)
         } catch {
-            errorAlert = AlertItem(title: "Device Error", message: error.localizedDescription, action: nil)
+            selectedInput = audioManager.selectedInput   // picker back to the device actually in use
+            errorAlert = AlertItem(title: "Microphone", message: error.localizedDescription, action: nil)
         }
     }
 
