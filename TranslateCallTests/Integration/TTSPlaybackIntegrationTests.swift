@@ -43,7 +43,6 @@ extension IntegrationTests {
             let trailing = output.trailingSilence
             // BufferLog stamps each buffer at its first sample's capture instant (arrival minus one tap
             // block); BlackHole's loopback and the main-actor hop can still put it up to ~60 ms late.
-            print("[TTS-latency] last.at - falseAt = \(last.at - falseAt)")
             #expect(falseAt >= last.at - .milliseconds(60),
                     "isSpeaking went false \(last.at - falseAt) before the last captured audio (NFR-T-02)")
             #expect(falseAt - last.at <= .milliseconds(150) + trailing,

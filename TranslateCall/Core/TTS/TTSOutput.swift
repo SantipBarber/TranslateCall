@@ -150,6 +150,9 @@ nonisolated final class TTSOutput: AudioOutputting, @unchecked Sendable {
         }
         guard let lost else { return }
         lost.forEach { $0.markCancelled() }
+        // Drop what the player still holds so stale audio never plays after being written off
+        // (handles are already cancelled, so the completions this fires are harmless).
+        player.stop()
         do {
             if let deviceID, let unit = engine.outputNode.audioUnit,
                CoreAudioDevices.currentDevice(of: unit) != deviceID {
