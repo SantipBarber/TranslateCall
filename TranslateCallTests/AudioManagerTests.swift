@@ -413,3 +413,37 @@ struct AudioManagerSwitchTests {
         manager.stopCapture()
     }
 }
+
+@Suite("AudioManager tap format")
+struct AudioManagerTapFormatTests {
+    private func format(client: AVAudioChannelCount, rate: Double, hardware: AVAudioChannelCount) -> AVAudioFormat? {
+        AudioManager.tapFormat(commonFormat: .pcmFormatFloat32, interleaved: false,
+                               clientChannels: client, hardwareRate: rate, hardwareChannels: hardware)
+    }
+
+    @Test("stale stereo client format on a mono mic taps mono at the mic's rate")
+    func stereoClientOnMonoHardware() throws {
+        let tap = try #require(format(client: 2, rate: 16_000, hardware: 1))
+        #expect(tap.channelCount == 1)
+        #expect(tap.sampleRate == 16_000)
+    }
+
+    @Test("mono client format on a stereo device keeps mono (never more than the client asks)")
+    func monoClientOnStereoHardware() throws {
+        let tap = try #require(format(client: 1, rate: 48_000, hardware: 2))
+        #expect(tap.channelCount == 1)
+        #expect(tap.sampleRate == 48_000)
+    }
+
+    @Test("a client format with no channels falls back to the hardware channel count")
+    func zeroClientUsesHardware() throws {
+        let tap = try #require(format(client: 0, rate: 44_100, hardware: 2))
+        #expect(tap.channelCount == 2)
+    }
+
+    @Test("hardware reporting no rate or no channels yields no tap format")
+    func emptyHardwareIsRejected() {
+        #expect(format(client: 2, rate: 0, hardware: 2) == nil)
+        #expect(format(client: 2, rate: 48_000, hardware: 0) == nil)
+    }
+}

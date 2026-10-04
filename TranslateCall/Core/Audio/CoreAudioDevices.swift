@@ -96,6 +96,11 @@ nonisolated enum CoreAudioDevices {
         return status == noErr ? (value as String) : nil
     }
 
+    /// Read-only: the device's total input channel count (0 when unavailable).
+    static func inputChannelCount(of id: AudioDeviceID) -> Int {
+        channelCount(id, scope: kAudioObjectPropertyScopeInput)
+    }
+
     private static func channelCount(_ id: AudioDeviceID, scope: AudioObjectPropertyScope) -> Int {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyStreamConfiguration,

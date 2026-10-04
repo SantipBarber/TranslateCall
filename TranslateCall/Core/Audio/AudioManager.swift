@@ -277,15 +277,17 @@ final class AudioManager: ObservableObject {
         } catch {
             throw AudioError.engineStartFailed(error)
         }
-        // After rebinding, outputFormat(forBus:) keeps the rate of the device the node was created on
+        // After rebinding, outputFormat(forBus:) keeps the format of the device the node was created on
         // (even on a fresh engine), while inputFormat(forBus:) reports the new hardware. Tap at the
-        // hardware rate, otherwise a different-rate mic hears nothing or installTap throws (Task 8).
+        // hardware rate, otherwise a different-rate mic hears nothing or installTap throws (Task 8),
+        // and never with more channels than the hardware has (installTap would raise an NSException).
         let clientFormat = inputNode.outputFormat(forBus: 0)
-        let hardwareRate = inputNode.inputFormat(forBus: 0).sampleRate   // read AFTER binding
-        guard hardwareRate > 0, clientFormat.channelCount > 0,
-              let captureFormat = AVAudioFormat(commonFormat: clientFormat.commonFormat, sampleRate: hardwareRate,
-                                                channels: clientFormat.channelCount,
-                                                interleaved: clientFormat.isInterleaved) else {
+        let hardwareFormat = inputNode.inputFormat(forBus: 0)   // read AFTER binding
+        guard let captureFormat = Self.tapFormat(commonFormat: clientFormat.commonFormat,
+                                                 interleaved: clientFormat.isInterleaved,
+                                                 clientChannels: clientFormat.channelCount,
+                                                 hardwareRate: hardwareFormat.sampleRate,
+                                                 hardwareChannels: hardwareFormat.channelCount) else {
             throw AudioError.engineStartFailed(NSError(domain: "AudioManager", code: -3,
                 userInfo: [NSLocalizedDescriptionKey: "Device \(deviceID) reports no input format"]))
         }
@@ -309,6 +311,18 @@ final class AudioManager: ObservableObject {
             inputNode.removeTap(onBus: 0)
             throw AudioError.engineStartFailed(error)
         }
+    }
+
+    /// The tap format for a freshly bound device: the hardware's rate, and the client's channel count
+    /// capped by the hardware's (the hardware's when the client reports none). Nil when the hardware
+    /// reports no rate or no channels, so `installTap` is never reached with an impossible format.
+    nonisolated static func tapFormat(commonFormat: AVAudioCommonFormat, interleaved: Bool,
+                                      clientChannels: AVAudioChannelCount, hardwareRate: Double,
+                                      hardwareChannels: AVAudioChannelCount) -> AVAudioFormat? {
+        guard hardwareRate > 0, hardwareChannels > 0 else { return nil }
+        let channels = clientChannels == 0 ? hardwareChannels : min(clientChannels, hardwareChannels)
+        return AVAudioFormat(commonFormat: commonFormat, sampleRate: hardwareRate,
+                             channels: channels, interleaved: interleaved)
     }
 
     // MARK: - Permissions

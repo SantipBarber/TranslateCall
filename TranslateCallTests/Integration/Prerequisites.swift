@@ -146,6 +146,26 @@ func requireInputDevice(in devices: [AudioDevice], rateDifferentFrom blackHole: 
     return device
 }
 
+/// Any input device whose input channel count differs from BlackHole's (for the mono↔stereo hot-swap
+/// regression). Prefers one at BlackHole's rate so only the channel count changes; then by name, UID.
+func requireInputDevice(in devices: [AudioDevice], channelsDifferentFrom blackHole: AudioDevice) throws -> AudioDevice {
+    let blackHoleChannels = CoreAudioDevices.inputChannelCount(of: blackHole.id)
+    let blackHoleRate = nominalSampleRate(of: blackHole.id)
+    let candidates = devices
+        .filter { $0.hasInput && !$0.isBlackHole && !$0.uid.hasPrefix(TemporaryAggregateDevice.uidPrefix) }
+        .filter { let channels = CoreAudioDevices.inputChannelCount(of: $0.id)
+                  return channels > 0 && channels != blackHoleChannels && nominalSampleRate(of: $0.id) > 0 }
+        .sorted { (nominalSampleRate(of: $0.id) == blackHoleRate ? 0 : 1, $0.name, $0.uid)
+                < (nominalSampleRate(of: $1.id) == blackHoleRate ? 0 : 1, $1.name, $1.uid) }
+    guard let device = candidates.first else {
+        let what = "an input device whose channel count differs from BlackHole's (\(blackHoleChannels))"
+            + " — e.g. a mono USB mic or webcam"
+        Issue.record("Missing prerequisite: \(what)")
+        throw MissingPrerequisite(description: what)
+    }
+    return device
+}
+
 /// Read-only HAL query of a device's nominal sample rate (0 when unavailable).
 func nominalSampleRate(of id: AudioDeviceID) -> Float64 {
     var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyNominalSampleRate,

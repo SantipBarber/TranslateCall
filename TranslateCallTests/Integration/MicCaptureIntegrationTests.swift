@@ -94,6 +94,37 @@ extension IntegrationTests {
             #expect(!log.finished)
         }
 
+        @Test("hot swap between a stereo and a mono input keeps the stream alive (Important 4)")
+        func hotSwapAcrossChannelCounts() async throws {
+            try await requireMicrophoneAuthorization()
+            let manager = AudioManager(defaults: isolatedDefaults())
+            let blackHole = try requireBlackHole(in: manager.inputDevices)
+            let other = try requireInputDevice(in: manager.inputDevices, channelsDifferentFrom: blackHole)
+            let player = try BlackHolePlayer(fixtureURL: try fixtureURL(), deviceID: blackHole.id)
+            defer { player.stop() }
+
+            try manager.selectInput(blackHole)
+            let log = BufferLog(try await manager.startCapture())
+            defer { log.cancel(); manager.stopCapture() }
+            let start = ContinuousClock.now
+            #expect(await waitUntil(timeout: .seconds(3)) { log.loudCount(since: start) > 0 })
+
+            // The stale client format keeps BlackHole's channel count; tapping more channels than
+            // the bound hardware has would raise an uncatchable installTap NSException.
+            let toOther = ContinuousClock.now
+            try manager.selectInput(other)
+            #expect(manager.activeInputDeviceID == other.id)
+            #expect(await waitUntil(timeout: .seconds(3)) { log.count(since: toOther) > 0 },
+                    "no buffers from \(other.name) (\(CoreAudioDevices.inputChannelCount(of: other.id)) ch)")
+
+            let back = ContinuousClock.now
+            try manager.selectInput(blackHole)
+            #expect(manager.activeInputDeviceID == blackHole.id)
+            #expect(await waitUntil(timeout: .seconds(3)) { log.loudCount(since: back) > 0 },
+                    "no audio from BlackHole after switching back from a mono input")
+            #expect(!log.finished)
+        }
+
         @Test("Stop → Start gives a new live stream and ends the old one")
         func stopStartGivesFreshStream() async throws {
             try await requireMicrophoneAuthorization()
