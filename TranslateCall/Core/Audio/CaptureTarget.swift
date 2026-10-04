@@ -18,6 +18,9 @@ nonisolated enum IncomingStopReason: Sendable, Equatable {
             self = .targetNotFound(bundleID: bundleID)
         case SystemAudioCaptureError.permissionDenied:
             self = .permissionDenied
+        case SystemAudioCaptureError.streamFailed(let underlying):
+            // The underlying text only: `message` already says "Call audio capture failed: …".
+            self = .streamError(underlying.localizedDescription)
         default:
             self = .streamError(error.localizedDescription)
         }

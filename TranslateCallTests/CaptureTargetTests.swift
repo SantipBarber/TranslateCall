@@ -12,6 +12,9 @@ struct IncomingStopReasonTests {
         #expect(IncomingStopReason(error: SystemAudioCaptureError.permissionDenied) == .permissionDenied)
         let other = NSError(domain: "x", code: 1, userInfo: [NSLocalizedDescriptionKey: "boom"])
         #expect(IncomingStopReason(error: other) == .streamError("boom"))
+        // Unwrapped once: the banner already says "Call audio capture failed: …".
+        #expect(IncomingStopReason(error: SystemAudioCaptureError.streamFailed(underlying: other))
+                == .streamError("boom"))
     }
 
     @Test("every reason has a non-empty user message naming the cause")
