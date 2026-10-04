@@ -262,7 +262,7 @@ struct AudioCoordinatorTests {
         await mocks.mockSystemCapture.emit(.stopped(.streamError("boom")))
         #expect(await waitUntil { coordinator.incomingStatus == .stopped(.streamError("boom")) })
 
-        coordinator.retryIncoming()
+        coordinator.retryIncoming(captureTarget: callTarget)
 
         #expect(await waitUntil { coordinator.incomingStatus == .active })
         await mocks.mockSystemCapture.injectBuffer(makePCMBuffer())
@@ -278,8 +278,8 @@ struct AudioCoordinatorTests {
         await coordinator.start(captureTarget: callTarget)
         await mocks.mockSystemCapture.setThrowOnActivate(nil)
 
-        coordinator.retryIncoming()
-        coordinator.retryIncoming()
+        coordinator.retryIncoming(captureTarget: callTarget)
+        coordinator.retryIncoming(captureTarget: callTarget)
 
         #expect(await waitUntil { coordinator.incomingStatus == .active })
         #expect(await mocks.mockSystemCapture.activatedTargets.count == 1)
@@ -290,9 +290,48 @@ struct AudioCoordinatorTests {
         let mocks = CoordinatorMocks()
         let coordinator = makeCoordinator(mocks)
         await coordinator.start(captureTarget: callTarget)
-        coordinator.retryIncoming()
+        coordinator.retryIncoming(captureTarget: callTarget)
         #expect(coordinator.incomingStatus == .active)
         #expect(await mocks.mockSystemCapture.activatedTargets.count == 1)
+    }
+
+    @Test("Retry uses the capture target it is given, not the one start() saw")
+    func retryWithNewTargetActivatesIt() async {
+        let mocks = CoordinatorMocks()
+        await mocks.mockSystemCapture.setThrowOnActivate(SystemAudioCaptureError.targetNotFound(bundleID: "com.test.call"))
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start(captureTarget: callTarget)
+        await mocks.mockSystemCapture.setThrowOnActivate(nil)
+        let otherTarget = CaptureTarget.app(bundleID: "com.test.other")
+
+        coordinator.retryIncoming(captureTarget: otherTarget)
+
+        #expect(await waitUntil { coordinator.incomingStatus == .active })
+        #expect(await mocks.mockSystemCapture.activatedTargets == [otherTarget])
+    }
+
+    @Test("Retry from .disabled activates once a capture target exists")
+    func retryFromDisabledWithTargetActivates() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start()
+        #expect(coordinator.incomingStatus == .disabled)
+
+        coordinator.retryIncoming(captureTarget: nil)
+        #expect(coordinator.incomingStatus == .disabled)
+        coordinator.retryIncoming(captureTarget: callTarget)
+
+        #expect(await waitUntil { coordinator.incomingStatus == .active })
+        #expect(await mocks.mockSystemCapture.activatedTargets == [callTarget])
+    }
+
+    @Test("Retry is a no-op when no session is running")
+    func retryWithoutSessionIsNoOp() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        coordinator.retryIncoming(captureTarget: callTarget)
+        #expect(coordinator.incomingStatus == .idle)
+        #expect(!(await mocks.mockSystemCapture.activateCalled))
     }
 
     @Test("stop() during an in-flight activation leaves nothing alive and ends .idle")
@@ -344,7 +383,7 @@ struct AudioCoordinatorTests {
 
         let stopping = Task { await coordinator.stop() }
         #expect(await waitUntil { await mocks.mockSystemCapture.isWaitingAtDeactivateGate })
-        coordinator.retryIncoming()
+        coordinator.retryIncoming(captureTarget: callTarget)
         #expect(coordinator.incomingStatus != .starting)
         await mocks.mockSystemCapture.releaseDeactivation()
         await stopping.value

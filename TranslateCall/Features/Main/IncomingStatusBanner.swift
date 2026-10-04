@@ -8,7 +8,7 @@ struct IncomingStatusBanner: View {
     static func text(for status: IncomingStatus) -> String? {
         switch status {
         case .idle, .active: return nil
-        case .disabled: return "Incoming off — choose the call app in Setup"
+        case .disabled: return "Incoming off — choose the call app above"
         case .starting: return "Connecting to call audio…"
         case .stopped(let reason): return "Incoming stopped: \(reason.message)"
         }

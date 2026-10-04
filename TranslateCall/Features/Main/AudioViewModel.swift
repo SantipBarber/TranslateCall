@@ -92,6 +92,7 @@ final class AudioViewModel: ObservableObject {
         self.voiceProfileManager = voiceProfileManager
         bindAudioManager()
         bindCoordinator()
+        bindSetupManager()
         bindVoiceProfileManager()
     }
 
@@ -169,8 +170,28 @@ final class AudioViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
+    /// Banner Retry: re-activates incoming on the call app chosen now.
     func retryIncoming() {
-        coordinator.retryIncoming()
+        coordinator.retryIncoming(captureTarget: setupManager.captureTarget)
+    }
+
+    /// The call app selection changed: if incoming is off (.disabled) or stopped, try it now.
+    /// An active incoming session keeps its app until the next Start.
+    func captureAppChanged() {
+        switch coordinator.incomingStatus {
+        case .disabled, .stopped: retryIncoming()
+        default: break
+        }
+    }
+
+    private func bindSetupManager() {
+        // @Published fires in willSet, before selectCaptureApp persists the bundle ID that
+        // `captureTarget` reads: hop to the next main-queue turn first.
+        setupManager.$selectedCaptureApp
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.captureAppChanged() }
+            .store(in: &cancellables)
     }
 
     private func bindCoordinator() {

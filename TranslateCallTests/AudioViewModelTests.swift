@@ -89,4 +89,58 @@ struct AudioViewModelTests {
         #expect(await waitUntil { !harness.coordinator.isOutgoingActive })
         #expect(harness.viewModel.errorAlert?.title == "Microphone")
     }
+
+    @Test("choosing a call app while incoming is .disabled starts incoming on it")
+    func captureAppChangeRetriesDisabledIncoming() async {
+        let harness = ViewModelHarness()
+        await harness.coordinator.start()
+        #expect(harness.coordinator.incomingStatus == .disabled)
+
+        harness.setupDefaults.set("com.test.picked", forKey: "tlk.captureApp.bundleID")
+        harness.viewModel.captureAppChanged()
+
+        #expect(await waitUntil { harness.coordinator.incomingStatus == .active })
+        #expect(await harness.mocks.mockSystemCapture.activatedTargets == [.app(bundleID: "com.test.picked")])
+    }
+
+    @Test("Retry from the banner uses the call app chosen now")
+    func retryUsesCurrentTarget() async {
+        let harness = ViewModelHarness()
+        await harness.mocks.mockSystemCapture.setThrowOnActivate(
+            SystemAudioCaptureError.targetNotFound(bundleID: "com.test.old"))
+        await harness.coordinator.start(captureTarget: .app(bundleID: "com.test.old"))
+        await harness.mocks.mockSystemCapture.setThrowOnActivate(nil)
+
+        harness.setupDefaults.set("com.test.new", forKey: "tlk.captureApp.bundleID")
+        harness.viewModel.retryIncoming()
+
+        #expect(await waitUntil { harness.coordinator.incomingStatus == .active })
+        #expect(await harness.mocks.mockSystemCapture.activatedTargets == [.app(bundleID: "com.test.new")])
+    }
+
+    @Test("choosing a call app while incoming is active leaves it alone")
+    func captureAppChangeWhileActiveIsNoOp() async {
+        let harness = ViewModelHarness()
+        await harness.coordinator.start(captureTarget: .app(bundleID: "com.test.call"))
+        #expect(harness.coordinator.incomingStatus == .active)
+
+        harness.setupDefaults.set("com.test.other", forKey: "tlk.captureApp.bundleID")
+        harness.viewModel.captureAppChanged()
+
+        #expect(harness.coordinator.incomingStatus == .active)
+        #expect(await harness.mocks.mockSystemCapture.activatedTargets == [.app(bundleID: "com.test.call")])
+    }
+
+    @Test("a selection change published by SetupManager reaches the coordinator")
+    func setupManagerSelectionChangeRetries() async {
+        let harness = ViewModelHarness()
+        await harness.mocks.mockSystemCapture.setThrowOnActivate(
+            SystemAudioCaptureError.targetNotFound(bundleID: "com.test.old"))
+        await harness.coordinator.start(captureTarget: .app(bundleID: "com.test.old"))
+        #expect(harness.coordinator.incomingStatus == .stopped(.targetNotFound(bundleID: "com.test.old")))
+
+        harness.viewModel.setupManager.selectCaptureApp(nil)   // user picks "None"
+
+        #expect(await waitUntil { harness.coordinator.incomingStatus == .disabled })
+    }
 }

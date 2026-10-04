@@ -220,9 +220,17 @@ final class AudioCoordinator: ObservableObject {
         await stop()
     }
 
-    /// Re-runs incoming activation after a stop (REQ-C-34). No-op unless `.stopped`.
-    func retryIncoming() {
-        guard case .stopped = incomingStatus, isOutgoingActive, !isStopping else { return }
+    /// Re-runs incoming activation on `captureTarget` (the call app chosen now, which may differ
+    /// from the one start() saw) during a session (REQ-C-34). Allowed from `.stopped`, and from
+    /// `.disabled` once a target exists; a no-op otherwise, so a double Retry activates once.
+    func retryIncoming(captureTarget target: CaptureTarget?) {
+        guard isOutgoingActive, !isStopping else { return }
+        switch incomingStatus {
+        case .stopped: break
+        case .disabled where target != nil: break
+        default: return
+        }
+        captureTarget = target
         incomingStatus = .starting
         incomingActivationTask = Task { await self.activateIncoming() }
     }
