@@ -46,7 +46,8 @@ final class AudioCoordinator: ObservableObject {
     var pendingStopReason: IncomingStopReason?
     var pendingStopReasonForTesting: IncomingStopReason? { pendingStopReason }
     /// True for the whole of `stop()`, so a Retry cannot start a session that stop() would not see.
-    private var isStopping = false
+    /// Readable from AudioCoordinator+Pipeline.swift (handleIncomingEvent ignores events meanwhile).
+    private(set) var isStopping = false
 
     // MARK: - Shared state
 

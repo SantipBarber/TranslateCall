@@ -155,15 +155,16 @@ extension AudioCoordinator {
     }
 
     func handleIncomingEvent(_ event: SystemCaptureEvent) async {
-        guard case .stopped(let reason) = event else { return }
+        // During stop() the session is going away: a late .stopped must not leave a stale banner.
+        guard case .stopped(let reason) = event, !isStopping else { return }
         switch incomingStatus {
         case .starting:
             pendingStopReason = reason
         case .active:
             let generation = sessionGeneration
             await teardownIncomingServices()
-            // A stop() that interleaved with the teardown already reset us to .idle.
-            guard generation == sessionGeneration else { return }
+            // A stop() (or Retry) that interleaved with the teardown already owns the status.
+            guard generation == sessionGeneration, incomingStatus == .active, !isStopping else { return }
             isIncomingSpeaking = false
             incomingStatus = .stopped(reason)
             logger.warning("Incoming: stopped mid-session — \(reason.message)")

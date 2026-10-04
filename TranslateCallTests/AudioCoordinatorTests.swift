@@ -394,6 +394,23 @@ struct AudioCoordinatorTests {
         #expect(await mocks.mockIncomingVAD.activateCount == 0)
     }
 
+    @Test("a stream-stop event that lands during stop() is ignored; stop ends .idle")
+    func streamStopDuringStopIsIgnored() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start(captureTarget: callTarget)
+        await mocks.mockSystemCapture.holdNextDeactivation()
+
+        let stopping = Task { await coordinator.stop() }
+        #expect(await waitUntil { await mocks.mockSystemCapture.isWaitingAtDeactivateGate })
+        await coordinator.handleIncomingEvent(.stopped(.streamError("late")))
+        #expect(coordinator.incomingStatus != .stopped(.streamError("late")))   // no stale banner
+        await mocks.mockSystemCapture.releaseDeactivation()
+        await stopping.value
+
+        #expect(coordinator.incomingStatus == .idle)
+    }
+
     @Test("stop() resets incoming status to .idle")
     func stopResetsStatus() async {
         let mocks = CoordinatorMocks()
