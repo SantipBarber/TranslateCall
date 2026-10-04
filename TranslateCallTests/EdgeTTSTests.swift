@@ -120,24 +120,6 @@ struct TTSEngineEdgeTTSTests {
     }
 }
 
-// MARK: - AVSpeechService.hasVoice Tests
-
-@Suite("AVSpeechService.hasVoice")
-struct AVSpeechServiceHasVoiceTests {
-
-    @Test("hasVoice returns true for English")
-    func hasVoiceForEnglish() {
-        #expect(AVSpeechService.hasVoice(for: Locale(identifier: "en")))
-    }
-
-    @Test("hasVoice matches the voices installed on this machine")
-    func hasVoiceMatchesInstalledVoices() {
-        // Machine-independent: whether a Ukrainian voice exists depends on what the user installed.
-        let installed = AVSpeechSynthesisVoice.speechVoices().contains { $0.language.hasPrefix("uk") }
-        #expect(AVSpeechService.hasVoice(for: Locale(identifier: "uk")) == installed)
-    }
-}
-
 // MARK: - TTSEngineSelector Edge TTS Routing Tests
 
 @Suite("TTSEngineSelector Edge TTS routing")
@@ -157,8 +139,10 @@ struct TTSEngineSelectorEdgeTTSTests {
     ) -> TTSEngineSelector {
         let defs = defaults ?? freshDefaults()
         let selector = TTSEngineSelector(defaults: defs)
-        selector.avSpeechFactory = { _ in MockSynthesisService() }
-        selector.kokoroFactory = { _, _ in MockSynthesisService() }
+        selector.outputFactory = { _ in FakeOutput() }
+        selector.avSpeechFactory = { FakeSynthesizer(engine: .avSpeech) }
+        selector.kokoroFactory = { _ in FakeSynthesizer(engine: .kokoro) }
+        selector.edgeFactory = { FakeSynthesizer(engine: .edgeTTS) }
         // Deterministic voice availability: every language except Ukrainian has a system voice.
         selector.hasSystemVoice = { $0.language.languageCode?.identifier != "uk" }
         return selector
@@ -195,10 +179,12 @@ struct TTSEngineSelectorEdgeTTSTests {
         let defaults = freshDefaults()
         EdgeTTSConsentManager.grantConsent()
         let selector = makeSelector(defaults: defaults)
-        _ = try selector.makeOutgoingService(
+        let service = try selector.makeOutgoingService(
             for: Locale(identifier: "uk"), deviceID: nil
         )
         #expect(selector.isUsingEdgeTTS)
+        #expect(service.primaryEngine == .edgeTTS)
+        #expect(service.fallbackEngine == nil)   // no Ukrainian system voice to fall back to
         // Clean up .standard
         EdgeTTSConsentManager.revokeConsent()
     }

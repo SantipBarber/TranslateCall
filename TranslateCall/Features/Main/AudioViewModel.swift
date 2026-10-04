@@ -240,7 +240,7 @@ final class AudioViewModel: ObservableObject {
             let targetLocale = Locale(
                 identifier: languagePairManager.targetLanguage.minimalIdentifier
             )
-            if !AVSpeechService.hasVoice(for: targetLocale),
+            if !AVSpeechUtteranceSynthesizer.hasVoice(for: targetLocale),
                !EdgeTTSConsentManager.consentGiven {
                 // Show consent dialog and defer start
                 pendingStartAfterConsent = true

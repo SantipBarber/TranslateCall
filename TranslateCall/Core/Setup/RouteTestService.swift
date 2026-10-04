@@ -42,10 +42,17 @@ final class RouteTestService: ObservableObject {
         }
         guard state != .playing else { return }
 
+        let locale = Locale(identifier: "en-US")
+        guard AVSpeechUtteranceSynthesizer.hasVoice(for: locale) else {
+            state = .failed("No English system voice is installed")
+            return
+        }
+
         state = .playing
         do {
-            let tts = try AVSpeechService(outputDeviceID: deviceID)
-            await tts.speak(text: testPhrase, locale: Locale(identifier: "en-US"))
+            let tts = TTSPlaybackService(primary: AVSpeechUtteranceSynthesizer(),
+                                         output: try TTSOutput(deviceID: deviceID))
+            await tts.speak(text: testPhrase, locale: locale)
             for await speaking in tts.isSpeakingStream where !speaking {
                 break
             }

@@ -7,12 +7,11 @@ private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "
 
 // MARK: - TTSEngineSelector
 
-/// Manages TTS engine selection, model availability, and service factory closures.
+/// Manages TTS engine selection, model availability, and the factories that build each direction's
+/// `TTSPlaybackService(primary:fallback:output:)` (F8.5.2 §3.6).
 ///
-/// `makeOutgoingService` routes to Voice Clone when active, else Kokoro for English,
-/// else AVSpeech. `makeIncomingService` always returns AVSpeech.
-///
-/// Engine priority: Voice Clone > Kokoro > AVSpeech.
+/// Outgoing priority: explicit Edge > Voice Clone > Kokoro (English) > AVSpeech > Edge (consent) > AVSpeech.
+/// Incoming: explicit Edge > AVSpeech > Edge (consent) > AVSpeech.
 @MainActor
 final class TTSEngineSelector: ObservableObject {
 
@@ -67,24 +66,22 @@ final class TTSEngineSelector: ObservableObject {
 
     /// Whether a system (AVSpeech) voice exists for a locale. Injectable so tests don't depend
     /// on which voices the machine has installed.
-    var hasSystemVoice: (Locale) -> Bool = { AVSpeechService.hasVoice(for: $0) }
+    var hasSystemVoice: (Locale) -> Bool = { AVSpeechUtteranceSynthesizer.hasVoice(for: $0) }
 
-    var avSpeechFactory: (AudioDeviceID?) throws -> any SynthesisService = { deviceID in
-        try AVSpeechService(outputDeviceID: deviceID)
+    /// The device output of one playback service (unit tests inject a `FakeOutput`).
+    var outputFactory: (AudioDeviceID?) throws -> any AudioOutputting = { try TTSOutput(deviceID: $0) }
+    var avSpeechFactory: () -> any UtteranceSynthesizer = { AVSpeechUtteranceSynthesizer() }
+    var kokoroFactory: (KokoroConfiguration) -> any UtteranceSynthesizer = {
+        KokoroUtteranceSynthesizer(configuration: $0)
     }
-    var kokoroFactory: (AudioDeviceID?, KokoroConfiguration) throws -> any SynthesisService = { deviceID, config in
-        try KokoroSpeechService(outputDeviceID: deviceID, configuration: config)
-    }
-    // swiftlint:disable:next line_length
-    var voiceCloneFactory: (AudioDeviceID?, UUID, any VoiceProfileStoring) throws -> any SynthesisService = { deviceID, profileId, store in
-        let inferrer = QwenCloneModelManager.shared.gatedInferrer()
-        return try QwenCloneSpeechService(
-            outputDeviceID: deviceID,
+    var voiceCloneFactory: (UUID, any VoiceProfileStoring) -> any UtteranceSynthesizer = { profileId, store in
+        QwenUtteranceSynthesizer(
             activeProfileId: profileId,
             profileStore: store,
-            inferrer: inferrer
+            inferrer: QwenCloneModelManager.shared.gatedInferrer()
         )
     }
+    var edgeFactory: () -> any UtteranceSynthesizer = { EdgeUtteranceSynthesizer() }
 
     // MARK: - Dependencies
 
@@ -124,62 +121,15 @@ final class TTSEngineSelector: ObservableObject {
     /// Creates the outgoing TTS service for `locale` routed to `deviceID`.
     /// If user explicitly selected Edge TTS, use it directly.
     /// Otherwise: Voice Clone > Kokoro > AVSpeech > Edge TTS (auto fallback).
-    func makeOutgoingService(
-        for locale: Locale, deviceID: AudioDeviceID?
-    ) throws -> any SynthesisService {
+    func makeOutgoingService(for locale: Locale, deviceID: AudioDeviceID?) throws -> TTSPlaybackService {
         currentTargetLocale = locale
-
-        // User explicitly selected Edge TTS
-        if preferredEngine == .edgeTTS, EdgeTTSVoiceCatalog.supports(locale) {
-            return try makeEdgeService(for: locale, deviceID: deviceID)
-        }
-
-        // Priority 1: Voice Clone (10 supported languages)
-        if voiceCloningActive,
-           QwenCloneConfiguration.supportsLocale(locale),
-           let profileId = activeVoiceProfileId,
-           let store = profileStore {
-            return try voiceCloneFactory(deviceID, profileId, store)
-        }
-
-        // Priority 2: Kokoro (English only)
-        if preferredEngine == .kokoro, kokoroAvailable, locale.isEnglish {
-            let voiceID = defaults.string(
-                forKey: KokoroConfiguration.voiceDefaultsKey
-            ) ?? ""
-            let config = KokoroConfiguration(voiceIdentifier: voiceID)
-            return try kokoroFactory(deviceID, config)
-        }
-
-        // Priority 3: AVSpeech (if usable voice exists)
-        if hasSystemVoice(locale) {
-            return try avSpeechFactory(deviceID)
-        }
-
-        // Priority 4: Edge TTS (auto fallback, consent required)
-        if EdgeTTSConsentManager.consentGiven, EdgeTTSVoiceCatalog.supports(locale) {
-            return try makeEdgeService(for: locale, deviceID: deviceID)
-        }
-
-        // Last resort: AVSpeech (may be silent)
-        return try avSpeechFactory(deviceID)
+        return try makePlayback(primary: outgoingPrimary(for: locale), locale: locale, deviceID: deviceID)
     }
 
     /// Creates the incoming TTS service.
     /// Uses Edge TTS if explicitly selected or as fallback when no AVSpeech voice.
-    func makeIncomingService(
-        for locale: Locale, deviceID: AudioDeviceID?
-    ) throws -> any SynthesisService {
-        if preferredEngine == .edgeTTS, EdgeTTSVoiceCatalog.supports(locale) {
-            return try makeEdgeService(for: locale, deviceID: deviceID)
-        }
-        if hasSystemVoice(locale) {
-            return try avSpeechFactory(deviceID)
-        }
-        if EdgeTTSConsentManager.consentGiven, EdgeTTSVoiceCatalog.supports(locale) {
-            return try makeEdgeService(for: locale, deviceID: deviceID)
-        }
-        return try avSpeechFactory(deviceID)
+    func makeIncomingService(for locale: Locale, deviceID: AudioDeviceID?) throws -> TTSPlaybackService {
+        try makePlayback(primary: incomingPrimary(for: locale), locale: locale, deviceID: deviceID)
     }
 
     /// Triggers Kokoro model download; sets `isDownloading` while in-flight.
@@ -237,20 +187,53 @@ final class TTSEngineSelector: ObservableObject {
         objectWillChange.send()
     }
 
-    /// Edge TTS through the playback service, with the system voice as fallback when there is one
-    /// (F8.5.2 Task 7; Task 8 builds every engine this way).
-    private func makeEdgeService(for locale: Locale, deviceID: AudioDeviceID?) throws -> any SynthesisService {
-        let fallback: (any UtteranceSynthesizer)? = hasSystemVoice(locale) ? AVSpeechUtteranceSynthesizer() : nil
-        return TTSPlaybackService(primary: EdgeUtteranceSynthesizer(), fallback: fallback,
-                                  output: try TTSOutput(deviceID: deviceID))
-    }
-
     // MARK: - For testing
 
     func setKokoroAvailableForTesting(_ value: Bool) { kokoroAvailable = value }
     func setVoiceCloneAvailableForTesting(_ value: Bool) { voiceCloneAvailable = value }
 
     // MARK: - Private
+
+    /// Edge, Kokoro and the voice clone fall back to the system voice when the locale has one
+    /// (REQ-T-22); AVSpeech as primary has no fallback.
+    private func makePlayback(
+        primary: any UtteranceSynthesizer, locale: Locale, deviceID: AudioDeviceID?
+    ) throws -> TTSPlaybackService {
+        let fallback = primary.engine != .avSpeech && hasSystemVoice(locale) ? avSpeechFactory() : nil
+        return TTSPlaybackService(primary: primary, fallback: fallback, output: try outputFactory(deviceID))
+    }
+
+    private func outgoingPrimary(for locale: Locale) -> any UtteranceSynthesizer {
+        if preferredEngine == .edgeTTS, EdgeTTSVoiceCatalog.supports(locale) {
+            return edgeFactory()
+        }
+        // Priority 1: Voice Clone (10 supported languages)
+        if voiceCloningActive, QwenCloneConfiguration.supportsLocale(locale),
+           let profileId = activeVoiceProfileId, let store = profileStore {
+            return voiceCloneFactory(profileId, store)
+        }
+        // Priority 2: Kokoro (English only)
+        if preferredEngine == .kokoro, kokoroAvailable, locale.isEnglish {
+            let voiceID = defaults.string(forKey: KokoroConfiguration.voiceDefaultsKey) ?? ""
+            return kokoroFactory(KokoroConfiguration(voiceIdentifier: voiceID))
+        }
+        return systemOrEdgePrimary(for: locale)
+    }
+
+    private func incomingPrimary(for locale: Locale) -> any UtteranceSynthesizer {
+        if preferredEngine == .edgeTTS, EdgeTTSVoiceCatalog.supports(locale) {
+            return edgeFactory()
+        }
+        return systemOrEdgePrimary(for: locale)
+    }
+
+    /// AVSpeech when a system voice exists, else Edge (consent required), else AVSpeech, which then
+    /// skips each sentence with a visible "No voice" notice.
+    private func systemOrEdgePrimary(for locale: Locale) -> any UtteranceSynthesizer {
+        if hasSystemVoice(locale) { return avSpeechFactory() }
+        if EdgeTTSConsentManager.consentGiven, EdgeTTSVoiceCatalog.supports(locale) { return edgeFactory() }
+        return avSpeechFactory()
+    }
 
     private func observeModelManager() {
         Task { [weak self] in

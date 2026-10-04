@@ -14,10 +14,13 @@ struct TTSEngineSelectorVoiceCloneTests {
         let defaults = UserDefaults(suiteName: "TTSEngineSelectorVoiceCloneTests.\(UUID())")!
         let selector = TTSEngineSelector(defaults: defaults)
 
-        // Inject mock factories that don't require real audio hardware
-        selector.avSpeechFactory = { _ in MockSynthesisService() }
-        selector.kokoroFactory = { _, _ in MockSynthesisService() }
-        selector.voiceCloneFactory = { _, _, _ in MockSynthesisService() }
+        // Fake synthesizers and output: no audio hardware, no model
+        selector.hasSystemVoice = { _ in true }
+        selector.outputFactory = { _ in FakeOutput() }
+        selector.avSpeechFactory = { FakeSynthesizer(engine: .avSpeech) }
+        selector.kokoroFactory = { _ in FakeSynthesizer(engine: .kokoro) }
+        selector.voiceCloneFactory = { _, _ in FakeSynthesizer(engine: .voiceClone) }
+        selector.edgeFactory = { FakeSynthesizer(engine: .edgeTTS) }
 
         return selector
     }
@@ -59,8 +62,8 @@ struct TTSEngineSelectorVoiceCloneTests {
             for: Locale(identifier: "es-ES"),
             deviceID: nil
         )
-        // Should have used voiceCloneFactory (returns MockSynthesisService)
-        #expect(service is MockSynthesisService)
+        #expect(service.primaryEngine == .voiceClone)
+        #expect(service.fallbackEngine == .avSpeech)
     }
 
     @Test("makeOutgoing falls back for unsupported locale")
@@ -73,12 +76,12 @@ struct TTSEngineSelectorVoiceCloneTests {
         let store = MockVoiceProfileStore()
         selector.setProfileStore(store)
 
-        // Hindi is not supported by Qwen3-TTS → falls back to AVSpeech
+        // Hindi is not supported by Qwen3-TTS → AVSpeech
         let service = try selector.makeOutgoingService(
             for: Locale(identifier: "hi-IN"),
             deviceID: nil
         )
-        #expect(service is MockSynthesisService)
+        #expect(service.primaryEngine == .avSpeech)
     }
 
     @Test("makeOutgoing uses Kokoro when cloning disabled")
@@ -91,7 +94,7 @@ struct TTSEngineSelectorVoiceCloneTests {
             for: Locale(identifier: "en-US"),
             deviceID: nil
         )
-        #expect(service is MockSynthesisService)
+        #expect(service.primaryEngine == .kokoro)
     }
 
     @Test("Voice Clone supports Spanish, French, and other languages")
