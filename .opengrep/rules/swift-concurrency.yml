@@ -4,7 +4,12 @@ rules:
     severity: WARNING
     message: "AsyncStream without bufferingPolicy buffers without limit (audit 2026-10-03 — 48 kHz stream leak). Pass bufferingPolicy explicitly."
     metadata: { audit_ref: "F8.5.1 / AudioManager.swift:148" }
-    pattern-regex: 'AsyncStream(<[^>]*>)?\s*\{'
+    patterns:
+      - pattern-regex: 'AsyncStream(<[^>]*>)?\s*\{'
+      # Declarations are not constructions: a return type before a function body, or a
+      # protocol/computed property `{ get }`, never creates a stream (F8.5.1 false positives).
+      - pattern-not-regex: '->\s*AsyncStream(<[^>]*>)?\s*\{'
+      - pattern-not-regex: 'AsyncStream(<[^>]*>)?\s*\{\s*get\b'
     paths:
       include: ["TranslateCall/Core/Audio/", "TranslateCall/Core/TTS/", ".opengrep/rules/"]
   - id: asyncstream-force-unwrap

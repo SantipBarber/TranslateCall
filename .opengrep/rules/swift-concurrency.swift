@@ -4,6 +4,8 @@ func streams() {
     let a = AsyncStream<Int> { cont = $0 }
     // ok: asyncstream-unbounded
     let b = AsyncStream<Int>(bufferingPolicy: .bufferingNewest(8)) { cont = $0 }
+    // ruleid: asyncstream-unbounded
+    let d = AsyncStream { cont = $0 }
     // ruleid: asyncstream-force-unwrap
     let c = cont!
     // ok: asyncstream-force-unwrap
@@ -16,4 +18,16 @@ final class Box {
     // SAFETY: only touched on the audio render thread
     // ok: nonisolated-unsafe-justified
     nonisolated(unsafe) var y = 0
+}
+
+protocol Producer {
+    // ok: asyncstream-unbounded
+    var events: AsyncStream<Int> { get }
+}
+
+final class Maker {
+    // ok: asyncstream-unbounded
+    func start() -> AsyncStream<Int> {
+        AsyncStream.makeStream(of: Int.self, bufferingPolicy: .bufferingNewest(8)).stream
+    }
 }
