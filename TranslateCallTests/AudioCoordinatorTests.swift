@@ -365,6 +365,65 @@ struct AudioCoordinatorTests {
         #expect(!coordinator.isIncomingActive)
     }
 
+    @Test("stop() while start() is still bringing up outgoing ends with nothing alive (M-4)")
+    func stopDuringOutgoingStartSupersedesStart() async {
+        let mocks = CoordinatorMocks()
+        await mocks.mockVADFactory.holdNextActivation()
+        let coordinator = makeCoordinator(mocks)
+
+        let starting = Task { await coordinator.start(captureTarget: callTarget) }
+        #expect(await waitUntil { await mocks.mockVADFactory.isWaitingAtGate })
+        await coordinator.stop()
+        await mocks.mockVADFactory.releaseActivation()
+        await starting.value
+
+        #expect(!coordinator.isOutgoingActive)
+        #expect(!coordinator.isStarting)
+        #expect(coordinator.incomingStatus == .idle)
+        #expect(!(await mocks.mockSystemCapture.activateCalled))
+        #expect(!mocks.mockAudioCapture.isCapturing)
+        #expect(await mocks.mockOutgoingSTT.deactivateCalled)   // created after stop(), released by start()
+        #expect(await mocks.mockOutgoingTTS.deactivateCalled)
+    }
+
+    @Test("a second start() while starting is a no-op and isStarting stays true until the first ends")
+    func secondStartWhileStartingIsNoOp() async {
+        let mocks = CoordinatorMocks()
+        await mocks.mockVADFactory.holdNextActivation()
+        let coordinator = makeCoordinator(mocks)
+
+        let first = Task { await coordinator.start(captureTarget: callTarget) }
+        #expect(await waitUntil { await mocks.mockVADFactory.isWaitingAtGate })
+        await coordinator.start(captureTarget: callTarget)
+
+        #expect(coordinator.isStarting)
+        #expect(mocks.mockAudioCapture.startCount == 1)
+        await mocks.mockVADFactory.releaseActivation()
+        await first.value
+        #expect(!coordinator.isStarting)
+        #expect(coordinator.isOutgoingActive)
+        #expect(coordinator.incomingStatus == .active)
+        #expect(await mocks.mockVADFactory.activateCount == 1)
+    }
+
+    @Test("the mic dying while start() is still running ends the session instead of going active")
+    func micEndedDuringStartAbortsStart() async {
+        let mocks = CoordinatorMocks()
+        await mocks.mockVADFactory.holdNextActivation()
+        let coordinator = makeCoordinator(mocks)
+
+        let starting = Task { await coordinator.start(captureTarget: callTarget) }
+        #expect(await waitUntil { await mocks.mockVADFactory.isWaitingAtGate })
+        mocks.mockAudioCapture.stopCapture()   // AudioManager stopped the mic on its own
+        await mocks.mockVADFactory.releaseActivation()
+        await starting.value
+
+        #expect(!coordinator.isOutgoingActive)
+        #expect(!coordinator.isStarting)
+        #expect(!(await mocks.mockSystemCapture.activateCalled))
+        #expect(await mocks.mockOutgoingSTT.deactivateCalled)
+    }
+
     @Test("capture ended by AudioManager stops the whole session")
     func outgoingCaptureEndedStopsSession() async {
         let mocks = CoordinatorMocks()

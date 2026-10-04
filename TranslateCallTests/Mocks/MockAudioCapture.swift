@@ -8,7 +8,10 @@ final class MockAudioCapture: AudioCapture {
 
     private(set) var startCount = 0
     var startCaptureCalled: Bool { startCount > 0 }
-    var stopCaptureCalled = false
+    private(set) var stopCount = 0
+    var stopCaptureCalled: Bool { stopCount > 0 }
+    /// True between a `startCapture()` and the next `stopCapture()`, like `AudioManager`.
+    var isCapturing: Bool { continuation != nil }
     var throwOnStartCapture: Error?
 
     func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
@@ -22,7 +25,7 @@ final class MockAudioCapture: AudioCapture {
     }
 
     func stopCapture() {
-        stopCaptureCalled = true
+        stopCount += 1
         continuation?.finish()
         continuation = nil
     }

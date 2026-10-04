@@ -20,6 +20,10 @@ actor MockVADService: VADService {
     private(set) var receivedBufferCount = 0
     private var consumeTask: Task<Void, Never>?
 
+    private var holdActivation = false
+    private var gate: CheckedContinuation<Void, Never>?
+    private(set) var isWaitingAtGate = false
+
     init() {
         var speechCont: AsyncStream<SpeechSegment>.Continuation?
         var stateCont: AsyncStream<Bool>.Continuation?
@@ -29,7 +33,17 @@ actor MockVADService: VADService {
         stateContinuation = stateCont
     }
 
+    /// The next `activate` suspends until `releaseActivation()` (e.g. a slow model load).
+    func holdNextActivation() { holdActivation = true }
+    func releaseActivation() { gate?.resume(); gate = nil }
+
     func activate(stream: AsyncStream<AVAudioPCMBuffer>) async throws {
+        if holdActivation {
+            holdActivation = false
+            isWaitingAtGate = true
+            await withCheckedContinuation { gate = $0 }
+            isWaitingAtGate = false
+        }
         if let error = throwOnActivate { throw error }
         activateCount += 1
         consumeTask = Task {

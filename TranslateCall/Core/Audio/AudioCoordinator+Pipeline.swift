@@ -62,6 +62,21 @@ extension AudioCoordinator {
         }
     }
 
+    /// Deactivates and releases the outgoing VAD/STT/TTS and their observation tasks, and stops
+    /// the mic. Takes ownership synchronously before awaiting (like `teardownIncomingServices`).
+    func teardownOutgoingServices() async {
+        outgoingTasks.forEach { $0.cancel() }
+        outgoingTasks.removeAll()
+        let (stt, vad, tts) = (outgoingSTT, outgoingVAD, outgoingTTS)
+        outgoingSTT = nil
+        outgoingVAD = nil
+        outgoingTTS = nil
+        await stt?.deactivate()
+        await vad?.deactivate()
+        audioCapture.stopCapture()
+        await tts?.deactivate()
+    }
+
     private struct SupersededActivation: Error {}
 
     private func ensureCurrent(_ generation: UInt64) throws {

@@ -16,6 +16,8 @@ protocol AudioCapture: AnyObject {
     /// Starts a capture session and returns its 16 kHz mono stream; `stopCapture()` finishes it.
     func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer>
     func stopCapture()
+    /// True while a capture session is live; false once it stopped (asked for or on its own).
+    var isCapturing: Bool { get }
 }
 
 extension AudioManager: AudioCapture {}

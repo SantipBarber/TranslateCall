@@ -149,18 +149,28 @@ final class AudioCoordinator: ObservableObject {
 
     /// Start both pipelines. Outgoing audio capture failure is fatal (early return, errorAlert set).
     /// All other outgoing failures and all incoming failures are non-fatal (errorAlert set, continue).
+    /// A call while another start() is running is a no-op. A stop() (or the mic ending) while the
+    /// outgoing pipeline is still coming up supersedes this start: it releases what it created and
+    /// returns without going active.
     func start(captureTarget: CaptureTarget? = nil, blackHoleDeviceID: AudioDeviceID? = nil) async {
-        guard !isOutgoingActive else { return }
-        sessionGeneration &+= 1
-        self.captureTarget = captureTarget
-        setupHalfDuplex()
+        guard !isOutgoingActive, !isStarting else { return }
         isStarting = true
         defer { isStarting = false }
+        sessionGeneration &+= 1
+        let generation = sessionGeneration
+        self.captureTarget = captureTarget
+        setupHalfDuplex()
 
         do {
             try await startOutgoingPipeline(blackHoleDeviceID: blackHoleDeviceID)
         } catch {
             errorAlert = makeAlertItem(for: error)
+            return
+        }
+        guard generation == sessionGeneration, audioCapture.isCapturing else {
+            logger.info("start() superseded (stop or mic ended) — releasing outgoing")
+            await teardownOutgoingServices()
+            teardownHalfDuplex()
             return
         }
 
@@ -181,15 +191,7 @@ final class AudioCoordinator: ObservableObject {
 
         cancelAllTasks()
         teardownHalfDuplex()
-
-        // Outgoing pipeline
-        await outgoingSTT?.deactivate()
-        await outgoingVAD?.deactivate()
-        audioCapture.stopCapture()
-        await outgoingTTS?.deactivate()
-        outgoingSTT = nil
-        outgoingVAD = nil
-        outgoingTTS = nil
+        await teardownOutgoingServices()
 
         // Incoming pipeline
         await systemCapture.deactivate()

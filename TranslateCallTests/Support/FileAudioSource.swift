@@ -56,7 +56,11 @@ final class FileAudioSource: AudioCapture {
     func stopCapture() {
         task?.cancel()
         continuation?.finish()
+        continuation = nil
     }
+
+    /// Live from `startCapture()` until `stopCapture()` (even after the file has played out).
+    var isCapturing: Bool { continuation != nil }
 
     nonisolated private static func makeFormat() -> AVAudioFormat? {
         AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false)
