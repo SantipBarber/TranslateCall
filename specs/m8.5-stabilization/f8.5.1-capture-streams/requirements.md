@@ -76,7 +76,7 @@ The 2026-10-03 audit and code reading found:
 
 **REQ-C-33**: When incoming capture stops mid-session, the coordinator SHALL deactivate the incoming VAD/STT/TTS and set `.stopped(reason)`. Outgoing SHALL keep running and `isIncomingSpeaking` SHALL become `false`.
 
-**REQ-C-34**: `AudioCoordinator.retryIncoming()` SHALL act only in `.stopped`. It SHALL set `.starting` synchronously before any `await`, so concurrent calls are no-ops, and re-run incoming activation with a fresh stream.
+**REQ-C-34**: `AudioCoordinator.retryIncoming(captureTarget:)` SHALL act only during a session, in `.stopped`, or in `.disabled` once a capture target exists (amended in the final review: Retry uses the call app chosen now, and choosing one recovers `.disabled`). It SHALL set `.starting` synchronously before any `await`, so concurrent calls are no-ops, and re-run incoming activation with a fresh stream.
 
 **REQ-C-35**: If `stop()` runs while an incoming activation (start or retry) is in flight, the activation SHALL tear down whatever it created once it resumes, and `incomingStatus` SHALL end as `.idle`.
 

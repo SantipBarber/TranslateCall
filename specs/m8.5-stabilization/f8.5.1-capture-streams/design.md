@@ -135,7 +135,7 @@ This removes `_continuation48`, `_continuation16` and `_converter`, together wit
 **`configure(device:tap:)`** (nonisolated, called from MainActor with the engine stopped):
 1. `removeTap(onBus: 0)`.
 2. `CoreAudioDevices.setCurrentDevice(id, on: engine.inputNode.audioUnit)` (`kAudioOutputUnitProperty_CurrentDevice`, same call as `AVSpeechService.swift:86`).
-3. Read `inputNode.outputFormat(forBus: 0)` **after** setting the device, because the sample rate may change. Build the converter → `MicTap`.
+3. Build the tap format **after** setting the device from the bound device's hardware input format, `inputNode.inputFormat(forBus: 0)`: its sample rate, because `outputFormat(forBus: 0)` stays stale (the rate of the device the node was created on) after rebinding `CurrentDevice` (A5c, found in integration); and the client channel count capped by the hardware's, `min(client, hardware)` (the hardware's when the client reports 0), so the tap never asks for more channels than the device has (`installTap` would raise an uncatchable NSException). If the hardware reports 0 Hz or 0 channels, throw `engineStartFailed` without `installTap` (`AudioManager.tapFormat`). No HAL/AU format property is ever written. Build the converter → `MicTap`.
 4. `installTap` → `engine.prepare()` → `engine.start()`.
 
 The engine never touches `mainMixerNode`/`outputNode`, so the input and output devices are not tied together.
@@ -196,7 +196,10 @@ func activate(target: CaptureTarget) async throws -> AsyncStream<AVAudioPCMBuffe
 - `private var pendingStopReason: IncomingStopReason?`: a `.stopped` event received while `.starting`.
 
 **`start(captureTarget:blackHoleDeviceID:)`**
+- No-op while `isOutgoingActive` or `isStarting` (a second Start during the TCC prompt or a model load). `isStarting = true` before any mutation; the rejected call never touches it.
+- `sessionGeneration &+= 1`; `let generation = sessionGeneration`.
 - Outgoing: `let mic = try await audioCapture.startCapture()` → `vad.activate(stream: mic)` → the rest as today.
+- **Superseded start.** After the outgoing pipeline is up, if `generation != sessionGeneration` (a `stop()` ran meanwhile) or `!audioCapture.isCapturing` (the mic ended on its own), release what start created (`teardownOutgoingServices()`: outgoing VAD/STT/TTS, their tasks, the mic) and return without setting `isOutgoingActive` or activating incoming.
 - Then subscribe `incomingEventsTask` (if not yet), `incomingActivationTask = Task { await activateIncoming() }`, and `await` it.
 
 **`activateIncoming()`** (shared by start and retry):
@@ -219,23 +222,25 @@ do {
 }
 ```
 
-**`retryIncoming()`**: `guard case .stopped = incomingStatus else { return }`. Then `incomingStatus = .starting` synchronously, so a second call is a no-op (REQ-C-34), and `Task { await activateIncoming() }`. `AudioViewModel.retryIncoming()` calls it.
+**`retryIncoming(captureTarget:)`**: no-op unless a session is running and not stopping, and incoming is `.stopped`, or `.disabled` with a non-nil target. It stores the target (the call app chosen now, which may differ from the one `start()` saw), sets `incomingStatus = .starting` synchronously, so a second call is a no-op (REQ-C-34), and runs `Task { await activateIncoming() }`. `AudioViewModel.retryIncoming()` passes `setupManager.captureTarget`; the view model also calls it when the capture-app selection changes while incoming is `.disabled` or `.stopped` (an `.active` incoming keeps its app until the next Start).
 
-**Event `.stopped(reason)`**: if `.starting`, store `pendingStopReason`. If `.active`, run `teardownIncomingServices()` (deactivate and nil the VAD, STT and TTS, cancel `incomingTasks`), set `isIncomingSpeaking = false` (which releases half-duplex) and `incomingStatus = .stopped(reason)`.
+**Event `.stopped(reason)`**: ignored while `stop()` runs (no stale banner after Stop). If `.starting`, store `pendingStopReason`. If `.active`, run `teardownIncomingServices()` (deactivate and nil the VAD, STT and TTS, cancel `incomingTasks`), then, only if the generation, `.active` and `!isStopping` still hold after that await, set `isIncomingSpeaking = false` (which releases half-duplex) and `incomingStatus = .stopped(reason)`.
 
 **`stop()`**:
 - `sessionGeneration &+= 1`, then `await incomingActivationTask?.value`. The activation sees the stale generation and tears itself down, and no new session can begin until `stop()` returns, so two sessions never overlap.
 - Tear down as today: `systemCapture.deactivate()` finishes the stream.
 - `incomingStatus = .idle`.
 
-**Outgoing end.** If the mic session finishes without a stop, the VAD loop simply ends. In this feature that happens only when even the default device fails (§3.4). `AudioManager.deviceNotice` already surfaces it. Turning it into a coordinator status is out of scope (YAGNI). The notice says capture stopped.
+**Outgoing end.** `AudioManager` can stop the mic on its own (the device and the fallback both fail, §3.4). `AudioViewModel` maps `audioManager.$isCapturing` turning false while `coordinator.isOutgoingActive` to `coordinator.handleOutgoingCaptureEnded()`, which runs `stop()` (a no-op during a user `stop()`), so the UI can Start again; `deviceNotice` says why. If the mic ends while `start()` is still running, `start()`'s own `isCapturing` check supersedes it (above).
+
+**Start/Stop controls.** `AudioViewModel.toggleCapture()` decides on the coordinator (`isOutgoingActive || isStarting` → `stop()`), not on `audioManager.isCapturing`, which turns true while `start()` is still loading models. Every Start/Stop control is disabled while `isStarting`: the main window button, the popover button (and with it the ⌘⇧T shortcut) and the status-item menu item. A `stop()` that still reaches a running `start()` supersedes it.
 
 ### 3.7 `SetupManager` & UI
 
 - `var captureTarget: CaptureTarget?`: the persisted `captureAppBundleKey`, non-empty → `.app(bundleID:)`. It is independent of whether that app is in `availableCaptureApps` (REQ-C-22). The picker keeps working with `SCRunningApplication` for display.
 - `AudioViewModel.startPipeline()` passes `setupManager.captureTarget`. The view model binds `coordinator.$incomingStatus` and maps `audioManager.$deviceNotice` → `errorAlert` (title "Microphone"), as `selectInput` already does for errors.
 - `IncomingStatusBanner(status:onRetry:)`: one row with an SF Symbol and text.
-  - `.disabled`: "Incoming off — choose the call app in Setup".
+  - `.disabled`: "Incoming off — choose the call app above" (choosing one retries automatically).
   - `.stopped(r)`: "Incoming stopped: \(r.message)" plus a **Retry** button.
   - `.starting`: "Connecting to call audio…".
   - Hidden otherwise.

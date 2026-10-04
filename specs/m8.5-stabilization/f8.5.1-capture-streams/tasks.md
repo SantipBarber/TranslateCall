@@ -2451,7 +2451,7 @@ Build and run the app (`just build`, then open `build/DerivedData/Build/Products
 | M3 | Reopen the call app → Retry | Banner disappears, incoming translates | |
 | M4 | Unplug the selected USB mic / disconnect AirPods mid-session | Alert "Microphone '…' disconnected — using '…'", outgoing continues | |
 | M5 | Quit the call app, then Start | Banner `targetNotFound` with Retry; open app → Retry works | |
-| M6 | Change mic in the picker mid-session | Outgoing keeps working on the new mic without Stop/Start | |
+| M6 | Change mic in the picker mid-session; include a mono↔stereo mic swap | Outgoing keeps working on the new mic without Stop/Start | |
 
 - [ ] **Step 7: Full gate**
 
