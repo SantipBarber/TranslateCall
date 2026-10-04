@@ -56,7 +56,7 @@
 | P14 | opengrep scope (REQ-T-50/51) | `asyncstream-unbounded` also covers `TranslateCall/Core/VoiceCloning/`. `nonisolated-unsafe-justified` stays WARNING: 4 findings remain repo-wide (Core/STT ×3, Core/Translation ×1), outside this feature. |
 
 ---
-**Open point for the user (not changed by this plan):** D-3 says "queue in both directions", but `AudioCoordinator.handleIncomingTranslation` drops a remote sentence while incoming TTS is speaking (`guard … !isIncomingSpeaking`), so incoming never queues. That guard is half-duplex/echo territory (A6, F8.5.3); this plan keeps it and only removes the outgoing `stopSpeaking()` (REQ-T-40).
+**Resolved open point (user, 2026-10-04 → D-7, REQ-T-43):** `AudioCoordinator.handleIncomingTranslation` used to drop a remote sentence while incoming TTS was speaking (`guard … !isIncomingSpeaking`), so incoming never queued, contradicting D-3. Task 9 removes that guard (it is not echo protection: SCStream captures only the call app) and keeps `!incomingCaptureSuppressed` (A6, F8.5.3).
 
 ## File Structure
 
@@ -5162,12 +5162,12 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 9: Coordinator queues outgoing speech, TTS events become a notice line, preview disabled during a session (REQ-T-33, T-40, T-41)
+### Task 9: Coordinator queues speech in both directions, TTS events become a notice line, preview disabled during a session (REQ-T-33, T-40, T-41, T-43)
 
 **Files:**
 - Create: `TranslateCall/Core/TTS/TTSEvent+Notice.swift`, `TranslateCall/Features/Main/TTSNoticeLine.swift`
 - Modify: `TranslateCall/Core/Audio/AudioCoordinator.swift` (notice state, init, `stop`, `showTTSNotice`)
-- Modify: `TranslateCall/Core/Audio/AudioCoordinator+Pipeline.swift` (`observeTTSEvents`, both pipelines, `handleOutgoingTranslation:252`)
+- Modify: `TranslateCall/Core/Audio/AudioCoordinator+Pipeline.swift` (`observeTTSEvents`, both pipelines, `handleOutgoingTranslation:252`, `handleIncomingTranslation:269`)
 - Modify: `TranslateCall/Features/Main/AudioViewModel.swift` (`ttsNotice`, `isSessionActive`)
 - Modify: `TranslateCall/Features/ContentView.swift:54-61,106`, `TranslateCall/Features/VoiceCloning/VoiceProfileListView.swift:3-4,85`, `TranslateCall/Features/VoiceCloning/VoicePreviewSection.swift:94-110,125-127`
 - Replace: `TranslateCallTests/Mocks/MockSynthesisService.swift`
@@ -5280,6 +5280,22 @@ struct AudioCoordinatorTTSTests {
 
         #expect(await waitUntil { await mocks.mockOutgoingTTS.speakCalls.count == 2 })
         #expect(!(await mocks.mockOutgoingTTS.stopSpeakingCalled))
+        await coordinator.stop()
+    }
+
+    @Test("incoming sentences are queued while incoming TTS speaks (REQ-T-43, D-7)")
+    func incomingQueuesWhileSpeaking() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks, noticeClock: TestClock())
+        await coordinator.start(captureTarget: .app(bundleID: "com.test.call"))
+        #expect(await waitUntil { coordinator.isIncomingActive })
+        coordinator.isIncomingSpeaking = true
+
+        await mocks.mockIncomingSTT.injectTranscription(transcript("hello"))
+        await mocks.mockIncomingSTT.injectTranscription(transcript("goodbye"))
+
+        #expect(await waitUntil { await mocks.mockIncomingTTS.speakCalls.count == 2 })
+        #expect(!(await mocks.mockIncomingTTS.stopSpeakingCalled))
         await coordinator.stop()
     }
 
@@ -5511,6 +5527,17 @@ In `TranslateCall/Core/Audio/AudioCoordinator+Pipeline.swift`:
 ```swift
         // No stopSpeaking() first: sentences queue (≤ 3 pending) instead of cutting each other (D-3).
 ```
+- in `handleIncomingTranslation`, replace
+```swift
+        // Suppress when outgoing TTS is active (BlackHole loopback prevention) or self is speaking.
+        guard !text.isEmpty, !incomingCaptureSuppressed, !isIncomingSpeaking else { return }
+```
+with
+```swift
+        // Suppress while outgoing TTS is active (BlackHole loopback prevention, F8.5.3). No
+        // isIncomingSpeaking guard: remote sentences queue (≤ 3 pending) like outgoing ones (D-3, D-7).
+        guard !text.isEmpty, !incomingCaptureSuppressed else { return }
+```
 
 - [ ] **Step 5: View model and UI**
 
@@ -5602,7 +5629,7 @@ struct VoiceProfileListView: View {
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `just test-only AudioCoordinatorTTSTests TTSNoticeTextTests VoicePreviewSessionTests AudioViewModelTests AudioCoordinatorTests`
-Expected: PASS (4 + 1 + 1 + all AudioViewModel/AudioCoordinator tests, the existing ones unchanged). Then `just build` (SwiftUI changes) and `just lint` → exit 0.
+Expected: PASS (5 + 1 + 1 + all AudioViewModel/AudioCoordinator tests, the existing ones unchanged). Then `just build` (SwiftUI changes) and `just lint` → exit 0.
 
 - [ ] **Step 7: Commit**
 
@@ -5610,9 +5637,10 @@ Expected: PASS (4 + 1 + 1 + all AudioViewModel/AudioCoordinator tests, the exist
 git add TranslateCall/Core/TTS/TTSEvent+Notice.swift TranslateCall/Core/Audio TranslateCall/Features \
         TranslateCallTests/Mocks/MockSynthesisService.swift TranslateCallTests/AudioCoordinatorTTSTests.swift \
         TranslateCallTests/AudioViewModelTests.swift
-git commit -m "feat(ui): TTS notice line; outgoing sentences queue; preview off during a session (F8.5.2)
+git commit -m "feat(ui): TTS notice line; sentences queue both ways; preview off during a session (F8.5.2)
 
-REQ-T-40: no stopSpeaking() before each outgoing sentence. REQ-T-41: skips, fallbacks and drops
+REQ-T-40: no stopSpeaking() before each outgoing sentence. REQ-T-43: incoming sentences queue
+while incoming TTS speaks (isIncomingSpeaking guard removed). REQ-T-41: skips, fallbacks and drops
 show as one auto-clearing line under the transcription, never as an alert. REQ-T-33: the voice
 preview controls are disabled while a session runs or starts.
 
@@ -5761,6 +5789,7 @@ Expected: build → check → test → test-integration all pass; `local/just-pr
 | REQ-T-32 wait 2 s / inference limit, gate stays closed | 5 | `.timeoutKeepsGateClosed`, `.gateBusy` |
 | REQ-T-33 preview disabled during a session | 9 | `VoicePreviewSessionTests`, `AudioViewModelTests.sessionActiveWhileStartingOrCapturing`, manual M2 |
 | REQ-T-40 no pre-emptive `stopSpeaking` | 9 | `AudioCoordinatorTTSTests.outgoingDoesNotInterrupt` |
+| REQ-T-43 incoming queues while speaking | 9 | `AudioCoordinatorTTSTests.incomingQueuesWhileSpeaking` |
 | REQ-T-41 notice line, auto-clear 5 s, no alert | 9 | `.noticeAutoClears`, `.newerNoticeRestartsTimer`, `.stopClearsNotice`, `TTSNoticeTextTests` |
 | REQ-T-42 legacy services removed | 7, 8 | Task 8 Step 4 grep |
 | REQ-T-50 hygiene in Core/TTS, Core/VoiceCloning | 5, 10 | `just scan` (Task 10 Step 3) |

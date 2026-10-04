@@ -33,6 +33,7 @@ Make speech output reliable on every engine (AVSpeech, Kokoro, Qwen3-TTS voice c
 | D-4 | **Architecture: separate synthesis from playback** (approach 1). `UtteranceSynthesizer` turns text into a PCM stream; one `TTSPlaybackService` per direction owns queue, output, speaking state, fallback and events. `SynthesisService` stays the coordinator-facing protocol. |
 | D-5 | The half-duplex echo (A6) stays in F8.5.3. This feature guarantees a truthful `isSpeaking`, which F8.5.3 builds on. |
 | D-6 | opengrep `asyncstream-unbounded` no longer flags declarations (done on the spec branch, bae2afd). This feature promotes it to ERROR. |
+| D-7 | **Incoming queues too** (user, 2026-10-04 implementation thread). `handleIncomingTranslation` stops dropping remote sentences while incoming TTS is speaking (`!isIncomingSpeaking` guard removed): it is not echo protection, since SCStream captures only the call app. The `!incomingCaptureSuppressed` guard (BlackHole loopback, A6) stays for F8.5.3. |
 
 ## Functional Requirements
 
@@ -101,6 +102,8 @@ Make speech output reliable on every engine (AVSpeech, Kokoro, Qwen3-TTS voice c
 ### FR-8.5.2.5 — Coordinator and UI
 
 **REQ-T-40**: `AudioCoordinator.handleOutgoingTranslation` SHALL no longer call `stopSpeaking()` before speaking (D-3).
+
+**REQ-T-43**: `AudioCoordinator.handleIncomingTranslation` SHALL no longer drop a sentence because incoming TTS is speaking; it SHALL hand it to the incoming `TTSPlaybackService` queue (D-3, D-7). The `incomingCaptureSuppressed` guard SHALL remain.
 
 **REQ-T-41**: `TTSEvent.utteranceSkipped` and `.fellBack` SHALL surface as a non-modal notice line in the main window (latest event, auto-clearing after 5 s). They SHALL NOT appear as alerts.
 

@@ -178,6 +178,7 @@ actor MLXInferenceGate {
 ### 3.7 Coordinator and UI
 
 - `handleOutgoingTranslation` loses `await outgoingTTS?.stopSpeaking()`.
+- `handleIncomingTranslation` loses the `!isIncomingSpeaking` guard (D-7, REQ-T-43); remote sentences queue in the incoming service. `!incomingCaptureSuppressed` stays (A6, F8.5.3).
 - A notice line is shown under `TranscriptionView` in the main window:
   - The coordinator subscribes to `events` of each `TTSPlaybackService` it gets, through an optional `ttsEvents` accessor (the default `SynthesisService` extension returns nil).
   - It publishes `ttsNotice: String?`, which clears itself after 5 s.
@@ -231,7 +232,7 @@ actor MLXInferenceGate {
 | Edge: connection state from each closing event; reconnect once then throw; each timeout; `extractAudioData` header parsing; `deactivate` disconnects | T-24…27 |
 | Gate: max concurrency 1 (counter in work); timeout returns to the caller while the next run waits for the first to finish; `.gateBusy` after the wait limit; the manager exposes no raw client | T-30…32 |
 | Selector builds primary/fallback per priority; Edge/Kokoro/Qwen get the AVSpeech fallback only with a system voice | T-22 |
-| Coordinator: outgoing does not call `stopSpeaking` before `speak`; TTS events → `ttsNotice` with auto-clear (TestClock or an injectable delay) | T-40, T-41 |
+| Coordinator: incoming sentences reach `speak` while incoming TTS is speaking (T-43); outgoing does not call `stopSpeaking` before `speak`; TTS events → `ttsNotice` with auto-clear (TestClock or an injectable delay) | T-40, T-41, T-43 |
 
 ### 5.3 Integration tier
 
