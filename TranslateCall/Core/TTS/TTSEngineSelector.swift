@@ -130,11 +130,8 @@ final class TTSEngineSelector: ObservableObject {
         currentTargetLocale = locale
 
         // User explicitly selected Edge TTS
-        if preferredEngine == .edgeTTS,
-           let voice = EdgeTTSVoiceCatalog.defaultVoice(for: locale) {
-            return try EdgeTTSService(
-                outputDeviceID: deviceID, voiceName: voice.shortName
-            )
+        if preferredEngine == .edgeTTS, EdgeTTSVoiceCatalog.supports(locale) {
+            return try makeEdgeService(for: locale, deviceID: deviceID)
         }
 
         // Priority 1: Voice Clone (10 supported languages)
@@ -160,11 +157,8 @@ final class TTSEngineSelector: ObservableObject {
         }
 
         // Priority 4: Edge TTS (auto fallback, consent required)
-        if EdgeTTSConsentManager.consentGiven,
-           let voice = EdgeTTSVoiceCatalog.defaultVoice(for: locale) {
-            return try EdgeTTSService(
-                outputDeviceID: deviceID, voiceName: voice.shortName
-            )
+        if EdgeTTSConsentManager.consentGiven, EdgeTTSVoiceCatalog.supports(locale) {
+            return try makeEdgeService(for: locale, deviceID: deviceID)
         }
 
         // Last resort: AVSpeech (may be silent)
@@ -176,20 +170,14 @@ final class TTSEngineSelector: ObservableObject {
     func makeIncomingService(
         for locale: Locale, deviceID: AudioDeviceID?
     ) throws -> any SynthesisService {
-        if preferredEngine == .edgeTTS,
-           let voice = EdgeTTSVoiceCatalog.defaultVoice(for: locale) {
-            return try EdgeTTSService(
-                outputDeviceID: deviceID, voiceName: voice.shortName
-            )
+        if preferredEngine == .edgeTTS, EdgeTTSVoiceCatalog.supports(locale) {
+            return try makeEdgeService(for: locale, deviceID: deviceID)
         }
         if hasSystemVoice(locale) {
             return try avSpeechFactory(deviceID)
         }
-        if EdgeTTSConsentManager.consentGiven,
-           let voice = EdgeTTSVoiceCatalog.defaultVoice(for: locale) {
-            return try EdgeTTSService(
-                outputDeviceID: deviceID, voiceName: voice.shortName
-            )
+        if EdgeTTSConsentManager.consentGiven, EdgeTTSVoiceCatalog.supports(locale) {
+            return try makeEdgeService(for: locale, deviceID: deviceID)
         }
         return try avSpeechFactory(deviceID)
     }
@@ -247,6 +235,14 @@ final class TTSEngineSelector: ObservableObject {
     func grantEdgeTTSConsent() {
         EdgeTTSConsentManager.grantConsent()
         objectWillChange.send()
+    }
+
+    /// Edge TTS through the playback service, with the system voice as fallback when there is one
+    /// (F8.5.2 Task 7; Task 8 builds every engine this way).
+    private func makeEdgeService(for locale: Locale, deviceID: AudioDeviceID?) throws -> any SynthesisService {
+        let fallback: (any UtteranceSynthesizer)? = hasSystemVoice(locale) ? AVSpeechUtteranceSynthesizer() : nil
+        return TTSPlaybackService(primary: EdgeUtteranceSynthesizer(), fallback: fallback,
+                                  output: try TTSOutput(deviceID: deviceID))
     }
 
     // MARK: - For testing
