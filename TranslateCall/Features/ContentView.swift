@@ -35,7 +35,7 @@ struct ContentView: View {
                 StatusBadgeView(
                     isCapturing: viewModel.isCapturing,
                     isSpeechActive: viewModel.isSpeechActive,
-                    halfDuplexState: viewModel.halfDuplexState,
+                    conversationState: viewModel.conversationState,
                     isIncomingActive: viewModel.isIncomingActive
                 )
                 Spacer()

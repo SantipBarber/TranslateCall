@@ -3,35 +3,38 @@ import SwiftUI
 struct StatusBadgeView: View {
     var isCapturing: Bool
     var isSpeechActive: Bool = false
-    var halfDuplexState: HalfDuplexState = .listening
+    var conversationState: ConversationState = .listening
     var isIncomingActive: Bool = false
 
     @State private var isPulsing = false
 
+    /// Label and mic icon for a state (F8.5.3 REQ-H-13). Nothing is muted while a translation
+    /// plays, except the mic in speakers mode (`.micPaused`).
+    nonisolated static func presentation(isCapturing: Bool, isSpeechActive: Bool,
+                                         state: ConversationState) -> (label: String, icon: String) {
+        guard isCapturing else { return ("Idle", "mic") }
+        switch state {
+        case .listening:  return (isSpeechActive ? "Speech detected" : "Listening", "mic")
+        case .speaking:   return ("Speaking translation", "speaker.wave.2")
+        case .micPaused:  return ("Mic paused (speakers)", "mic.slash")
+        }
+    }
+
     private var badgeColor: Color {
         guard isCapturing else { return .secondary }
-        switch halfDuplexState {
-        case .listening:    return isSpeechActive ? .orange : .green
-        case .speaking:     return .red
-        case .transitioning: return .yellow
+        switch conversationState {
+        case .listening:  return isSpeechActive ? .orange : .green
+        case .speaking:   return .blue
+        case .micPaused:  return .yellow
         }
     }
 
     private var label: String {
-        guard isCapturing else { return "Idle" }
-        switch halfDuplexState {
-        case .listening:    return isSpeechActive ? "Speech detected" : "Listening"
-        case .speaking:     return "Speaking"
-        case .transitioning: return "Transitioning…"
-        }
+        Self.presentation(isCapturing: isCapturing, isSpeechActive: isSpeechActive, state: conversationState).label
     }
 
     private var micIcon: String {
-        switch halfDuplexState {
-        case .listening:    return "mic"
-        case .speaking:     return "mic.slash"
-        case .transitioning: return "clock"
-        }
+        Self.presentation(isCapturing: isCapturing, isSpeechActive: isSpeechActive, state: conversationState).icon
     }
 
     var body: some View {
@@ -86,12 +89,12 @@ struct StatusBadgeView: View {
         .padding()
 }
 
-#Preview("Speaking (half-duplex)") {
-    StatusBadgeView(isCapturing: true, halfDuplexState: .speaking, isIncomingActive: true)
+#Preview("Speaking translation") {
+    StatusBadgeView(isCapturing: true, conversationState: .speaking, isIncomingActive: true)
         .padding()
 }
 
-#Preview("Transitioning") {
-    StatusBadgeView(isCapturing: true, halfDuplexState: .transitioning)
+#Preview("Mic paused (speakers)") {
+    StatusBadgeView(isCapturing: true, conversationState: .micPaused, isIncomingActive: true)
         .padding()
 }

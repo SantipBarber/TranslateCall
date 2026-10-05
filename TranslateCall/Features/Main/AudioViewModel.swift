@@ -51,9 +51,9 @@ final class AudioViewModel: ObservableObject {
     @Published private(set) var isIncomingActive: Bool = false
     @Published private(set) var incomingStatus: IncomingStatus = .idle
 
-    // MARK: - Half-duplex state (from coordinator)
+    // MARK: - Conversation state (from coordinator, F8.5.3 REQ-H-13)
 
-    @Published private(set) var halfDuplexState: HalfDuplexState = .listening
+    @Published private(set) var conversationState: ConversationState = .listening
 
     // MARK: - TTS Monitor state (from coordinator)
 
@@ -107,6 +107,7 @@ final class AudioViewModel: ObservableObject {
         bindCoordinator()
         bindSetupManager()
         bindVoiceProfileManager()
+        bindConversationSettings()
     }
 
     // MARK: - Convenience init (used by previews and legacy tests)
@@ -218,7 +219,7 @@ final class AudioViewModel: ObservableObject {
         coordinator.$incomingTranslation.assign(to: &$incomingTranslation)
         coordinator.$isIncomingActive.assign(to: &$isIncomingActive)
         coordinator.$incomingStatus.assign(to: &$incomingStatus)
-        coordinator.$halfDuplexState.assign(to: &$halfDuplexState)
+        coordinator.$conversationState.assign(to: &$conversationState)
         coordinator.$ttsMonitorEnabled.assign(to: &$ttsMonitorEnabled)
         coordinator.$ttsMonitorRecording.assign(to: &$ttsMonitorRecording)
         coordinator.$errorAlert.assign(to: &$errorAlert)
@@ -371,4 +372,15 @@ private final class PassthroughTranslationService: TranslationService {
         text: String, from source: Locale.Language, to target: Locale.Language
     ) async throws -> String { text }
     func prepare(source: Locale.Language, target: Locale.Language) async throws {}
+}
+
+// MARK: - Conversation settings (F8.5.3)
+
+extension AudioViewModel {
+    /// "I use speakers" is applied live to the running session's mic gate (REQ-H-05).
+    private func bindConversationSettings() {
+        conversationSettings.$listeningMode
+            .sink { [weak self] mode in self?.coordinator.listeningMode = mode }
+            .store(in: &cancellables)
+    }
 }

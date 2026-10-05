@@ -17,12 +17,14 @@ extension AudioCoordinator {
         // Fatal: mic permission required for the app to function at all.
         let micStream = try await audioCapture.startCapture()
         logger.info("Outgoing: audio capture started")
+        // Speakers mode mutes the mic here, before the VAD, while the remote translation plays (D-3).
+        let vadInput = micEchoGate?.gate(micStream) ?? micStream
 
         // VAD (non-fatal)
         let vad = await outgoingVADFactory()
         outgoingVAD = vad
         do {
-            try await vad.activate(stream: micStream)
+            try await vad.activate(stream: vadInput)
             observeVADState(vad)
             logger.info("Outgoing: VAD activated")
         } catch {
@@ -169,6 +171,7 @@ extension AudioCoordinator {
             // A stop() (or Retry) that interleaved with the teardown already owns the status.
             guard generation == sessionGeneration, incomingStatus == .active, !isStopping else { return }
             isIncomingSpeaking = false
+            reopenMicEchoGate()
             incomingStatus = .stopped(reason)
             logger.warning("Incoming: stopped mid-session — \(reason.message)")
         default:
@@ -265,9 +268,9 @@ extension AudioCoordinator {
             logger.debug("Suppressing next outgoing utterance (mute turn)")
             return
         }
-        // Suppress when incoming TTS is playing on speakers — prevents mic-pickup feedback loop.
-        guard !text.isEmpty, !outgoingCaptureSuppressed else { return }
-        // No stopSpeaking() first: sentences queue (≤ 3 pending) instead of cutting each other (D-3).
+        // Never dropped while the other side speaks (F8.5.3 REQ-H-10): echo is handled by MicEchoGate.
+        guard !text.isEmpty else { return }
+        // No stopSpeaking() first: sentences queue and are coalesced, never cut or dropped (F8.5.3 D-5).
         do {
             let translated = try await outgoingTranslationService.translate(
                 text: text,
@@ -283,9 +286,9 @@ extension AudioCoordinator {
     }
 
     private func handleIncomingTranslation(of text: String) async {
-        // Suppress while outgoing TTS is active (BlackHole loopback prevention, F8.5.3). No
-        // isIncomingSpeaking guard: remote sentences queue (≤ 3 pending) like outgoing ones (D-3, D-7).
-        guard !text.isEmpty, !incomingCaptureSuppressed else { return }
+        // Never dropped while either TTS speaks (F8.5.3 REQ-H-11): SCStream captures only the call app,
+        // which does not play the user's own voice back. Remote sentences queue like outgoing ones.
+        guard !text.isEmpty else { return }
         do {
             let translated = try await incomingTranslationService.translate(
                 text: text,
