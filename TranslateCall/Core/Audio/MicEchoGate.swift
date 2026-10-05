@@ -29,6 +29,9 @@ nonisolated final class MicEchoGate: Sendable {
     private let onPausedChange: @Sendable (Bool) -> Void
 
     /// - Parameter onPausedChange: called on every muting ↔ open transition, from the caller's thread.
+    ///   The Bool is advisory: transitions can be reported out of order across threads (a late `true`
+    ///   from `process` may arrive after a `false` from `setMode`/`reset`). Consumers must hop to their
+    ///   own actor and re-read `isMicPaused`, which is authoritative, instead of trusting the argument.
     init(mode: ListeningMode,
          tail: Duration = .milliseconds(300),
          clock: any Clock<Duration> = ContinuousClock(),
@@ -39,7 +42,7 @@ nonisolated final class MicEchoGate: Sendable {
         self.onPausedChange = onPausedChange
     }
 
-    /// True while buffers are being replaced by silence.
+    /// True while buffers are being replaced by silence. Authoritative (read under the lock).
     var isMicPaused: Bool { state.withLock { $0.isMuting } }
 
     /// Takes effect from the next buffer; switching to `.headphones` reopens at once (REQ-H-05).
@@ -73,18 +76,23 @@ nonisolated final class MicEchoGate: Sendable {
         if wasMuting { onPausedChange(false) }
     }
 
-    /// The gated copy of `input`: finishes when `input` finishes; a consumer that goes away stops it.
+    /// The gated copy of `input`: finishes when `input` finishes.
     func gate(_ input: AsyncStream<AVAudioPCMBuffer>) -> AsyncStream<AVAudioPCMBuffer> {
-        let (output, continuation) = AsyncStream.makeStream(
-            of: AVAudioPCMBuffer.self, bufferingPolicy: .bufferingNewest(SessionAudioStream.capacity)
-        )
-        let task = Task { [self] in
+        gatedSession(input).stream
+    }
+
+    /// Same as `gate(_:)`, keeping the `SessionAudioStream` so overflow drops are counted and logged
+    /// like the other capture streams (F8.5.1 REQ-C-05).
+    func gatedSession(_ input: AsyncStream<AVAudioPCMBuffer>,
+                      capacity: Int = SessionAudioStream.capacity) -> SessionAudioStream {
+        let output = SessionAudioStream(label: "outgoing-gated", capacity: capacity)
+        // Ends when `input` finishes (the producer owns the session); yields to a gone consumer are no-ops.
+        Task { [self] in
             for await buffer in input {
-                continuation.yield(process(buffer))
+                output.yield(process(buffer))
             }
-            continuation.finish()
+            output.finish()
         }
-        continuation.onTermination = { _ in task.cancel() }
         return output
     }
 
@@ -94,8 +102,9 @@ nonisolated final class MicEchoGate: Sendable {
         let (muting, changed): (Bool, Bool) = state.withLock { current in
             if let reopenAt = current.reopenAt, now >= reopenAt { current.reopenAt = nil }
             let muting = current.mode == .speakers && (current.incomingSpeaking || current.reopenAt != nil)
-            defer { current.isMuting = muting }
-            return (muting, muting != current.isMuting)
+            let changed = muting != current.isMuting
+            current.isMuting = muting
+            return (muting, changed)
         }
         if changed { onPausedChange(muting) }
         guard muting else { return buffer }

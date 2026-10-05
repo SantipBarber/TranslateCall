@@ -125,6 +125,43 @@ struct MicEchoGateTests {
             #expect(silenced == (mode == .speakers))
         }
     }
+
+    @Test("headphones: the gated stream hands over the very same buffer instances")
+    func headphonesStreamKeepsInstances() async {
+        let gate = MicEchoGate(mode: .headphones, clock: TestClock())
+        let (input, continuation) = AsyncStream.makeStream(of: AVAudioPCMBuffer.self)
+        let sent = (1...5).map { makePCMBuffer(frames: AVAudioFrameCount(100 + $0), fill: 0.5) }
+        sent.forEach { continuation.yield($0) }
+        continuation.finish()
+        var received: [AVAudioPCMBuffer] = []
+        for await buffer in gate.gate(input) { received.append(buffer) }
+        #expect(received.count == sent.count)
+        #expect(zip(received, sent).allSatisfy { $0 === $1 })
+    }
+
+    @Test("a stalled consumer makes the gated stream count its drops (F8.5.1 REQ-C-05)")
+    func stalledConsumerCountsDrops() async {
+        let gate = MicEchoGate(mode: .headphones, clock: TestClock())
+        let total = 10
+        let (done, doneContinuation) = AsyncStream.makeStream(of: Void.self)
+        let produced = LockedArray<Int>()
+        // Signals when the pump asks for the element after the last one: every yield has happened by then.
+        let input = AsyncStream<AVAudioPCMBuffer>(unfolding: {
+            let count = produced.values.count
+            if count < total {
+                produced.append(count)
+                return makePCMBuffer(frames: 160, fill: 0.5)
+            }
+            doneContinuation.yield()
+            return nil
+        })
+        let session = gate.gatedSession(input, capacity: 4)
+        for await _ in done { break }
+        #expect(session.droppedCount == total - 4)
+        var kept = 0
+        for await _ in session.stream { kept += 1 }
+        #expect(kept == 4)
+    }
 }
 
 @Suite("ConversationState")
