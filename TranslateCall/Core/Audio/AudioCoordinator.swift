@@ -79,8 +79,9 @@ final class AudioCoordinator: ObservableObject {
     private(set) var systemCapture: any SystemAudioCapture
 
     // Factories are called at start() time so tests can inject pre-built mocks.
-    private(set) var outgoingVADFactory: () -> any VADService
-    private(set) var incomingVADFactory: () -> any VADService
+    // VAD factories are async: Silero loads its CoreML model (F8.5.3 REQ-V-01).
+    private(set) var outgoingVADFactory: () async -> any VADService
+    private(set) var incomingVADFactory: () async -> any VADService
     private(set) var outgoingSTTFactory: (Locale) -> any SpeechRecognizerService
     private(set) var incomingSTTFactory: (Locale) -> any SpeechRecognizerService
     private(set) var outgoingTranslationService: any TranslationService
@@ -130,8 +131,8 @@ final class AudioCoordinator: ObservableObject {
     init(
         audioCapture: any AudioCapture,
         systemCapture: any SystemAudioCapture,
-        outgoingVADFactory: @escaping () -> any VADService,
-        incomingVADFactory: @escaping () -> any VADService,
+        outgoingVADFactory: @escaping () async -> any VADService,
+        incomingVADFactory: @escaping () async -> any VADService,
         outgoingSTTFactory: @escaping (Locale) -> any SpeechRecognizerService,
         incomingSTTFactory: @escaping (Locale) -> any SpeechRecognizerService,
         outgoingTranslationService: any TranslationService,

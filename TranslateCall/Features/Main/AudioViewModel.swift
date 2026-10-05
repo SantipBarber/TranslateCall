@@ -74,6 +74,10 @@ final class AudioViewModel: ObservableObject {
     /// Manages which TTS engine (AVSpeech / Kokoro / Voice Clone) is active.
     let ttsEngineSelector: TTSEngineSelector
     let voiceProfileManager: VoiceProfileManager
+    /// "I use speakers" and "Pause to translate" (F8.5.3 REQ-H-01, REQ-V-05).
+    let conversationSettings: ConversationSettings
+    /// Which VAD engine the session uses (F8.5.3 REQ-V-03).
+    let vadProvider: VADProvider
     private let audioManager: AudioManager
     private var cancellables: Set<AnyCancellable> = []
 
@@ -86,9 +90,13 @@ final class AudioViewModel: ObservableObject {
         setupManager: SetupManager = SetupManager(),
         engineSelector: STTEngineSelector = STTEngineSelector(),
         ttsEngineSelector: TTSEngineSelector = TTSEngineSelector(),
-        voiceProfileManager: VoiceProfileManager = VoiceProfileManager()
+        voiceProfileManager: VoiceProfileManager = VoiceProfileManager(),
+        conversationSettings: ConversationSettings = ConversationSettings(),
+        vadProvider: VADProvider = VADProvider()
     ) {
         self.coordinator = coordinator
+        self.conversationSettings = conversationSettings
+        self.vadProvider = vadProvider
         self.audioManager = audioManager
         self.languagePairManager = languagePairManager
         self.setupManager = setupManager

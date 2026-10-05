@@ -19,7 +19,7 @@ extension AudioCoordinator {
         logger.info("Outgoing: audio capture started")
 
         // VAD (non-fatal)
-        let vad = outgoingVADFactory()
+        let vad = await outgoingVADFactory()
         outgoingVAD = vad
         do {
             try await vad.activate(stream: micStream)
@@ -98,7 +98,8 @@ extension AudioCoordinator {
             let systemStream = try await systemCapture.activate(target: captureTarget)
             try ensureCurrent(generation)
 
-            let vad = incomingVADFactory()
+            let vad = await incomingVADFactory()
+            try ensureCurrent(generation)
             incomingVAD = vad
             try await vad.activate(stream: systemStream)
             try ensureCurrent(generation)

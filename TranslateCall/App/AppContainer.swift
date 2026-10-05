@@ -21,6 +21,13 @@ final class AppContainer: ObservableObject {
     let languagePairManager: LanguagePairManager
     let setupManager: SetupManager
     let voiceProfileManager: VoiceProfileManager
+    let conversationSettings: ConversationSettings
+    let vadProvider: VADProvider
+
+    /// True inside the unit/integration test host: no model is warmed there (models stay out of unit tests).
+    nonisolated static var isTestHost: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
 
     init() {
         let lpm = LanguagePairManager()
@@ -28,26 +35,24 @@ final class AppContainer: ObservableObject {
         let setup = SetupManager()
         let outBridge = TranslationBridgeModel()
         let inBridge = TranslationBridgeModel()
-        let translationSel = TranslationEngineSelector(
-            outgoingBridge: outBridge, incomingBridge: inBridge
-        )
+        let translationSel = TranslationEngineSelector(outgoingBridge: outBridge, incomingBridge: inBridge)
         let selector = STTEngineSelector()
         let ttsSelector = TTSEngineSelector()
+        let settings = ConversationSettings()
+        let vads = VADProvider()
+        if !Self.isTestHost { vads.preload() }
         let coordinator = AudioCoordinator(
             audioCapture: audioManager,
             systemCapture: SystemAudioCaptureService(),
-            outgoingVADFactory: { EnergyVADService() },
-            incomingVADFactory: { EnergyVADService() },
+            // Read at each session start: "Pause to translate" applies to the next session (REQ-V-05).
+            outgoingVADFactory: { await vads.makeVAD(config: settings.vadConfiguration) },
+            incomingVADFactory: { await vads.makeVAD(config: settings.vadConfiguration) },
             outgoingSTTFactory: { selector.makeOutgoingService(for: $0) },
             incomingSTTFactory: { selector.makeIncomingService(for: $0) },
             outgoingTranslationService: translationSel.makeOutgoingService(),
             incomingTranslationService: translationSel.makeIncomingService(),
-            outgoingTTSFactory: { [ttsSelector] locale, deviceID in
-                try ttsSelector.makeOutgoingService(for: locale, deviceID: deviceID)
-            },
-            incomingTTSFactory: { [ttsSelector] locale, deviceID in
-                try ttsSelector.makeIncomingService(for: locale, deviceID: deviceID)
-            },
+            outgoingTTSFactory: { [ttsSelector] in try ttsSelector.makeOutgoingService(for: $0, deviceID: $1) },
+            incomingTTSFactory: { [ttsSelector] in try ttsSelector.makeIncomingService(for: $0, deviceID: $1) },
             languagePairManager: lpm
         )
 
@@ -62,6 +67,8 @@ final class AppContainer: ObservableObject {
         languagePairManager = lpm
         setupManager = setup
         voiceProfileManager = voiceProfiles
+        conversationSettings = settings
+        vadProvider = vads
         audioCoordinator = coordinator
         audioViewModel = AudioViewModel(
             coordinator: coordinator,
@@ -70,7 +77,9 @@ final class AppContainer: ObservableObject {
             setupManager: setup,
             engineSelector: selector,
             ttsEngineSelector: ttsSelector,
-            voiceProfileManager: voiceProfiles
+            voiceProfileManager: voiceProfiles,
+            conversationSettings: settings,
+            vadProvider: vads
         )
     }
 }

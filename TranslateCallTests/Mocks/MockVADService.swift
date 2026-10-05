@@ -3,7 +3,7 @@ import AVFoundation
 
 /// Test double for `VADService`. Records calls and lets tests inject speech segments.
 actor MockVADService: VADService {
-    nonisolated let engine: VADEngine = .energy
+    nonisolated let engine: VADEngine
 
     // Streams
     nonisolated let speechSegments: AsyncStream<SpeechSegment>
@@ -24,7 +24,8 @@ actor MockVADService: VADService {
     private var gate: CheckedContinuation<Void, Never>?
     private(set) var isWaitingAtGate = false
 
-    init() {
+    init(engine: VADEngine = .energy) {
+        self.engine = engine
         var speechCont: AsyncStream<SpeechSegment>.Continuation?
         var stateCont: AsyncStream<Bool>.Continuation?
         speechSegments = AsyncStream { speechCont = $0 }
