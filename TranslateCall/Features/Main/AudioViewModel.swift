@@ -91,7 +91,7 @@ final class AudioViewModel: ObservableObject {
         engineSelector: STTEngineSelector = STTEngineSelector(),
         ttsEngineSelector: TTSEngineSelector = TTSEngineSelector(),
         voiceProfileManager: VoiceProfileManager = VoiceProfileManager(),
-        conversationSettings: ConversationSettings = ConversationSettings(),
+        conversationSettings: ConversationSettings,
         vadProvider: VADProvider = VADProvider()
     ) {
         self.coordinator = coordinator
@@ -120,7 +120,8 @@ final class AudioViewModel: ObservableObject {
         translationService: (any TranslationService)? = nil,
         incomingTranslationService: (any TranslationService)? = nil,
         languagePairManager: LanguagePairManager = LanguagePairManager(),
-        voiceProfileManager: VoiceProfileManager = VoiceProfileManager()
+        voiceProfileManager: VoiceProfileManager = VoiceProfileManager(),
+        conversationSettings: ConversationSettings
     ) {
         let audioManager = AudioManager()
         let lpm = languagePairManager
@@ -152,7 +153,8 @@ final class AudioViewModel: ObservableObject {
             setupManager: SetupManager(),
             engineSelector: selector,
             ttsEngineSelector: ttsSelector,
-            voiceProfileManager: voiceProfileManager
+            voiceProfileManager: voiceProfileManager,
+            conversationSettings: conversationSettings
         )
     }
 
@@ -354,7 +356,7 @@ final class AudioViewModel: ObservableObject {
     // MARK: - Preview factory
 
     static func preview(capturing: Bool = false, level: Float = -60) -> AudioViewModel {
-        let instance = AudioViewModel()
+        let instance = AudioViewModel(conversationSettings: ConversationSettings())
         instance.inputDevices = AudioDevice.mockInputs
         instance.outputDevices = AudioDevice.mockOutputs
         instance.selectedInput = AudioDevice.mockInputs.first

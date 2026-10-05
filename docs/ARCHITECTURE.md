@@ -1010,7 +1010,7 @@ class TranslationServiceTests: XCTestCase {
 class PipelineIntegrationTests: XCTestCase {
     func testEndToEndOutgoingPipeline() async throws { }
     func testBidirectionalTranslation() async throws { }
-    func testHalfDuplexSwitching() async throws { }
+    func testEchoGateKeepsEchoOut() async throws { }
 }
 ```
 

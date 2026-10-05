@@ -11,11 +11,13 @@ private struct ViewModelHarness {
     let coordinator: AudioCoordinator
     let audioManager: AudioManager
     let setupDefaults: UserDefaults
+    /// The view model's conversation settings live here, never in the developer's real domain.
+    let settingsDefaults: UserDefaults
     let viewModel: AudioViewModel
 
     static let mic = AudioDevice(id: 201, name: "Mic VM", uid: "vm-mic", hasInput: true, hasOutput: false)
 
-    init() {
+    init(seedSettings: (UserDefaults) -> Void = { _ in }) {
         let mocks = self.mocks
         coordinator = AudioCoordinator(
             audioCapture: mocks.mockAudioCapture,
@@ -34,17 +36,31 @@ private struct ViewModelHarness {
                                     configure: { _, _ in })
         audioManager.injectInputDevicesForTesting([Self.mic])
         setupDefaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        settingsDefaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        seedSettings(settingsDefaults)
         viewModel = AudioViewModel(
             coordinator: coordinator,
             audioManager: audioManager,
             languagePairManager: mocks.languagePairManager,
-            setupManager: SetupManager(defaults: setupDefaults)
+            setupManager: SetupManager(defaults: setupDefaults),
+            conversationSettings: ConversationSettings(defaults: settingsDefaults)
         )
     }
 }
 
 @Suite("AudioViewModel", .serialized) @MainActor
 struct AudioViewModelTests {
+
+    @Test("M1: the harness's conversation settings come from its own suite, not UserDefaults.standard")
+    func settingsAreIsolatedFromTheRealDomain() {
+        let harness = ViewModelHarness { defaults in
+            defaults.set(ListeningMode.speakers.rawValue, forKey: ConversationSettings.listeningModeKey)
+            defaults.set(1.1, forKey: ConversationSettings.pauseSecondsKey)
+        }
+        #expect(harness.viewModel.conversationSettings.listeningMode == .speakers)
+        #expect(harness.viewModel.conversationSettings.pauseSeconds == 1.1)
+        #expect(harness.coordinator.listeningMode == .speakers)
+    }
 
     @Test("toggle stops an active coordinator session even when the mic is not capturing")
     func toggleStopsOnCoordinatorState() async {

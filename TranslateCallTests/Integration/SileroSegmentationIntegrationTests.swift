@@ -146,7 +146,20 @@ extension IntegrationTests {
                 }
             }
 
-            #expect(run.arrivals.count == 2, "segments: \(run.arrivals.map(\.frames))")
+            let frames = run.arrivals.map(\.frames)
+            #expect(frames.count == 2, "segments: \(frames)")
+            // A leaked echo merged into a segment would add the 1 s gap and its speech: each segment must
+            // match its own sentence plus what Silero adds (0.1 s padding + the 0.6 s pause), within ±35 %.
+            guard frames.count == 2 else { return }
+            let added = SplicedSpeech.silence(0.6 + 0.1).count
+            #expect(Self.isClose(frames[0], to: first.count + added),
+                    "first segment \(frames[0]) vs \(first.count) + \(added) (echo \(echo.count))")
+            #expect(Self.isClose(frames[1], to: last.count + added),
+                    "last segment \(frames[1]) vs \(last.count) + \(added) (echo \(echo.count))")
+        }
+
+        static func isClose(_ frames: Int, to expected: Int, tolerance: Double = 0.35) -> Bool {
+            abs(Double(frames - expected)) <= tolerance * Double(expected)
         }
     }
 }

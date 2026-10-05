@@ -71,5 +71,11 @@ Out of M8.5 (strategic, later): min macOS 26 / SpeechAnalyzer, WhisperKit → Ar
 | # | Finding | Where | Guard in place |
 |---|---------|-------|----------------|
 | A17 | The capture-app list refreshes only in the setup wizard: the solo test (A14) needs quitting call apps and relaunching the app. Owner: unassigned | `SetupManager.swift` (capture-app list) | manual only |
-| A18 | Silero is retried on every session; on a slow network that may delay Start. Measure. Owner: unassigned | `VADProvider` | — |
+| A18 | Silero is retried on every session; on a slow network that may delay Start. Measure. Owner: unassigned | `VADProvider` | fixed in F8.5.3 — after a failed load a session gets Energy at once and the retry runs in the background (never inline): `VADProviderTests.failedLoadRetriesInBackground`, `.failedPreloadRetriesInBackground` |
 | A19 | A late `.stopped` event from an earlier capture could tear down a newer incoming session (pre-existing). Owner: unassigned | `AudioCoordinator` (incoming stop handling) | — |
+| A20 | The "Mic paused (speakers)" badge updates only when a mic buffer passes the gate: if the mic stalls, it can lag the real gate state. Owner: unassigned | `MicEchoGate.swift:100-109` (`process` → `onPausedChange`) | — |
+| A21 | The user's own "Speech detected" is hidden while a translation plays: `.speaking` takes precedence in the badge. Owner: unassigned | `StatusBadgeView` (presentation precedence) | — |
+| A22 | The VAD label shows the engine of the last VAD handed out: a session can mix engines (outgoing Energy, incoming Silero) when the preload finishes mid-start. Owner: unassigned | `VADProvider.activeEngine` | — |
+| A23 | Speakers mode gates only the mic: the user's own Monitor playback and the remote's original voice from the call app still reach the mic (needs AEC, D-2). Owner: unassigned | `MicEchoGate` (speakers mode) | — |
+| A24 | Qwen voice clone still truncates a single sentence longer than 200 characters, with only a log. Owner: unassigned | `QwenUtteranceSynthesizer.swift:38-40`, `QwenCloneConfiguration.textTruncationLimit` | — |
+| A25 | A skipped coalesced utterance (several sentences) is reported with the singular "sentence skipped" wording. Owner: unassigned | `TTSEvent+Notice.swift` | — |
