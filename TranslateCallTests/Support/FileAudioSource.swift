@@ -67,7 +67,7 @@ final class FileAudioSource: AudioCapture {
     }
 
     /// Reads any PCM file and converts it to 16 kHz mono Float32 samples.
-    nonisolated private static func decode16kMono(_ url: URL) throws -> [Float] {
+    nonisolated static func decode16kMono(_ url: URL) throws -> [Float] {
         guard let file = try? AVAudioFile(forReading: url),
               let outFormat = makeFormat() else { throw FileAudioSourceError.unreadable(url) }
         let inFormat = file.processingFormat
