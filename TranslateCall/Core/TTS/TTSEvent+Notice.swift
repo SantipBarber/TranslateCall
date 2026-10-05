@@ -19,8 +19,8 @@ extension TTSEvent {
             return "Speech interrupted — rest of the sentence skipped"
         case .utteranceSkipped(.outputUnavailable):
             return "Audio output unavailable — sentence skipped"
-        case .utteranceDropped:
-            return "Speaking behind — skipped an older sentence"
+        case .backlog(let pending):
+            return "Translation running behind — \(pending) sentences waiting"
         }
     }
 }

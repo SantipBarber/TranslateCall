@@ -33,7 +33,9 @@ nonisolated enum TTSSkipReason: Sendable, Equatable {
 
 /// What `TTSPlaybackService.events` reports (REQ-T-18).
 nonisolated enum TTSEvent: Sendable, Equatable {
-    case utteranceDropped
+    /// The queue reached `TTSPlaybackLimits.backlogNoticeThreshold` pending sentences (F8.5.3 REQ-Q-03).
+    /// Nothing was dropped: the pending sentences are coalesced to catch up.
+    case backlog(pending: Int)
     case utteranceSkipped(TTSSkipReason)
     // swiftlint:disable:next identifier_name
     case fellBack(from: TTSEngine, to: TTSEngine)   // labels fixed by REQ-T-18

@@ -103,8 +103,8 @@ struct AudioCoordinatorTTSTests {
         let coordinator = makeCoordinator(mocks, noticeClock: clock)
         await coordinator.start()
 
-        await mocks.mockOutgoingTTS.emit(.utteranceDropped)
-        #expect(await waitUntil { coordinator.ttsNotice == "Speaking behind — skipped an older sentence" })
+        await mocks.mockOutgoingTTS.emit(.backlog(pending: 20))
+        #expect(await waitUntil { coordinator.ttsNotice == "Translation running behind — 20 sentences waiting" })
         clock.advance(by: .seconds(4))
         await mocks.mockOutgoingTTS.emit(.utteranceSkipped(.timeout))
         #expect(await waitUntil { coordinator.ttsNotice == "Speech failed — sentence skipped" })
@@ -141,7 +141,8 @@ struct TTSNoticeTextTests {
         #expect(TTSEvent.utteranceSkipped(.timeout).noticeText(language: "x") == "Speech failed — sentence skipped")
         #expect(TTSEvent.utteranceSkipped(.primaryFailed("boom")).noticeText(language: "x")
                 == "Speech failed — sentence skipped")
-        #expect(TTSEvent.utteranceDropped.noticeText(language: "x") == "Speaking behind — skipped an older sentence")
+        #expect(TTSEvent.backlog(pending: 20).noticeText(language: "x")
+                == "Translation running behind — 20 sentences waiting")
         #expect(!TTSEvent.utteranceSkipped(.interrupted).noticeText(language: "x").isEmpty)
         #expect(!TTSEvent.utteranceSkipped(.outputUnavailable).noticeText(language: "x").isEmpty)
     }

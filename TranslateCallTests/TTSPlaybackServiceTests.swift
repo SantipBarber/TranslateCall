@@ -18,23 +18,6 @@ struct TTSPlaybackServiceTests {
         await harness.service.deactivate()
     }
 
-    @Test("a 4th pending utterance drops the oldest pending one and reports it (REQ-T-12)")
-    func capDropsOldest() async {
-        let primary = FakeSynthesizer(scripts: [FakeSynthesizer.Script(holdBefore: 0), FakeSynthesizer.Script()])
-        let harness = TTSPlaybackHarness(primary: primary, output: FakeOutput(autoComplete: true))
-        await harness.service.speak(text: "in flight", locale: english)
-        #expect(await waitUntil { primary.gate.waiterCount == 1 })
-
-        for text in ["p1", "p2", "p3", "p4"] { await harness.service.speak(text: text, locale: english) }
-
-        #expect(await harness.service.pendingCount == 3)
-        #expect(await waitUntil { harness.events.values == [.utteranceDropped] })
-        primary.gate.open()
-        #expect(await waitUntil { primary.texts.count == 4 })
-        #expect(primary.texts == ["in flight", "p2", "p3", "p4"])
-        await harness.service.deactivate()
-    }
-
     @Test("blank text is ignored (REQ-T-12)")
     func blankIgnored() async {
         let harness = TTSPlaybackHarness(output: FakeOutput(autoComplete: true))
