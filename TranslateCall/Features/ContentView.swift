@@ -70,6 +70,12 @@ struct ContentView: View {
             // TTS Monitor row (local playback + recording)
             ttsMonitorRow
 
+            ConversationSettingsView(
+                settings: viewModel.conversationSettings,
+                vadProvider: viewModel.vadProvider,
+                isCapturing: viewModel.isCapturing
+            )
+
             // Voice profile row
             voiceProfileRow
 
@@ -82,9 +88,12 @@ struct ContentView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Text("Pause briefly after each sentence to send it")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
         .padding(24)
-        .frame(width: 480, height: 680)
+        .frame(width: 480, height: 760)
         .alert(item: $viewModel.errorAlert) { (alert: AlertItem) in
             if alert.action == .openSettings {
                 let settingsURL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
@@ -170,47 +179,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - TTS Monitor row
-
-    private var ttsMonitorRow: some View {
-        HStack(spacing: 8) {
-            Toggle(isOn: Binding(
-                get: { viewModel.ttsMonitorEnabled },
-                set: { _ in viewModel.toggleTTSMonitor() }
-            )) {
-                Label("Monitor", systemImage: viewModel.ttsMonitorEnabled
-                      ? "speaker.wave.2.fill" : "speaker.slash")
-                    .font(.caption)
-            }
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-
-            Spacer()
-
-            if viewModel.ttsMonitorEnabled {
-                Button {
-                    viewModel.toggleTTSRecording()
-                } label: {
-                    Image(systemName: viewModel.ttsMonitorRecording ? "stop.circle.fill" : "record.circle")
-                        .foregroundStyle(viewModel.ttsMonitorRecording ? .red : .secondary)
-                }
-                .buttonStyle(.borderless)
-                .help(viewModel.ttsMonitorRecording ? "Stop recording" : "Record TTS output")
-
-                if viewModel.hasRecording, !viewModel.ttsMonitorRecording {
-                    Button {
-                        viewModel.playLastRecording()
-                    } label: {
-                        Image(systemName: "play.circle")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Play last recording")
-                }
-            }
-        }
-    }
-
     // MARK: - Voice profile row
 
     private var voiceProfileRow: some View {
@@ -285,6 +253,49 @@ struct ContentView: View {
             get: { setupManager.selectedCaptureApp },
             set: { setupManager.selectCaptureApp($0) }
         )
+    }
+}
+
+// MARK: - TTS Monitor row
+
+extension ContentView {
+    private var ttsMonitorRow: some View {
+        HStack(spacing: 8) {
+            Toggle(isOn: Binding(
+                get: { viewModel.ttsMonitorEnabled },
+                set: { _ in viewModel.toggleTTSMonitor() }
+            )) {
+                Label("Monitor", systemImage: viewModel.ttsMonitorEnabled
+                      ? "speaker.wave.2.fill" : "speaker.slash")
+                    .font(.caption)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+
+            Spacer()
+
+            if viewModel.ttsMonitorEnabled {
+                Button {
+                    viewModel.toggleTTSRecording()
+                } label: {
+                    Image(systemName: viewModel.ttsMonitorRecording ? "stop.circle.fill" : "record.circle")
+                        .foregroundStyle(viewModel.ttsMonitorRecording ? .red : .secondary)
+                }
+                .buttonStyle(.borderless)
+                .help(viewModel.ttsMonitorRecording ? "Stop recording" : "Record TTS output")
+
+                if viewModel.hasRecording, !viewModel.ttsMonitorRecording {
+                    Button {
+                        viewModel.playLastRecording()
+                    } label: {
+                        Image(systemName: "play.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Play last recording")
+                }
+            }
+        }
     }
 }
 
