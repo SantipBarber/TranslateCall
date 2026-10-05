@@ -234,7 +234,9 @@ extension AudioCoordinator {
     ) {
         tasks.append(Task { [weak self] in
             for await speaking in tts.isSpeakingStream {
-                guard self != nil else { return }
+                // A value already queued when the teardown cancelled this task must not undo its
+                // reset (a late `true` would re-mute the mic with no `false` to follow).
+                guard !Task.isCancelled, self != nil else { return }
                 onSpeakingChange(speaking)
             }
         })
@@ -250,6 +252,7 @@ extension AudioCoordinator {
         let languageName = languagePairManager.displayName(for: language)
         tasks.append(Task { [weak self] in
             for await event in events {
+                guard !Task.isCancelled else { return }
                 self?.showTTSNotice(event.noticeText(language: languageName))
             }
         })

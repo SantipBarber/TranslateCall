@@ -99,6 +99,25 @@ struct AudioCoordinatorEchoGateTests {
         await coordinator.stop()
     }
 
+    @Test("I1: a speaking=true queued before the incoming teardown cannot re-mute the mic (REQ-H-06)")
+    func lateSpeakingAfterTeardownIsIgnored() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks, gateClock: TestClock())
+        coordinator.listeningMode = .speakers
+        await coordinator.start(captureTarget: callTarget)
+        #expect(coordinator.incomingStatus == .active)
+
+        // The observer is resumed with `true` but runs only after this turn's teardown has begun.
+        mocks.mockIncomingTTS.yieldSpeaking(true)
+        await coordinator.handleIncomingEvent(.stopped(.streamError("gone")))
+
+        #expect(coordinator.incomingStatus == .stopped(.streamError("gone")))
+        #expect(!coordinator.isIncomingSpeaking)
+        #expect(!coordinator.isMicPaused)
+        #expect(await micPeakAtVAD(mocks) == 0.5)
+        await coordinator.stop()
+    }
+
     @Test("an abandoned incoming activation reopens the mic (REQ-H-06, design §3.2)")
     func abandonedIncomingActivationReopensGate() async {
         let mocks = CoordinatorMocks()
