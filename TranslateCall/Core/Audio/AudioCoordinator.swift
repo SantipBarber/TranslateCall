@@ -365,7 +365,8 @@ extension AudioCoordinator {
     }
 
     /// Sets `isMicPaused` from the gate's authoritative state (never from a report's value), so a
-    /// late "paused" report after the mic reopened cannot leave it stuck paused (Task 3 review R1).
+    /// late "paused" report after the mic reopened cannot leave it stuck paused: the gate's
+    /// `onPausedChange` value is advisory, `MicEchoGate.isMicPaused` is authoritative (REQ-H-06).
     func syncMicPausedFromGate(generation: UInt64) {
         guard sessionGeneration == generation else { return }
         isMicPaused = micEchoGate?.isMicPaused ?? false

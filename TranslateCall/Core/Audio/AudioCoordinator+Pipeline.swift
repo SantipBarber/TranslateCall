@@ -170,8 +170,6 @@ extension AudioCoordinator {
             await teardownIncomingServices()
             // A stop() (or Retry) that interleaved with the teardown already owns the status.
             guard generation == sessionGeneration, incomingStatus == .active, !isStopping else { return }
-            isIncomingSpeaking = false
-            reopenMicEchoGate()
             incomingStatus = .stopped(reason)
             logger.warning("Incoming: stopped mid-session — \(reason.message)")
         default:
@@ -182,9 +180,14 @@ extension AudioCoordinator {
     /// Deactivates and releases incoming VAD/STT/TTS and their observation tasks.
     /// Takes ownership synchronously before awaiting, so services a newer activation assigns
     /// meanwhile are never cleared without being deactivated.
+    /// Covers every incoming teardown (stream stop, abandoned activation, stop()): with the TTS
+    /// observer cancelled nothing would clear `isIncomingSpeaking`, so the incoming side is marked
+    /// silent and the mic gate reopens here, before any await (REQ-H-06, design §3.2).
     func teardownIncomingServices() async {
         incomingTasks.forEach { $0.cancel() }
         incomingTasks.removeAll()
+        isIncomingSpeaking = false
+        reopenMicEchoGate()
         let (vad, stt, tts) = (incomingVAD, incomingSTT, incomingTTS)
         incomingVAD = nil
         incomingSTT = nil

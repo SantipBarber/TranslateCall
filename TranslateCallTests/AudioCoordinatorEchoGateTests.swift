@@ -99,6 +99,29 @@ struct AudioCoordinatorEchoGateTests {
         await coordinator.stop()
     }
 
+    @Test("an abandoned incoming activation reopens the mic (REQ-H-06, design §3.2)")
+    func abandonedIncomingActivationReopensGate() async {
+        let mocks = CoordinatorMocks()
+        await mocks.mockSystemCapture.holdNextActivation()
+        let coordinator = makeCoordinator(mocks, gateClock: TestClock())
+        coordinator.listeningMode = .speakers
+
+        let starting = Task { await coordinator.start(captureTarget: callTarget) }
+        #expect(await waitUntil { await mocks.mockSystemCapture.isWaitingAtGate })
+        coordinator.isIncomingSpeaking = true
+        #expect(await micPeakAtVAD(mocks) == 0)
+        await mocks.mockSystemCapture.emit(.stopped(.streamError("died")))
+        #expect(await waitUntil { coordinator.pendingStopReasonForTesting != nil })
+        await mocks.mockSystemCapture.releaseActivation()
+        await starting.value
+
+        #expect(coordinator.incomingStatus == .stopped(.streamError("died")))
+        #expect(!coordinator.isIncomingSpeaking)
+        #expect(await micPeakAtVAD(mocks) == 0.5)
+        #expect(await waitUntil { !coordinator.isMicPaused && coordinator.conversationState == .listening })
+        await coordinator.stop()
+    }
+
     @Test("stop() leaves the conversation .listening and the mic unpaused")
     func stopResetsConversationState() async {
         let mocks = CoordinatorMocks()

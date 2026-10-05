@@ -83,6 +83,7 @@ struct AudioCoordinatorTTSTests {
         await mocks.mockOutgoingSTT.injectTranscription(transcript("hola"))
 
         #expect(await waitUntil { await mocks.mockOutgoingTTS.speakCalls.count == 1 })
+        #expect(await mocks.mockOutgoingTTS.speakCalls.first?.text == "TRANSLATED: hola")
         await coordinator.stop()
     }
 
