@@ -115,7 +115,7 @@ Timing note: `TTSPlaybackService` sets speaking `true` when an attempt starts (b
 ```
 
 - The `AudioCoordinator` factories become `() async -> any VADService`. `AppContainer` passes `{ await vadProvider.makeVAD(config: settings.vadConfiguration) }` for both directions. `settings.vadConfiguration` is `VADConfiguration(minSilenceDuration: pauseSeconds).validated()`.
-- The `preload()` failure is logged. While the preload is still running, `makeVAD` returns Energy at once instead of waiting; afterwards it retries Silero on each session, which is cheap once the model is cached and lets a later download succeed. `AppContainer` skips the preload inside the test host.
+- The `preload()` failure is logged. While the preload is still running, `makeVAD` returns Energy at once instead of waiting. Once the model is ready each session loads Silero (cheap, it is cached). After a failed load (preload or per-session) `makeVAD` never awaits another load inline, which could hang Start on a download: it returns Energy at once and restarts the background load (one at a time), so a later session gets Silero when that succeeds (backlog A18). `AppContainer` skips the preload inside the test host.
 - `validated()` clamps to the FluidAudio rules listed in REQ-V-06 (from `VadTypes.swift` preconditions and assertions). It logs one warning listing the clamped fields and never throws. It lives in `VADConfiguration+Validation.swift` (no FluidAudio import). Both services call it in `init`.
 - Silero chunk compensation: FluidAudio analyses 4 096-sample (256 ms) chunks and starts counting silence only at the end of the first silent chunk, so it is given `sileroMinSilenceDuration = max(0, minSilenceDuration − 0.256 s)`. Measured while planning: p = 0.6 s → segment 716 ms after the end of speech (it was 0.75 s + one chunk before).
 - `minSilenceDuration` default: 0.6. Other defaults are unchanged (`minSpeech` 0.15, `maxSpeech` 14, padding 0.1, threshold 0.85). The Silero threshold is re-checked in the integration tier (risk §6).
@@ -134,7 +134,7 @@ A one-line hint "Pause briefly after each sentence to send it" sits under the ca
 
 | Situation | Behaviour |
 |-----------|-----------|
-| Silero model fails to load | Energy is used for that session. The reason is logged. The UI shows "VAD: Energy". Silero is retried at the next session. |
+| Silero model fails to load | Energy is used for that session. The reason is logged. The UI shows "VAD: Energy". The next session starts a background retry (and still gets Energy); the session after a successful retry gets Silero. |
 | Inconsistent VAD values | `validated()` clamps them and logs a warning; there is no crash (T3). |
 | Incoming stops mid-session while muting | `reset()` reopens the gate. The state returns to `.listening`/`.speaking`. |
 | Backlog ≥ 20 | One notice is shown. Sentences keep queuing and are coalesced. Nothing is dropped. |
