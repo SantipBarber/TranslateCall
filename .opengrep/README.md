@@ -14,6 +14,7 @@ Each `rules/<name>.yml` has a sibling `rules/<name>.swift` with `// ruleid:` / `
 | `nonisolated-unsafe-justified` | WARNING | `nonisolated(unsafe)` without a `// SAFETY:` comment on the previous line | clean in Core/Audio, Core/TTS, Core/VoiceCloning; 4 left in Core/STT and Core/Translation |
 | `playernode-isplaying-poll` | ERROR (F8.5.2) | `AVAudioPlayerNode.isPlaying` stays true until `stop()` — polling never ends | `EdgeTTSService.swift:167` (deleted in F8.5.2) |
 | `buffer-nocopy-escape` | ERROR (F8.5.1) | `bufferListNoCopy` buffers alias caller memory | `SystemAudioCaptureService.swift:236` |
+| `no-capture-suppression` | ERROR (F8.5.3) | Dropping sentences at the translation stage (half-duplex suppression) loses speech and still leaks echo; echo is handled by `MicEchoGate` | A6, A13 — `HalfDuplexManager`, `*CaptureSuppressed` (deleted in F8.5.3) |
 | `no-print` | ERROR | Use `os.Logger` | clean |
 | `hardcoded-secret` | ERROR | Credentials in source | clean (one justified suppression) |
 
