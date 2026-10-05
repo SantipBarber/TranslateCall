@@ -27,6 +27,8 @@ nonisolated final class QwenUtteranceSynthesizer: UtteranceSynthesizer {
         self.config = config
     }
 
+    var maxTextLength: Int { config.textTruncationLimit }
+
     func canSpeak(_ locale: Locale) -> Bool {
         QwenCloneConfiguration.supportsLocale(locale)
     }

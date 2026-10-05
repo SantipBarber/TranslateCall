@@ -57,25 +57,48 @@ struct AudioCoordinatorTTSTests {
         await coordinator.stop()
     }
 
-    @Test("incoming sentences are still dropped while incomingCaptureSuppressed is true (REQ-T-43)")
-    func incomingDroppedWhileSuppressed() async {
+    @Test("an incoming sentence is translated and spoken while outgoing TTS speaks (F8.5.3 REQ-H-11)")
+    func incomingTranslatedWhileOutgoingSpeaks() async {
         let mocks = CoordinatorMocks()
         let coordinator = makeCoordinator(mocks, noticeClock: TestClock())
         await coordinator.start(captureTarget: .app(bundleID: "com.test.call"))
         #expect(await waitUntil { coordinator.isIncomingActive })
-        coordinator.suppressIncomingPipeline(true)
+        coordinator.isOutgoingSpeaking = true
 
         await mocks.mockIncomingSTT.injectTranscription(transcript("hello"))
 
-        // Negative check: bounded wait; the suppressed sentence must never reach incoming TTS.
-        #expect(!(await waitUntil(timeout: .milliseconds(300)) {
-            await !mocks.mockIncomingTTS.speakCalls.isEmpty
-        }))
-
-        // Control: the same path speaks once suppression lifts, so the drop above was the guard.
-        coordinator.suppressIncomingPipeline(false)
-        await mocks.mockIncomingSTT.injectTranscription(transcript("goodbye"))
         #expect(await waitUntil { await mocks.mockIncomingTTS.speakCalls.count == 1 })
+        #expect(await mocks.mockIncomingTTS.speakCalls.first?.text == "TRANSLATED: hello")
+        await coordinator.stop()
+    }
+
+    @Test("an outgoing sentence is translated and spoken while incoming TTS speaks (F8.5.3 REQ-H-10)")
+    func outgoingTranslatedWhileIncomingSpeaks() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks, noticeClock: TestClock())
+        await coordinator.start(captureTarget: .app(bundleID: "com.test.call"))
+        #expect(await waitUntil { coordinator.isIncomingActive })
+        coordinator.isIncomingSpeaking = true
+
+        await mocks.mockOutgoingSTT.injectTranscription(transcript("hola"))
+
+        #expect(await waitUntil { await mocks.mockOutgoingTTS.speakCalls.count == 1 })
+        #expect(await mocks.mockOutgoingTTS.speakCalls.first?.text == "TRANSLATED: hola")
+        await coordinator.stop()
+    }
+
+    @Test("the one-shot mute turn still skips exactly one outgoing sentence")
+    func muteTurnStillSkipsOne() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks, noticeClock: TestClock())
+        await coordinator.start()
+        coordinator.suppressNextOutgoingTurn()
+
+        await mocks.mockOutgoingSTT.injectTranscription(transcript("hola"))
+        await mocks.mockOutgoingSTT.injectTranscription(transcript("adiós"))
+
+        #expect(await waitUntil { await mocks.mockOutgoingTTS.speakCalls.count == 1 })
+        #expect(await mocks.mockOutgoingTTS.speakCalls.map(\.text) == ["TRANSLATED: adiós"])
         await coordinator.stop()
     }
 
@@ -103,8 +126,8 @@ struct AudioCoordinatorTTSTests {
         let coordinator = makeCoordinator(mocks, noticeClock: clock)
         await coordinator.start()
 
-        await mocks.mockOutgoingTTS.emit(.utteranceDropped)
-        #expect(await waitUntil { coordinator.ttsNotice == "Speaking behind — skipped an older sentence" })
+        await mocks.mockOutgoingTTS.emit(.backlog(pending: 20))
+        #expect(await waitUntil { coordinator.ttsNotice == "Translation running behind — 20 sentences waiting" })
         clock.advance(by: .seconds(4))
         await mocks.mockOutgoingTTS.emit(.utteranceSkipped(.timeout))
         #expect(await waitUntil { coordinator.ttsNotice == "Speech failed — sentence skipped" })
@@ -141,7 +164,8 @@ struct TTSNoticeTextTests {
         #expect(TTSEvent.utteranceSkipped(.timeout).noticeText(language: "x") == "Speech failed — sentence skipped")
         #expect(TTSEvent.utteranceSkipped(.primaryFailed("boom")).noticeText(language: "x")
                 == "Speech failed — sentence skipped")
-        #expect(TTSEvent.utteranceDropped.noticeText(language: "x") == "Speaking behind — skipped an older sentence")
+        #expect(TTSEvent.backlog(pending: 20).noticeText(language: "x")
+                == "Translation running behind — 20 sentences waiting")
         #expect(!TTSEvent.utteranceSkipped(.interrupted).noticeText(language: "x").isEmpty)
         #expect(!TTSEvent.utteranceSkipped(.outputUnavailable).noticeText(language: "x").isEmpty)
     }

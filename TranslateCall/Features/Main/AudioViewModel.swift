@@ -51,9 +51,9 @@ final class AudioViewModel: ObservableObject {
     @Published private(set) var isIncomingActive: Bool = false
     @Published private(set) var incomingStatus: IncomingStatus = .idle
 
-    // MARK: - Half-duplex state (from coordinator)
+    // MARK: - Conversation state (from coordinator, F8.5.3 REQ-H-13)
 
-    @Published private(set) var halfDuplexState: HalfDuplexState = .listening
+    @Published private(set) var conversationState: ConversationState = .listening
 
     // MARK: - TTS Monitor state (from coordinator)
 
@@ -74,6 +74,10 @@ final class AudioViewModel: ObservableObject {
     /// Manages which TTS engine (AVSpeech / Kokoro / Voice Clone) is active.
     let ttsEngineSelector: TTSEngineSelector
     let voiceProfileManager: VoiceProfileManager
+    /// "I use speakers" and "Pause to translate" (F8.5.3 REQ-H-01, REQ-V-05).
+    let conversationSettings: ConversationSettings
+    /// Which VAD engine the session uses (F8.5.3 REQ-V-03).
+    let vadProvider: VADProvider
     private let audioManager: AudioManager
     private var cancellables: Set<AnyCancellable> = []
 
@@ -86,9 +90,13 @@ final class AudioViewModel: ObservableObject {
         setupManager: SetupManager = SetupManager(),
         engineSelector: STTEngineSelector = STTEngineSelector(),
         ttsEngineSelector: TTSEngineSelector = TTSEngineSelector(),
-        voiceProfileManager: VoiceProfileManager = VoiceProfileManager()
+        voiceProfileManager: VoiceProfileManager = VoiceProfileManager(),
+        conversationSettings: ConversationSettings,
+        vadProvider: VADProvider = VADProvider()
     ) {
         self.coordinator = coordinator
+        self.conversationSettings = conversationSettings
+        self.vadProvider = vadProvider
         self.audioManager = audioManager
         self.languagePairManager = languagePairManager
         self.setupManager = setupManager
@@ -99,6 +107,7 @@ final class AudioViewModel: ObservableObject {
         bindCoordinator()
         bindSetupManager()
         bindVoiceProfileManager()
+        bindConversationSettings()
     }
 
     // MARK: - Convenience init (used by previews and legacy tests)
@@ -111,7 +120,8 @@ final class AudioViewModel: ObservableObject {
         translationService: (any TranslationService)? = nil,
         incomingTranslationService: (any TranslationService)? = nil,
         languagePairManager: LanguagePairManager = LanguagePairManager(),
-        voiceProfileManager: VoiceProfileManager = VoiceProfileManager()
+        voiceProfileManager: VoiceProfileManager = VoiceProfileManager(),
+        conversationSettings: ConversationSettings
     ) {
         let audioManager = AudioManager()
         let lpm = languagePairManager
@@ -143,7 +153,8 @@ final class AudioViewModel: ObservableObject {
             setupManager: SetupManager(),
             engineSelector: selector,
             ttsEngineSelector: ttsSelector,
-            voiceProfileManager: voiceProfileManager
+            voiceProfileManager: voiceProfileManager,
+            conversationSettings: conversationSettings
         )
     }
 
@@ -210,7 +221,7 @@ final class AudioViewModel: ObservableObject {
         coordinator.$incomingTranslation.assign(to: &$incomingTranslation)
         coordinator.$isIncomingActive.assign(to: &$isIncomingActive)
         coordinator.$incomingStatus.assign(to: &$incomingStatus)
-        coordinator.$halfDuplexState.assign(to: &$halfDuplexState)
+        coordinator.$conversationState.assign(to: &$conversationState)
         coordinator.$ttsMonitorEnabled.assign(to: &$ttsMonitorEnabled)
         coordinator.$ttsMonitorRecording.assign(to: &$ttsMonitorRecording)
         coordinator.$errorAlert.assign(to: &$errorAlert)
@@ -345,7 +356,7 @@ final class AudioViewModel: ObservableObject {
     // MARK: - Preview factory
 
     static func preview(capturing: Bool = false, level: Float = -60) -> AudioViewModel {
-        let instance = AudioViewModel()
+        let instance = AudioViewModel(conversationSettings: ConversationSettings())
         instance.inputDevices = AudioDevice.mockInputs
         instance.outputDevices = AudioDevice.mockOutputs
         instance.selectedInput = AudioDevice.mockInputs.first
@@ -363,4 +374,15 @@ private final class PassthroughTranslationService: TranslationService {
         text: String, from source: Locale.Language, to target: Locale.Language
     ) async throws -> String { text }
     func prepare(source: Locale.Language, target: Locale.Language) async throws {}
+}
+
+// MARK: - Conversation settings (F8.5.3)
+
+extension AudioViewModel {
+    /// "I use speakers" is applied live to the running session's mic gate (REQ-H-05).
+    private func bindConversationSettings() {
+        conversationSettings.$listeningMode
+            .sink { [weak self] mode in self?.coordinator.listeningMode = mode }
+            .store(in: &cancellables)
+    }
 }

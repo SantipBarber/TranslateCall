@@ -41,6 +41,12 @@ actor MockSynthesisService: SynthesisService {
         eventsContinuation.finish()
     }
 
+    /// Reports a speaking change at once, from the caller's executor (no actor hop), so a test can
+    /// queue it on an observer before running something else in the same main-actor turn.
+    nonisolated func yieldSpeaking(_ speaking: Bool) {
+        speakingContinuation.yield(speaking)
+    }
+
     /// Emits a TTS event, as `TTSPlaybackService` does on a skip, fallback or drop.
     func emit(_ event: TTSEvent) {
         eventsContinuation.yield(event)

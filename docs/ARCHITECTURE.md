@@ -854,52 +854,29 @@ enum PipelineState {
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Solution: Half-Duplex Mode (MVP)**
+**Solution (F8.5.3): headphones by default, mic echo gate in speakers mode**
 
-```swift
-class HalfDuplexManager {
-    enum State {
-        case listening    // Mic active, speaker muted
-        case speaking     // Mic muted, speaker active
-        case transitioning
-    }
-    
-    @Published var state: State = .listening
-    
-    private let transitionDelay: TimeInterval = 0.3
-    
-    func switchToSpeaking() async {
-        state = .transitioning
-        // Mute microphone
-        await audioManager.muteMicrophone()
-        try? await Task.sleep(nanoseconds: UInt64(transitionDelay * 1_000_000_000))
-        state = .speaking
-    }
-    
-    func switchToListening() async {
-        state = .transitioning
-        try? await Task.sleep(nanoseconds: UInt64(transitionDelay * 1_000_000_000))
-        // Unmute microphone
-        await audioManager.unmuteMicrophone()
-        state = .listening
-    }
-}
+Half-duplex suppression (the MVP's `HalfDuplexManager`) was removed in F8.5.3: it dropped sentences
+in both directions and still leaked echo, because it was checked when the transcription arrived,
+long after the audio had been captured.
+
+- **Headphones (default):** the mic cannot hear the translation, so both directions are always live
+  and no sentence is ever dropped.
+- **Speakers ("I use speakers"):** `MicEchoGate` sits between the mic stream and the outgoing VAD and
+  replaces mic buffers with silence while the remote side's translation plays, plus a 300 ms tail.
+  The echo never reaches VAD/STT; the UI shows "Mic paused (speakers)". The gate's output goes through
+  `SessionAudioStream(label: "outgoing-gated")` (drops are counted and logged); its paused callback
+  value is advisory, the coordinator re-reads `isMicPaused` on the main actor. Every incoming
+  teardown marks incoming silent and reopens the gate.
+- The incoming direction is never muted: ScreenCaptureKit captures only the call app, which does not
+  play the user's own voice back.
+- **TTS queue:** never drops a sentence. When it falls behind, pending sentences of the same locale
+  are coalesced into one utterance, capped at 400 characters and at the primary engine's
+  `UtteranceSynthesizer.maxTextLength` (Qwen 200, Kokoro 500).
+
 ```
-
-**UI Indicator Required**:
-```swift
-struct MicrophoneStateIndicator: View {
-    @ObservedObject var halfDuplex: HalfDuplexManager
-    
-    var body: some View {
-        Circle()
-            .fill(halfDuplex.state == .listening ? .green : .red)
-            .frame(width: 20, height: 20)
-            .overlay {
-                Image(systemName: halfDuplex.state == .listening ? "mic.fill" : "speaker.wave.2.fill")
-            }
-    }
-}
+mic ─► SessionAudioStream ─► MicEchoGate ─► VAD (Silero | Energy) ─► STT ─► translate ─► TTS ─► BlackHole
+                                  ▲ speakers mode + incoming TTS speaking (+300 ms)
 ```
 
 ### Translation Framework SwiftUI Dependency
@@ -1033,7 +1010,7 @@ class TranslationServiceTests: XCTestCase {
 class PipelineIntegrationTests: XCTestCase {
     func testEndToEndOutgoingPipeline() async throws { }
     func testBidirectionalTranslation() async throws { }
-    func testHalfDuplexSwitching() async throws { }
+    func testEchoGateKeepsEchoOut() async throws { }
 }
 ```
 

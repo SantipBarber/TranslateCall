@@ -1,0 +1,7 @@
+rules:
+  - id: no-capture-suppression
+    languages: [regex]
+    severity: ERROR
+    message: "F8.5.3: a sentence is never dropped at the translation stage. Echo is kept out by MicEchoGate before the VAD (speakers mode only); see specs/m8.5-stabilization/f8.5.3-half-duplex-vad."
+    metadata: { audit_ref: "F8.5.3 / A6, A13" }
+    pattern-regex: '\b(\w*CaptureSuppressed|HalfDuplexManager|HalfDuplexCoordinating|suppressIncomingPipeline|suppressOutgoingCapture)\b'

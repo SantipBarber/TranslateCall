@@ -3,7 +3,7 @@ import AVFoundation
 
 /// Test double for `VADService`. Records calls and lets tests inject speech segments.
 actor MockVADService: VADService {
-    nonisolated let engine: VADEngine = .energy
+    nonisolated let engine: VADEngine
 
     // Streams
     nonisolated let speechSegments: AsyncStream<SpeechSegment>
@@ -18,13 +18,16 @@ actor MockVADService: VADService {
     var deactivateCalled = false
     var throwOnActivate: Error?
     private(set) var receivedBufferCount = 0
+    /// Largest absolute sample of each received buffer, in order (0 = a silenced buffer).
+    private(set) var receivedPeaks: [Float] = []
     private var consumeTask: Task<Void, Never>?
 
     private var holdActivation = false
     private var gate: CheckedContinuation<Void, Never>?
     private(set) var isWaitingAtGate = false
 
-    init() {
+    init(engine: VADEngine = .energy) {
+        self.engine = engine
         var speechCont: AsyncStream<SpeechSegment>.Continuation?
         var stateCont: AsyncStream<Bool>.Continuation?
         speechSegments = AsyncStream { speechCont = $0 }
@@ -47,7 +50,10 @@ actor MockVADService: VADService {
         if let error = throwOnActivate { throw error }
         activateCount += 1
         consumeTask = Task {
-            for await _ in stream { receivedBufferCount += 1 }
+            for await buffer in stream {
+                receivedBufferCount += 1
+                receivedPeaks.append(Self.peak(of: buffer))
+            }
         }
     }
 
@@ -57,6 +63,11 @@ actor MockVADService: VADService {
         consumeTask = nil
         speechContinuation?.finish()
         stateContinuation?.finish()
+    }
+
+    private static func peak(of buffer: AVAudioPCMBuffer) -> Float {
+        guard let data = buffer.floatChannelData?[0] else { return 0 }
+        return (0..<Int(buffer.frameLength)).reduce(Float(0)) { max($0, abs(data[$1])) }
     }
 
     /// Inject a speech segment into the stream (for driving downstream STT in tests).

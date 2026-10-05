@@ -17,12 +17,14 @@ extension AudioCoordinator {
         // Fatal: mic permission required for the app to function at all.
         let micStream = try await audioCapture.startCapture()
         logger.info("Outgoing: audio capture started")
+        // Speakers mode mutes the mic here, before the VAD, while the remote translation plays (D-3).
+        let vadInput = micEchoGate?.gate(micStream) ?? micStream
 
         // VAD (non-fatal)
-        let vad = outgoingVADFactory()
+        let vad = await outgoingVADFactory()
         outgoingVAD = vad
         do {
-            try await vad.activate(stream: micStream)
+            try await vad.activate(stream: vadInput)
             observeVADState(vad)
             logger.info("Outgoing: VAD activated")
         } catch {
@@ -98,7 +100,8 @@ extension AudioCoordinator {
             let systemStream = try await systemCapture.activate(target: captureTarget)
             try ensureCurrent(generation)
 
-            let vad = incomingVADFactory()
+            let vad = await incomingVADFactory()
+            try ensureCurrent(generation)
             incomingVAD = vad
             try await vad.activate(stream: systemStream)
             try ensureCurrent(generation)
@@ -167,7 +170,6 @@ extension AudioCoordinator {
             await teardownIncomingServices()
             // A stop() (or Retry) that interleaved with the teardown already owns the status.
             guard generation == sessionGeneration, incomingStatus == .active, !isStopping else { return }
-            isIncomingSpeaking = false
             incomingStatus = .stopped(reason)
             logger.warning("Incoming: stopped mid-session — \(reason.message)")
         default:
@@ -178,9 +180,14 @@ extension AudioCoordinator {
     /// Deactivates and releases incoming VAD/STT/TTS and their observation tasks.
     /// Takes ownership synchronously before awaiting, so services a newer activation assigns
     /// meanwhile are never cleared without being deactivated.
+    /// Covers every incoming teardown (stream stop, abandoned activation, stop()): with the TTS
+    /// observer cancelled nothing would clear `isIncomingSpeaking`, so the incoming side is marked
+    /// silent and the mic gate reopens here, before any await (REQ-H-06, design §3.2).
     func teardownIncomingServices() async {
         incomingTasks.forEach { $0.cancel() }
         incomingTasks.removeAll()
+        isIncomingSpeaking = false
+        reopenMicEchoGate()
         let (vad, stt, tts) = (incomingVAD, incomingSTT, incomingTTS)
         incomingVAD = nil
         incomingSTT = nil
@@ -227,7 +234,9 @@ extension AudioCoordinator {
     ) {
         tasks.append(Task { [weak self] in
             for await speaking in tts.isSpeakingStream {
-                guard self != nil else { return }
+                // A value already queued when the teardown cancelled this task must not undo its
+                // reset (a late `true` would re-mute the mic with no `false` to follow).
+                guard !Task.isCancelled, self != nil else { return }
                 onSpeakingChange(speaking)
             }
         })
@@ -243,6 +252,7 @@ extension AudioCoordinator {
         let languageName = languagePairManager.displayName(for: language)
         tasks.append(Task { [weak self] in
             for await event in events {
+                guard !Task.isCancelled else { return }
                 self?.showTTSNotice(event.noticeText(language: languageName))
             }
         })
@@ -264,9 +274,9 @@ extension AudioCoordinator {
             logger.debug("Suppressing next outgoing utterance (mute turn)")
             return
         }
-        // Suppress when incoming TTS is playing on speakers — prevents mic-pickup feedback loop.
-        guard !text.isEmpty, !outgoingCaptureSuppressed else { return }
-        // No stopSpeaking() first: sentences queue (≤ 3 pending) instead of cutting each other (D-3).
+        // Never dropped while the other side speaks (F8.5.3 REQ-H-10): echo is handled by MicEchoGate.
+        guard !text.isEmpty else { return }
+        // No stopSpeaking() first: sentences queue and are coalesced, never cut or dropped (F8.5.3 D-5).
         do {
             let translated = try await outgoingTranslationService.translate(
                 text: text,
@@ -282,9 +292,9 @@ extension AudioCoordinator {
     }
 
     private func handleIncomingTranslation(of text: String) async {
-        // Suppress while outgoing TTS is active (BlackHole loopback prevention, F8.5.3). No
-        // isIncomingSpeaking guard: remote sentences queue (≤ 3 pending) like outgoing ones (D-3, D-7).
-        guard !text.isEmpty, !incomingCaptureSuppressed else { return }
+        // Never dropped while either TTS speaks (F8.5.3 REQ-H-11): SCStream captures only the call app,
+        // which does not play the user's own voice back. Remote sentences queue like outgoing ones.
+        guard !text.isEmpty else { return }
         do {
             let translated = try await incomingTranslationService.translate(
                 text: text,

@@ -103,7 +103,7 @@ final class MenuBarController: NSObject {
     // MARK: - State observation
 
     private func observeState() {
-        cancellable = viewModel.$halfDuplexState
+        cancellable = viewModel.$conversationState
             .combineLatest(viewModel.$isCapturing)
             .receive(on: RunLoop.main)
             .sink { [weak self] state, isCapturing in
@@ -111,17 +111,19 @@ final class MenuBarController: NSObject {
             }
     }
 
-    private func updateIcon(state: HalfDuplexState, isCapturing: Bool) {
-        guard let button = statusItem?.button else { return }
-        let symbol: String
-        if !isCapturing {
-            symbol = "mic.slash"
-        } else {
-            switch state {
-            case .speaking, .transitioning: symbol = "waveform"
-            case .listening:                symbol = "mic"
-            }
+    /// Menu bar symbol for a state (F8.5.3 REQ-H-13).
+    nonisolated static func iconName(state: ConversationState, isCapturing: Bool) -> String {
+        guard isCapturing else { return "mic.slash" }
+        switch state {
+        case .listening:  return "mic"
+        case .speaking:   return "waveform"
+        case .micPaused:  return "mic.slash.circle"
         }
+    }
+
+    private func updateIcon(state: ConversationState, isCapturing: Bool) {
+        guard let button = statusItem?.button else { return }
+        let symbol = Self.iconName(state: state, isCapturing: isCapturing)
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "TranslateCall")
         button.image?.isTemplate = true
     }

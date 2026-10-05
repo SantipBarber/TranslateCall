@@ -31,7 +31,7 @@ struct TranslationPipelineTests {
 
     @Test func downloadLanguagesCallsPrepare() async {
         let mock = MockTranslationService()
-        let viewModel = AudioViewModel(translationService: mock)
+        let viewModel = AudioViewModel(translationService: mock, conversationSettings: .forTesting())
 
         await viewModel.downloadLanguages()
 
@@ -41,7 +41,7 @@ struct TranslationPipelineTests {
     @Test func downloadLanguagesErrorSetsAlert() async {
         let mock = MockTranslationService()
         mock.shouldThrow = TranslationError.bridgeUnavailable
-        let viewModel = AudioViewModel(translationService: mock)
+        let viewModel = AudioViewModel(translationService: mock, conversationSettings: .forTesting())
 
         await viewModel.downloadLanguages()
 
@@ -51,7 +51,7 @@ struct TranslationPipelineTests {
     @Test func downloadLanguagesSuccessChecksAvailability() async {
         let mock = MockTranslationService()
         let lpm = LanguagePairManager()
-        let viewModel = AudioViewModel(translationService: mock, languagePairManager: lpm)
+        let viewModel = AudioViewModel(translationService: mock, languagePairManager: lpm, conversationSettings: .forTesting())
 
         // Ensure status isn't unknown after a successful download flow
         await viewModel.downloadLanguages()
@@ -62,14 +62,14 @@ struct TranslationPipelineTests {
     }
 
     @Test func nilTranslationServiceDownloadIsNoop() async {
-        let viewModel = AudioViewModel(translationService: nil)
+        let viewModel = AudioViewModel(translationService: nil, conversationSettings: .forTesting())
         // Should not crash and should not set an error alert
         await viewModel.downloadLanguages()
         #expect(viewModel.errorAlert == nil)
     }
 
     @Test func initialStateIsClean() {
-        let viewModel = AudioViewModel(translationService: MockTranslationService())
+        let viewModel = AudioViewModel(translationService: MockTranslationService(), conversationSettings: .forTesting())
         #expect(viewModel.latestTranslation == nil)
         #expect(viewModel.latestTranscription == nil)
         #expect(viewModel.isCapturing == false)
@@ -77,7 +77,7 @@ struct TranslationPipelineTests {
 
     @Test func languagePairManagerIsAccessible() {
         let lpm = LanguagePairManager()
-        let viewModel = AudioViewModel(languagePairManager: lpm)
+        let viewModel = AudioViewModel(languagePairManager: lpm, conversationSettings: .forTesting())
         // Verify the manager is wired through
         #expect(viewModel.languagePairManager.sourceLanguage.languageCode != nil)
     }

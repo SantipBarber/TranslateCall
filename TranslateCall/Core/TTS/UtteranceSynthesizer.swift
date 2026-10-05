@@ -11,6 +11,9 @@ import AVFoundation
 nonisolated protocol UtteranceSynthesizer: Sendable {
     var engine: TTSEngine { get }
     func canSpeak(_ locale: Locale) -> Bool
+    /// Longest text the engine speaks without cutting it; the playback service never coalesces past it
+    /// (F8.5.3 REQ-Q-02). A single longer sentence is still handed over whole.
+    var maxTextLength: Int { get }
     func synthesize(text: String, locale: Locale) -> AsyncThrowingStream<AVAudioPCMBuffer, Error>
     /// Releases long-lived resources (Edge closes its socket). Called by `TTSPlaybackService.deactivate()`.
     func shutdown() async
@@ -18,6 +21,7 @@ nonisolated protocol UtteranceSynthesizer: Sendable {
 
 extension UtteranceSynthesizer {
     nonisolated func shutdown() async {}
+    nonisolated var maxTextLength: Int { Int.max }
 }
 
 // MARK: - Events
@@ -33,7 +37,9 @@ nonisolated enum TTSSkipReason: Sendable, Equatable {
 
 /// What `TTSPlaybackService.events` reports (REQ-T-18).
 nonisolated enum TTSEvent: Sendable, Equatable {
-    case utteranceDropped
+    /// The queue reached `TTSPlaybackLimits.backlogNoticeThreshold` pending sentences (F8.5.3 REQ-Q-03).
+    /// Nothing was dropped: the pending sentences are coalesced to catch up.
+    case backlog(pending: Int)
     case utteranceSkipped(TTSSkipReason)
     // swiftlint:disable:next identifier_name
     case fellBack(from: TTSEngine, to: TTSEngine)   // labels fixed by REQ-T-18

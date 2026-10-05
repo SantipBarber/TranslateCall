@@ -7,8 +7,10 @@ nonisolated private let logger = Logger(subsystem: "com.spbarber.TranslateCall",
 
 /// Tunables of `TTSPlaybackService` (design §3.3); injectable so tests can shrink them.
 nonisolated struct TTSPlaybackLimits: Sendable {
-    /// Utterances waiting behind the one in flight (REQ-T-12).
-    var maxPending = 3
+    /// Pending sentences at which one `.backlog` event is emitted (F8.5.3 REQ-Q-03). Nothing is ever dropped.
+    var backlogNoticeThreshold = 20
+    /// Longest text one coalesced utterance may have (F8.5.3 REQ-Q-02); 0 disables coalescing.
+    var maxCoalescedCharacters = 400
     /// Longest one synthesizer may take to finish one utterance (REQ-T-16).
     var utteranceWatchdog: Duration = .seconds(30)
     /// Consecutive primary failures after which utterances go straight to the fallback (REQ-T-23).
@@ -24,8 +26,9 @@ nonisolated struct TTSPlaybackLimits: Sendable {
 
 /// The one `SynthesisService` the coordinator gets, whatever the engine (F8.5.2 REQ-T-10…19).
 ///
-/// `speak` enqueues (at most `maxPending` waiting, the oldest dropped) and returns. One worker runs
-/// utterances strictly one at a time: it starts the synthesizer, schedules each buffer as it arrives
+/// `speak` enqueues and returns; nothing is ever dropped (F8.5.3 REQ-Q-01). One worker runs
+/// utterances strictly one at a time, coalescing the sentences that queued up meanwhile into one
+/// utterance to catch up (REQ-Q-02): it starts the synthesizer, schedules each buffer as it arrives
 /// and waits only for the last one to be played back. `stopSpeaking` bumps `generation`, so nothing
 /// synthesized before it is ever scheduled. `isSpeakingStream` is truthful: `false` only once the
 /// last queued audio has been heard, or at once on stop.
@@ -67,6 +70,8 @@ actor TTSPlaybackService: SynthesisService {
     // MARK: Dependencies
 
     private let primary: any UtteranceSynthesizer
+    /// Coalescing stops at the smaller of the configured limit and what the primary speaks uncut.
+    private let coalescingLimit: Int
     private let fallback: (any UtteranceSynthesizer)?
     private let output: any AudioOutputting
     private let limits: TTSPlaybackLimits
@@ -81,6 +86,8 @@ actor TTSPlaybackService: SynthesisService {
     private let wakeupContinuation: AsyncStream<Void>.Continuation
 
     private var queue: [Utterance] = []
+    /// `.backlog` was reported and the queue has not fallen below the threshold since (REQ-Q-03).
+    private var backlogNoticed = false
     private var generation: UInt64 = 0
     private var isSpeaking = false
     private var isDeactivated = false
@@ -111,6 +118,7 @@ actor TTSPlaybackService: SynthesisService {
         metrics: TTSMetricsCollector = .shared
     ) {
         self.primary = primary
+        coalescingLimit = min(limits.maxCoalescedCharacters, primary.maxTextLength)
         self.fallback = fallback
         self.output = output
         self.limits = limits
@@ -132,12 +140,12 @@ actor TTSPlaybackService: SynthesisService {
 
     func speak(text: String, locale: Locale) async {
         guard !isDeactivated, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        if queue.count >= limits.maxPending {
-            queue.removeFirst()
-            eventsContinuation.yield(.utteranceDropped)
-            logger.info("TTS queue full: dropped the oldest pending sentence")
-        }
         queue.append(Utterance(text: text, locale: locale))
+        if queue.count >= limits.backlogNoticeThreshold, !backlogNoticed {
+            backlogNoticed = true
+            eventsContinuation.yield(.backlog(pending: queue.count))
+            logger.info("TTS backlog: \(self.queue.count) sentences waiting")
+        }
         if worker == nil { worker = Task { await self.runWorker() } }
         wakeupContinuation.yield()
     }
@@ -145,6 +153,7 @@ actor TTSPlaybackService: SynthesisService {
     func stopSpeaking() async {
         generation &+= 1
         queue.removeAll()
+        backlogNoticed = false
         attemptTask?.cancel()
         output.stop()
         setSpeaking(false)
@@ -181,10 +190,22 @@ actor TTSPlaybackService: SynthesisService {
     private func runWorker() async {
         for await _ in wakeups {
             while !queue.isEmpty {
-                let utterance = queue.removeFirst()
-                await play(utterance)
+                await play(takeNext())
             }
         }
+    }
+
+    /// The next utterance: the oldest pending sentence plus the following ones of the same locale,
+    /// joined by a space, while the text stays within `maxCoalescedCharacters` (REQ-Q-02).
+    private func takeNext() -> Utterance {
+        var next = queue.removeFirst()
+        while let following = queue.first, following.locale == next.locale,
+              next.text.count + 1 + following.text.count <= coalescingLimit {
+            next = Utterance(text: next.text + " " + following.text, locale: next.locale)
+            queue.removeFirst()
+        }
+        if queue.count < limits.backlogNoticeThreshold { backlogNoticed = false }
+        return next
     }
 
     private func play(_ utterance: Utterance) async {

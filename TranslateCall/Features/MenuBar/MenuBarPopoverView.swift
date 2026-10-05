@@ -28,7 +28,7 @@ struct MenuBarPopoverView: View {
             StatusBadgeView(
                 isCapturing: viewModel.isCapturing,
                 isSpeechActive: viewModel.isSpeechActive,
-                halfDuplexState: viewModel.halfDuplexState,
+                conversationState: viewModel.conversationState,
                 isIncomingActive: viewModel.isIncomingActive
             )
             IncomingStatusBanner(status: viewModel.incomingStatus) { viewModel.retryIncoming() }

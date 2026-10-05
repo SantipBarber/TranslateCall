@@ -15,7 +15,7 @@ struct VADConfigurationTests {
         #expect(config.sileroThreshold == 0.85)
         #expect(config.energyThresholdDBFS == -40.0)
         #expect(config.minSpeechDuration == 0.15)
-        #expect(config.minSilenceDuration == 0.75)
+        #expect(config.minSilenceDuration == 0.6)
         #expect(config.maxSpeechDuration == 14.0)
         #expect(config.speechPadding == 0.1)
     }

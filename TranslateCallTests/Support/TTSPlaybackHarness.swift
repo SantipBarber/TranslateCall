@@ -17,7 +17,7 @@ struct TTSPlaybackHarness {
     init(primary: FakeSynthesizer = FakeSynthesizer(),
          fallback: FakeSynthesizer? = nil,
          output: FakeOutput = FakeOutput(),
-         limits: TTSPlaybackLimits = .default) {
+         limits: TTSPlaybackLimits = .uncoalesced) {
         self.primary = primary
         self.fallback = fallback
         self.output = output
@@ -25,5 +25,14 @@ struct TTSPlaybackHarness {
                                      limits: limits, clock: clock, metrics: metrics)
         speaking = StreamRecorder(service.isSpeakingStream)
         events = StreamRecorder(service.events)
+    }
+}
+
+extension TTSPlaybackLimits {
+    /// The defaults without coalescing: suites written before F8.5.3 count utterances one by one.
+    static var uncoalesced: TTSPlaybackLimits {
+        var limits = TTSPlaybackLimits.default
+        limits.maxCoalescedCharacters = 0
+        return limits
     }
 }

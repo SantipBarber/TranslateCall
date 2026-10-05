@@ -8,8 +8,8 @@ nonisolated private let logger = Logger(subsystem: "com.spbarber.TranslateCall",
 /// Owns and manages both the outgoing (mic → BlackHole) and incoming (SCStream → speakers) pipelines.
 ///
 /// All public API is `@MainActor`. `AudioViewModel` observes this object via Combine.
-/// F4.2 hooks (`suppressIncomingPipeline`, `suppressOutgoingCapture`) are no-op stubs
-/// filled in by `HalfDuplexManager` in F4.2.
+/// No sentence is ever dropped at the translation stage (F8.5.3 D-4): echo is kept out by
+/// `MicEchoGate`, which mutes the mic before the VAD in speakers mode only.
 ///
 /// Pipeline setup, observation, translation & error helpers are in AudioCoordinator+Pipeline.swift.
 @MainActor
@@ -19,14 +19,21 @@ final class AudioCoordinator: ObservableObject {
 
     @Published var outgoingTranscription: String?
     @Published var outgoingTranslation: String?
-    @Published var isOutgoingSpeaking: Bool = false
+    @Published var isOutgoingSpeaking: Bool = false {
+        didSet { updateConversationState() }
+    }
     @Published private(set) var isOutgoingActive: Bool = false
 
     // MARK: - Incoming pipeline state
 
     @Published var incomingTranscription: String?
     @Published var incomingTranslation: String?
-    @Published var isIncomingSpeaking: Bool = false
+    @Published var isIncomingSpeaking: Bool = false {
+        didSet {
+            micEchoGate?.setIncomingSpeaking(isIncomingSpeaking)
+            updateConversationState()
+        }
+    }
     /// Written only by the coordinator (here and in AudioCoordinator+Pipeline.swift); the setter is
     /// internal rather than `private(set)` because the extension lives in another file.
     @Published var incomingStatus: IncomingStatus = .idle {
@@ -79,8 +86,9 @@ final class AudioCoordinator: ObservableObject {
     private(set) var systemCapture: any SystemAudioCapture
 
     // Factories are called at start() time so tests can inject pre-built mocks.
-    private(set) var outgoingVADFactory: () -> any VADService
-    private(set) var incomingVADFactory: () -> any VADService
+    // VAD factories are async: Silero loads its CoreML model (F8.5.3 REQ-V-01).
+    private(set) var outgoingVADFactory: () async -> any VADService
+    private(set) var incomingVADFactory: () async -> any VADService
     private(set) var outgoingSTTFactory: (Locale) -> any SpeechRecognizerService
     private(set) var incomingSTTFactory: (Locale) -> any SpeechRecognizerService
     private(set) var outgoingTranslationService: any TranslationService
@@ -90,26 +98,26 @@ final class AudioCoordinator: ObservableObject {
 
     let languagePairManager: LanguagePairManager
 
-    // MARK: - Half-duplex state (F4.2)
+    // MARK: - Conversation state and mic echo gate (F8.5.3)
 
-    @Published private(set) var halfDuplexState: HalfDuplexState = .listening
+    /// How the user listens (from `ConversationSettings`); applied live to the gate (REQ-H-05).
+    @Published var listeningMode: ListeningMode = .headphones {
+        didSet { micEchoGate?.setMode(listeningMode) }
+    }
+    /// The gate is muting the mic (speakers mode, remote translation playing).
+    @Published private(set) var isMicPaused = false {
+        didSet { updateConversationState() }
+    }
+    @Published private(set) var conversationState: ConversationState = .listening
 
-    /// Suppresses the outgoing translation stage when incoming TTS is speaking.
-    /// Written on @MainActor; read in handleOutgoingTranslation (also @MainActor). No races.
-    var outgoingCaptureSuppressed: Bool = false
+    /// This session's gate between the mic stream and the outgoing VAD; nil outside a session.
+    private(set) var micEchoGate: MicEchoGate?
+    private let echoGateTail: Duration
+    private let echoGateClock: any Clock<Duration>
 
     /// When true, the next outgoing utterance from STT is silently dropped (one-shot).
     /// Set via `suppressNextOutgoingTurn()` — resets automatically after one use.
     var suppressNextOutgoingTurnFlag: Bool = false
-
-    /// Suppresses the incoming translation stage when outgoing TTS is speaking.
-    var incomingCaptureSuppressed: Bool = false
-
-    private var halfDuplexManager: HalfDuplexManager?
-    private var halfDuplexCancellable: AnyCancellable?
-
-    /// Configurable for tests; defaults to 300ms (PoC5-validated).
-    private let halfDuplexTransitionDelay: Duration
 
     // MARK: - Active services (created at start() time, released at stop())
 
@@ -130,8 +138,8 @@ final class AudioCoordinator: ObservableObject {
     init(
         audioCapture: any AudioCapture,
         systemCapture: any SystemAudioCapture,
-        outgoingVADFactory: @escaping () -> any VADService,
-        incomingVADFactory: @escaping () -> any VADService,
+        outgoingVADFactory: @escaping () async -> any VADService,
+        incomingVADFactory: @escaping () async -> any VADService,
         outgoingSTTFactory: @escaping (Locale) -> any SpeechRecognizerService,
         incomingSTTFactory: @escaping (Locale) -> any SpeechRecognizerService,
         outgoingTranslationService: any TranslationService,
@@ -139,7 +147,8 @@ final class AudioCoordinator: ObservableObject {
         outgoingTTSFactory: @escaping (Locale, AudioDeviceID?) throws -> any SynthesisService,
         incomingTTSFactory: @escaping (Locale, AudioDeviceID?) throws -> any SynthesisService,
         languagePairManager: LanguagePairManager,
-        halfDuplexTransitionDelay: Duration = .milliseconds(300),
+        echoGateTail: Duration = .milliseconds(300),
+        echoGateClock: any Clock<Duration> = ContinuousClock(),
         noticeClock: any Clock<Duration> = ContinuousClock(),
         ttsNoticeDuration: Duration = .seconds(5)
     ) {
@@ -154,7 +163,8 @@ final class AudioCoordinator: ObservableObject {
         self.outgoingTTSFactory = outgoingTTSFactory
         self.incomingTTSFactory = incomingTTSFactory
         self.languagePairManager = languagePairManager
-        self.halfDuplexTransitionDelay = halfDuplexTransitionDelay
+        self.echoGateTail = echoGateTail
+        self.echoGateClock = echoGateClock
         self.noticeClock = noticeClock
         self.ttsNoticeDuration = ttsNoticeDuration
     }
@@ -173,18 +183,19 @@ final class AudioCoordinator: ObservableObject {
         sessionGeneration &+= 1
         let generation = sessionGeneration
         self.captureTarget = captureTarget
-        setupHalfDuplex()
+        micEchoGate = makeMicEchoGate()
 
         do {
             try await startOutgoingPipeline(blackHoleDeviceID: blackHoleDeviceID)
         } catch {
             errorAlert = makeAlertItem(for: error)
+            releaseMicEchoGate()   // no session: the gate is nil outside one
             return
         }
         guard generation == sessionGeneration, audioCapture.isCapturing else {
             logger.info("start() superseded (stop or mic ended) — releasing outgoing")
             await teardownOutgoingServices()
-            teardownHalfDuplex()
+            releaseMicEchoGate()
             return
         }
 
@@ -204,7 +215,7 @@ final class AudioCoordinator: ObservableObject {
         await pendingActivation?.value   // a superseded activation tears itself down
 
         cancelAllTasks()
-        teardownHalfDuplex()
+        releaseMicEchoGate()
         await teardownOutgoingServices()
 
         // Incoming pipeline
@@ -217,7 +228,6 @@ final class AudioCoordinator: ObservableObject {
         isSpeechActive = false
         isOutgoingSpeaking = false
         isIncomingSpeaking = false
-        halfDuplexState = .listening
         outgoingTranscription = nil
         outgoingTranslation = nil
         incomingTranscription = nil
@@ -337,41 +347,45 @@ final class AudioCoordinator: ObservableObject {
         }
     }
 
-    // MARK: - F4.2 — HalfDuplexCoordinating conformance (implemented)
-
-    func suppressOutgoingCapture(_ suppress: Bool) {
-        outgoingCaptureSuppressed = suppress
-    }
-
-    func suppressIncomingPipeline(_ suppress: Bool) {
-        incomingCaptureSuppressed = suppress
-    }
-
-    // MARK: - F4.2 — HalfDuplex lifecycle
-
-    private func setupHalfDuplex() {
-        let hdm = HalfDuplexManager(coordinator: self, transitionDelay: halfDuplexTransitionDelay)
-        halfDuplexManager = hdm
-        halfDuplexCancellable = hdm.$state
-            .sink { @MainActor [weak self] state in
-                self?.halfDuplexState = state
-            }
-    }
-
-    private func teardownHalfDuplex() {
-        halfDuplexCancellable = nil
-        halfDuplexManager?.deactivate()
-        halfDuplexManager = nil
-    }
 }
 
-// MARK: - HalfDuplexCoordinating
+// MARK: - Mic echo gate and conversation state (F8.5.3 REQ-H-02…06, REQ-H-13, design §3.2–3.3)
 
-extension AudioCoordinator: HalfDuplexCoordinating {
-    var isOutgoingSpeakingPublisher: AnyPublisher<Bool, Never> {
-        $isOutgoingSpeaking.eraseToAnyPublisher()
+extension AudioCoordinator {
+    /// A gate for the session that is starting. Its paused reports are advisory (they can arrive
+    /// out of order across threads), so each one only triggers a re-read of the gate on the main
+    /// actor; reports from a session that is over (`sessionGeneration` moved on) are ignored.
+    private func makeMicEchoGate() -> MicEchoGate {
+        let generation = sessionGeneration
+        return MicEchoGate(mode: listeningMode, tail: echoGateTail, clock: echoGateClock) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.syncMicPausedFromGate(generation: generation)
+            }
+        }
     }
-    var isIncomingSpeakingPublisher: AnyPublisher<Bool, Never> {
-        $isIncomingSpeaking.eraseToAnyPublisher()
+
+    /// Sets `isMicPaused` from the gate's authoritative state (never from a report's value), so a
+    /// late "paused" report after the mic reopened cannot leave it stuck paused: the gate's
+    /// `onPausedChange` value is advisory, `MicEchoGate.isMicPaused` is authoritative (REQ-H-06).
+    func syncMicPausedFromGate(generation: UInt64) {
+        guard sessionGeneration == generation else { return }
+        isMicPaused = micEchoGate?.isMicPaused ?? false
+    }
+
+    /// The incoming side went away: the mic must not stay muted (REQ-H-06).
+    func reopenMicEchoGate() {
+        micEchoGate?.reset()
+        isMicPaused = false
+    }
+
+    private func releaseMicEchoGate() {
+        reopenMicEchoGate()
+        micEchoGate = nil
+    }
+
+    private func updateConversationState() {
+        let state = ConversationState.derive(micPaused: isMicPaused, outgoingSpeaking: isOutgoingSpeaking,
+                                             incomingSpeaking: isIncomingSpeaking)
+        if state != conversationState { conversationState = state }
     }
 }
