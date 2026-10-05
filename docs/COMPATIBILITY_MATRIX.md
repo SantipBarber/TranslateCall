@@ -309,9 +309,9 @@ numpy
 
 | Limitation | Impact | Workaround |
 |------------|--------|------------|
-| Half-duplex mode | Can't interrupt | Wait for turn |
+| Speakers mode ("I use speakers") | Your speech is not sent while the remote translation plays | Use headphones |
 | Background noise | Lower STT accuracy | Use quiet environment |
-| Echo (no headphones) | Feedback possible | Use headphones |
+| Echo (no headphones) | Feedback unless "I use speakers" is on | Use headphones, or turn on "I use speakers" |
 
 ---
 
