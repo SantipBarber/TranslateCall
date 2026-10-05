@@ -29,7 +29,7 @@ TranslateCall must feel like simultaneous interpretation: **every pause the spea
 | D-3 | **Echo protection = mic gate before the VAD** (approach 1). In speakers mode, while incoming TTS plays and for a 300 ms tail, mic buffers are replaced with silence of the same length. Echo never reaches VAD/STT. Speech overlapping the incoming translation is not captured; the UI shows "mic paused" instead of dropping anything silently. |
 | D-4 | **No direction is ever suppressed at the translation stage.** `HalfDuplexManager`, `outgoingCaptureSuppressed`, `incomingCaptureSuppressed` and both drop guards are removed. The one-shot "mute turn" (user action) stays. |
 | D-5 | **TTS queue never drops** (supersedes F8.5.2 D-3/REQ-T-12): safety threshold of 20 pending with a notice; when more than one sentence is pending the worker **coalesces** them into one utterance (≤ ~400 characters each) to recover delay. |
-| D-6 | **Pause to translate:** default 0.6 s, user-adjustable 0.4–1.2 s ("Pausa para traducir"), applied at the next session start. |
+| D-6 | **Pause to translate:** default 0.6 s, user-adjustable 0.4–1.2 s ("Pause to translate"), applied at the next session start. |
 | D-7 | **Silero is the default VAD**, Energy only as fallback when the model cannot load. The active engine is shown in the UI. |
 | D-8 | **Solo testing (A14)** needs no new code: app mic picker = headset mic, system output = speakers, Monitor on, speakers mode on. Documented in the usage guide. An in-app output picker goes to the backlog if this proves awkward. |
 | D-9 | T2 (Whisper `small` / threshold for Ukrainian) moves out of F8.5.3 to its own task after F8.5.4. |
@@ -68,7 +68,7 @@ TranslateCall must feel like simultaneous interpretation: **every pause the spea
 
 **REQ-Q-02**: When the worker takes the next utterance and more than one is pending, it SHALL coalesce consecutive pending utterances of the same locale, in order, joined by a single space, into one utterance of at most `maxCoalescedCharacters` (default 400). An utterance that alone exceeds the limit is taken as is.
 
-**REQ-Q-03**: When the pending count reaches `backlogNoticeThreshold` (default 20), the service SHALL emit one `.backlog(pending:)` event; it SHALL emit it again only after the queue has fallen below the threshold and reached it again. The event surfaces in the notice line (F8.5.2 REQ-T-41) as "Traducción con retraso: N frases en cola".
+**REQ-Q-03**: When the pending count reaches `backlogNoticeThreshold` (default 20), the service SHALL emit one `.backlog(pending:)` event; it SHALL emit it again only after the queue has fallen below the threshold and reached it again. The event surfaces in the notice line (F8.5.2 REQ-T-41) as "Translation running behind — N sentences waiting".
 
 **REQ-Q-04**: A coalesced utterance SHALL behave as one utterance for fallback, skip, watchdog, metrics and `isSpeaking` (F8.5.2 REQ-T-13…23 unchanged).
 
@@ -78,11 +78,11 @@ TranslateCall must feel like simultaneous interpretation: **every pause the spea
 
 **REQ-V-02**: The Silero model SHALL be preloaded at app launch (background, non-blocking) so the first session does not wait for it. If loading fails, the reason SHALL be logged and Energy used for that session; every new session tries Silero again (cheap once the model is cached).
 
-**REQ-V-03**: The active VAD engine SHALL be visible in the main window (e.g. "VAD: Silero" / "VAD: Energía").
+**REQ-V-03**: The active VAD engine SHALL be visible in the main window (e.g. "VAD: Silero" / "VAD: Energy").
 
 **REQ-V-04**: `VADServiceFactory` SHALL be removed.
 
-**REQ-V-05**: A "Pausa para traducir" setting (0.4–1.2 s, step 0.1 s, default 0.6 s) SHALL be persisted and SHALL set `VADConfiguration.minSilenceDuration` for both directions at the next session start. The UI SHALL say it applies to the next session when changed during one.
+**REQ-V-05**: A "Pause to translate" setting (0.4–1.2 s, step 0.1 s, default 0.6 s) SHALL be persisted and SHALL set `VADConfiguration.minSilenceDuration` for both directions at the next session start. The UI SHALL say it applies to the next session when changed during one.
 
 **REQ-V-06**: `VADConfiguration.validated()` SHALL return a configuration that satisfies every FluidAudio precondition and assertion: all durations ≥ 0, `maxSpeechDuration` > 0, `minSpeechDuration` ≤ `maxSpeechDuration`, `minSilenceDuration` ≤ `maxSpeechDuration`, `speechPadding` ≤ `minSpeechDuration`, `sileroThreshold` in [0, 1]. Out-of-range values are clamped and a warning is logged; it never throws.
 
@@ -90,13 +90,15 @@ TranslateCall must feel like simultaneous interpretation: **every pause the spea
 
 ### FR-8.5.3.5 — Usage guide
 
-**REQ-U-01**: A usage guide (`docs/usage-guide.md`, in Spanish) SHALL explain: headphones recommended; pause clearly to send a sentence; the "Pausa para traducir" and "Uso altavoces" settings; the solo test procedure (D-8) for both directions.
+**REQ-U-01**: A usage guide (`docs/usage-guide.md`, in Spanish) SHALL explain: headphones recommended; pause clearly to send a sentence; the "Pause to translate" and "I use speakers" settings; the solo test procedure (D-8) for both directions.
 
-**REQ-U-02**: The main window SHALL link to the guide and show a one-line hint near the capture button ("Haz una pausa para enviar cada frase").
+**REQ-U-02**: The main window SHALL link to the guide and show a one-line hint near the capture button ("Pause briefly after each sentence to send it").
+
+**REQ-U-03**: UI strings SHALL be in English, like the rest of the app ("I use speakers", "Pause to translate", "Mic paused (speakers)"); only the usage guide is in Spanish (tasks.md P1).
 
 ## Non-Functional Requirements
 
-**NFR-H-01**: With Silero and the configured pause *p*, the segment for a sentence SHALL be emitted no later than *p* + 150 ms after the end of speech (integration test on fixtures).
+**NFR-H-01**: With Silero and the configured pause *p*, the segment for a sentence SHALL be emitted no later than *p* + 0.5 s after the end of speech, and not before *p* − 0.35 s (integration test on fixtures). Silero (FluidAudio) analyses 256 ms chunks, so the pause is honoured to within about one chunk (tasks.md P2).
 
 **NFR-H-02**: A pause shorter than half the configured pause (e.g. 0.3 s with p = 0.6 s) SHALL NOT split a sentence (integration test on fixtures).
 
@@ -117,7 +119,7 @@ TranslateCall must feel like simultaneous interpretation: **every pause the spea
 1. `just pr` passes on the feature branch.
 2. Unit tests cover REQ-H-0x/1x, REQ-Q-0x and REQ-V-0x as listed in design.md §5, with fakes and an injectable clock.
 3. Integration tier (Mac mini):
-   - Silero on fixtures: two sentences separated by 0.7 s → 2 segments; a 0.3 s micro-pause → 1 segment; NFR-H-01 latency bound holds.
+   - Silero on fixtures: two sentences separated by 1.0 s → 2 segments (p = 0.6 s); a 0.3 s micro-pause → 1 segment; NFR-H-01 latency bound holds.
    - Simulated echo: a speech fixture through `MicEchoGate` (speakers mode) + Silero with an "incoming speaking" interval yields no segment from that interval; speech before it is emitted.
 4. Manual checklist in tasks.md completed (headphones cross-talk with no loss; speakers mode solo test without echo loop and with "mic paused" indicator; pause setting at 0.4/0.6/1.2 s; backlog coalescing with a long monologue; VAD engine shown; re-run of F8.5.2 M1/M6 and F8.5.1 M1–M6 with the solo procedure).
 5. Backlog: A6, A7, A13, A14, A15, T3 and T4 (VAD part) marked fixed in F8.5.3 with their pinning tests; T2 re-owned; `AudioCoordinatorTTSTests.incomingDroppedWhileSuppressed` replaced by its inverse.

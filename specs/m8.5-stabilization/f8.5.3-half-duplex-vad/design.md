@@ -23,13 +23,15 @@ Settings:  ConversationSettings (UserDefaults): listeningMode, pauseSeconds
 ## 2. Files
 
 ```
-TranslateCall/Core/Audio/MicEchoGate.swift              NEW   ListeningMode + gate (stream transformer, injectable clock)
+TranslateCall/Core/Audio/ListeningMode.swift            NEW   .headphones / .speakers
+TranslateCall/Core/Audio/MicEchoGate.swift              NEW   gate (stream transformer, injectable clock)
 TranslateCall/Core/Audio/ConversationSettings.swift     NEW   @MainActor ObservableObject: listeningMode, pauseSeconds (UserDefaults)
 TranslateCall/Core/Audio/ConversationState.swift        NEW   enum .listening / .speaking / .micPaused (replaces HalfDuplexState)
 TranslateCall/Core/Audio/HalfDuplexManager.swift        DELETED
 TranslateCall/Core/Audio/AudioCoordinator.swift         CHANGED  no suppression flags; gate + conversationState; async VAD factories
 TranslateCall/Core/Audio/AudioCoordinator+Pipeline.swift CHANGED  gate in outgoing path; guards removed; incoming speaking → gate
-TranslateCall/Core/VAD/VADService.swift                 CHANGED  VADConfiguration.validated(), pause defaults
+TranslateCall/Core/VAD/VADService.swift                 CHANGED  nonisolated + Equatable VADConfiguration, pause default 0.6 s, Silero chunk compensation
+TranslateCall/Core/VAD/VADConfiguration+Validation.swift NEW  validated(), sileroMinSilenceDuration
 TranslateCall/Core/VAD/VADProvider.swift                NEW   preload Silero, make VAD with Energy fallback, activeEngine
 TranslateCall/Core/VAD/VADServiceFactory.swift          DELETED
 TranslateCall/Core/VAD/SileroVADService.swift           CHANGED  validated config
@@ -41,11 +43,14 @@ TranslateCall/App/AppContainer.swift                    CHANGED  VADProvider, Co
 TranslateCall/Features/Main/AudioViewModel.swift        CHANGED  conversationState, settings, vad engine
 TranslateCall/Features/Main/StatusBadgeView.swift       CHANGED  ConversationState
 TranslateCall/Features/MenuBar/*                        CHANGED  ConversationState icon
-TranslateCall/Features/ContentView.swift (+ new ConversationSettingsView.swift)  speakers toggle, pause slider, VAD label, hint, guide link
+TranslateCall/Features/ContentView.swift               CHANGED  settings row, hint, window height 760, monitor row moved to an extension (type length)
+TranslateCall/Features/Main/ConversationSettingsView.swift NEW  speakers toggle, pause slider, VAD label, guide link
 docs/usage-guide.md                                     NEW   Spanish usage guide (REQ-U-01)
-TranslateCallTests/…                                    MicEchoGateTests, VADConfigurationTests, VADProviderTests, TTSPlaybackService queue tests,
-                                                        AudioCoordinator tests updated; HalfDuplexManagerTests deleted
-TranslateCallIntegrationTests/…                         VADSegmentationIntegrationTests (Silero on fixtures), EchoGateIntegrationTests
+TranslateCallTests/…                                    MicEchoGateTests (+ ConversationStateTests), ConversationSettingsTests, VADConfigurationValidationTests,
+                                                        VADProviderTests, TTSPlaybackQueueTests, AudioCoordinatorEchoGateTests, ConversationSettingsViewTests,
+                                                        AudioCoordinatorTTSTests updated; HalfDuplexManagerTests + MockHalfDuplexCoordinator deleted
+TranslateCallTests/Integration/SileroSegmentationIntegrationTests.swift  NEW  Silero on spliced fixtures + echo gate (no new WAVs)
+.opengrep/rules/swift-pipeline.{yml,swift}              NEW   no-capture-suppression (ERROR)
 ```
 
 ## 3. Components
@@ -89,14 +94,14 @@ Timing note: `TTSPlaybackService` sets speaking `true` when an attempt starts (b
 
 - Removed: `HalfDuplexManager`, `halfDuplexManager`, `halfDuplexCancellable`, `halfDuplexTransitionDelay`, `outgoingCaptureSuppressed`, `incomingCaptureSuppressed`, the `HalfDuplexCoordinating` conformance (`suppressOutgoingCapture`/`suppressIncomingPipeline`), the two `!…Suppressed` guards.
 - `@Published private(set) var conversationState: ConversationState` is derived from `isMicPaused`, `isOutgoingSpeaking` and `isIncomingSpeaking` (REQ-H-13). It is recomputed in a `didSet` on each input.
-- `AudioViewModel` re-publishes `conversationState`. `StatusBadgeView` and `MenuBarController` switch on it: `.micPaused` gets its own label "Micro en pausa (altavoces)" and a distinct icon tint.
+- `AudioViewModel` re-publishes `conversationState`. `StatusBadgeView` and `MenuBarController` switch on it: `.micPaused` gets its own label "Mic paused (speakers)" and a distinct color and icon.
 
 ### 3.4 `TTSPlaybackService` queue
 
 - `TTSPlaybackLimits`: `maxPending` is removed. New fields: `backlogNoticeThreshold = 20` and `maxCoalescedCharacters = 400`.
 - `speak` appends and never drops. If `queue.count == backlogNoticeThreshold` and `backlogNoticed == false`, it yields `.backlog(pending:)` and sets `backlogNoticed = true`. The flag resets when the count falls below the threshold.
 - The worker's `queue.removeFirst()` becomes `takeNext()`. It pops the first utterance, then appends following ones while they share its locale and `joined.count + 1 + next.count ≤ maxCoalescedCharacters`. Everything downstream (fallback, watchdog, generation, metrics, `isSpeaking`) is unchanged and sees one utterance (REQ-Q-04).
-- `TTSEvent.utteranceDropped` is removed. `.backlog(pending: Int)` is added, with notice text "Traducción con retraso: \(n) frases en cola".
+- `TTSEvent.utteranceDropped` is removed. `.backlog(pending: Int)` is added, with notice text "Translation running behind — \(n) sentences waiting".
 
 ### 3.5 VAD: `VADProvider` and `VADConfiguration.validated()`
 
@@ -110,35 +115,36 @@ Timing note: `TTSPlaybackService` sets speaking `true` when an attempt starts (b
 ```
 
 - The `AudioCoordinator` factories become `() async -> any VADService`. `AppContainer` passes `{ await vadProvider.makeVAD(config: settings.vadConfiguration) }` for both directions. `settings.vadConfiguration` is `VADConfiguration(minSilenceDuration: pauseSeconds).validated()`.
-- The `preload()` failure is logged. `makeVAD` retries Silero on each session, which is cheap once the model is cached and lets a later download succeed.
-- `validated()` clamps to the FluidAudio rules listed in REQ-V-06 (from `VadTypes.swift` preconditions and assertions). It logs one warning per clamped field and never throws. Both services call it in `init`.
+- The `preload()` failure is logged. While the preload is still running, `makeVAD` returns Energy at once instead of waiting; afterwards it retries Silero on each session, which is cheap once the model is cached and lets a later download succeed. `AppContainer` skips the preload inside the test host.
+- `validated()` clamps to the FluidAudio rules listed in REQ-V-06 (from `VadTypes.swift` preconditions and assertions). It logs one warning listing the clamped fields and never throws. It lives in `VADConfiguration+Validation.swift` (no FluidAudio import). Both services call it in `init`.
+- Silero chunk compensation: FluidAudio analyses 4 096-sample (256 ms) chunks and starts counting silence only at the end of the first silent chunk, so it is given `sileroMinSilenceDuration = max(0, minSilenceDuration − 0.256 s)`. Measured while planning: p = 0.6 s → segment 716 ms after the end of speech (it was 0.75 s + one chunk before).
 - `minSilenceDuration` default: 0.6. Other defaults are unchanged (`minSpeech` 0.15, `maxSpeech` 14, padding 0.1, threshold 0.85). The Silero threshold is re-checked in the integration tier (risk §6).
 
 ### 3.6 UI and guide
 
 `ConversationSettingsView` sits in the main window next to the Monitor row and contains:
-- the "Uso altavoces" toggle;
-- the "Pausa para traducir" slider (0.4–1.2 s), with the caption "se aplica en la próxima sesión" while capturing;
-- the label "VAD: Silero | Energía";
-- the link "Guía de uso", which opens `docs/usage-guide.md`, bundled as a resource and opened with the default app.
+- the "I use speakers" toggle;
+- the "Pause to translate" slider (0.4–1.2 s), with the caption "Applies to the next session" while capturing;
+- the label "VAD: Silero | Energy";
+- the link "Usage guide", which opens `docs/usage-guide.md` on GitHub (main branch). Bundling it would need a project-file change outside the synchronized folder.
 
-A one-line hint "Haz una pausa para enviar cada frase" sits under the capture button.
+A one-line hint "Pause briefly after each sentence to send it" sits under the capture button.
 
 ## 4. Error handling summary
 
 | Situation | Behaviour |
 |-----------|-----------|
-| Silero model fails to load | Energy is used for that session. The reason is logged. The UI shows "VAD: Energía". Silero is retried at the next session. |
+| Silero model fails to load | Energy is used for that session. The reason is logged. The UI shows "VAD: Energy". Silero is retried at the next session. |
 | Inconsistent VAD values | `validated()` clamps them and logs a warning; there is no crash (T3). |
 | Incoming stops mid-session while muting | `reset()` reopens the gate. The state returns to `.listening`/`.speaking`. |
 | Backlog ≥ 20 | One notice is shown. Sentences keep queuing and are coalesced. Nothing is dropped. |
 | Coalesced utterance fails on Edge | The F8.5.2 per-utterance fallback applies to the whole coalesced text. |
-| Speakers mode, user talks over the incoming translation | That speech is not captured, by design (D-3). The UI shows "Micro en pausa". |
+| Speakers mode, user talks over the incoming translation | That speech is not captured, by design (D-3). The UI shows "Mic paused (speakers)". |
 
 ## 5. Testing
 
 ### 5.1 Fakes and helpers
-`TestClock` (from F8.5.2) is reused for the gate. A `FakeVADService` records the buffers it receives. `FakeSynthesizer`/`FakeOutput` (F8.5.2) are reused for queue tests. A stub Silero loader that throws is used for `VADProvider`.
+`TestClock` (from F8.5.2) is reused for the gate. `MockVADService` records the peak of every buffer it receives. `FakeSynthesizer`/`FakeOutput` (F8.5.2) are reused for queue tests. A stub Silero loader that throws is used for `VADProvider`.
 
 ### 5.2 Unit tests
 
@@ -156,15 +162,15 @@ A one-line hint "Haz una pausa para enviar cada frase" sits under the capture bu
 
 ### 5.3 Integration tier (`just test-integration`, Mac mini)
 - `VADSegmentationIntegrationTests` (real Silero, fixtures generated by `just fixtures`):
-  - two sentences with a 0.7 s gap give 2 segments;
+  - two sentences with a 1.0 s gap give 2 segments (p = 0.6 s);
   - a 0.3 s micro-pause gives 1 segment;
-  - emission time is at most the pause plus 150 ms after the end of speech (NFR-H-01/02), measured on the audio timeline (buffers are fed at real-time pace).
+  - emission time is between p − 0.35 s and p + 0.5 s after the end of speech (NFR-H-01), measured on the audio timeline (buffers are fed at real-time pace) and recorded in `latency.json`.
 - `EchoGateIntegrationTests`: a speech fixture goes through `MicEchoGate` (speakers mode) and Silero, with `setIncomingSpeaking(true/false)` around the middle sentence. Only the first and last sentences produce segments.
-- New fixtures, if missing: `es-two-sentences-gap700.wav` and `es-micropause300.wav`, made from existing TTS fixtures with silence spliced in by the `fixtures` recipe.
+- No new fixtures: the tests splice existing single-sentence WAVs (`es-meeting`, `en-budget`, `en-hear`, trimmed of their silence) with generated silence, so the manifest-driven STT suites are unaffected.
 
 ### 5.4 Manual checklist (tasks.md)
 - **M1** Headphones, cross-talk using a browser as the capture app: no sentence lost in either direction.
-- **M2** Speakers mode, solo procedure: no echo loop, and "Micro en pausa" is shown.
+- **M2** Speakers mode, solo procedure: no echo loop, and "Mic paused (speakers)" is shown.
 - **M3** Pause at 0.4, 0.6 and 1.2 s: sentences are sent at clear pauses and not at micro-pauses.
 - **M4** Long monologue: coalescing catches up and no content is missing.
 - **M5** The VAD label shows Silero, or Energy when the model is blocked.
