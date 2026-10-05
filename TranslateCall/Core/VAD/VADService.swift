@@ -26,15 +26,15 @@ enum VADEngine: Sendable {
 ///
 /// FluidAudio adapter properties live in `SileroVADService.swift` to keep this
 /// file free of third-party imports.
-struct VADConfiguration: Sendable {
+nonisolated struct VADConfiguration: Sendable, Equatable {
     /// Speech probability threshold (Silero). Above → speech active.
     var sileroThreshold: Float = 0.85
     /// RMS level threshold in dBFS (Energy fallback). Above → speech active.
     var energyThresholdDBFS: Float = -40.0
     /// Minimum voiced duration before a segment is considered speech.
     var minSpeechDuration: TimeInterval = 0.15
-    /// Minimum silence duration before an utterance is closed.
-    var minSilenceDuration: TimeInterval = 0.75
+    /// Pause that closes an utterance ("Pause to translate", F8.5.3 D-6: 0.4–1.2 s, default 0.6 s).
+    var minSilenceDuration: TimeInterval = 0.6
     /// Maximum utterance duration; longer segments are force-emitted.
     var maxSpeechDuration: TimeInterval = 14.0
     /// Pre-speech context padding prepended to each utterance via the history buffer.
@@ -51,7 +51,7 @@ struct VADConfiguration: Sendable {
     internal var fluidSegmentationConfig: VadSegmentationConfig {
         VadSegmentationConfig(
             minSpeechDuration: minSpeechDuration,
-            minSilenceDuration: minSilenceDuration,
+            minSilenceDuration: sileroMinSilenceDuration,   // one chunk less: see the property (F8.5.3 P2)
             maxSpeechDuration: maxSpeechDuration,
             speechPadding: speechPadding
         )

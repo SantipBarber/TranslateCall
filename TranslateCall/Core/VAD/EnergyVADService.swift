@@ -37,7 +37,7 @@ actor EnergyVADService: VADService {
     // MARK: - Init
 
     init(config: VADConfiguration = .default) {
-        self.config = config
+        self.config = config.validated()
         var segCont: AsyncStream<SpeechSegment>.Continuation?
         var stateCont: AsyncStream<Bool>.Continuation?
         speechSegments = AsyncStream { segCont = $0 }

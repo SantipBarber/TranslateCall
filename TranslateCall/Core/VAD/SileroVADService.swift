@@ -40,6 +40,7 @@ actor SileroVADService: VADService {
     // MARK: - Init
 
     init(config: VADConfiguration = .default) async throws {
+        let config = config.validated()   // FluidAudio traps on inconsistent values (T3)
         self.config = config
         self.historyCapacity = Int(config.speechPadding * 16_000) + VadManager.chunkSize + 512
 
