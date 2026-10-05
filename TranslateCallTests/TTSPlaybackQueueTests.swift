@@ -123,4 +123,40 @@ struct TTSPlaybackQueueTests {
         #expect(await waitUntil { harness.events.values == [.backlog(pending: 3), .backlog(pending: 3)] })
         await harness.service.deactivate()
     }
+
+    @Test("coalescing is capped by what the primary engine speaks uncut (REQ-Q-02)")
+    func coalescingCappedByPrimaryLimit() async {
+        let primary = FakeSynthesizer(maxTextLength: 30)
+        let harness = TTSPlaybackHarness(primary: primary, limits: limits())
+        await harness.service.speak(text: "first", locale: english)
+        #expect(await waitUntil { harness.output.scheduledCount == 1 })
+        // 12 + 1 + 12 = 25 fits; adding a third would be 38 > 30.
+        for text in ["aaaaaaaaaaaa", "bbbbbbbbbbbb", "cccccccccccc"] {
+            await harness.service.speak(text: text, locale: english)
+        }
+        for played in 2...3 {
+            harness.output.completeAll()
+            #expect(await waitUntil { harness.output.scheduledCount == played })
+        }
+        #expect(primary.texts == ["first", "aaaaaaaaaaaa bbbbbbbbbbbb", "cccccccccccc"])
+        harness.output.completeAll()
+        await harness.service.deactivate()
+    }
+
+    @Test("with coalescing off, 25 sentences behind a busy one are all spoken one by one, in order (REQ-Q-01)")
+    func neverDropsWithoutCoalescing() async {
+        let harness = TTSPlaybackHarness(limits: limits(coalesceUpTo: 0))
+        await harness.service.speak(text: "in flight", locale: english)
+        #expect(await waitUntil { harness.output.scheduledCount == 1 })
+        let sentences = (1...25).map { "s\($0)" }
+        for text in sentences { await harness.service.speak(text: text, locale: english) }
+        for played in 2...26 {
+            harness.output.completeAll()
+            #expect(await waitUntil { harness.output.scheduledCount == played })
+        }
+        harness.output.completeAll()
+        #expect(await waitUntil { harness.speaking.values == [true, false] })
+        #expect(harness.primary.texts == ["in flight"] + sentences)
+        await harness.service.deactivate()
+    }
 }

@@ -11,6 +11,9 @@ import AVFoundation
 nonisolated protocol UtteranceSynthesizer: Sendable {
     var engine: TTSEngine { get }
     func canSpeak(_ locale: Locale) -> Bool
+    /// Longest text the engine speaks without cutting it; the playback service never coalesces past it
+    /// (F8.5.3 REQ-Q-02). A single longer sentence is still handed over whole.
+    var maxTextLength: Int { get }
     func synthesize(text: String, locale: Locale) -> AsyncThrowingStream<AVAudioPCMBuffer, Error>
     /// Releases long-lived resources (Edge closes its socket). Called by `TTSPlaybackService.deactivate()`.
     func shutdown() async
@@ -18,6 +21,7 @@ nonisolated protocol UtteranceSynthesizer: Sendable {
 
 extension UtteranceSynthesizer {
     nonisolated func shutdown() async {}
+    nonisolated var maxTextLength: Int { Int.max }
 }
 
 // MARK: - Events

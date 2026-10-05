@@ -33,6 +33,8 @@ nonisolated final class KokoroUtteranceSynthesizer: UtteranceSynthesizer {
         self.modelManager = modelManager
     }
 
+    var maxTextLength: Int { Self.truncationLimit }
+
     func canSpeak(_ locale: Locale) -> Bool {
         locale.isEnglish
     }

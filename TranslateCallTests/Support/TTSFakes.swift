@@ -121,14 +121,17 @@ final class FakeSynthesizer: UtteranceSynthesizer, Sendable {
     }
 
     let engine: TTSEngine
+    let maxTextLength: Int
     let gate = AsyncGate()
     private let speakable: @Sendable (Locale) -> Bool
     private let record: Mutex<Record>
 
     init(engine: TTSEngine = .avSpeech,
          canSpeak: @escaping @Sendable (Locale) -> Bool = { _ in true },
+         maxTextLength: Int = .max,
          scripts: [Script] = [Script()]) {
         self.engine = engine
+        self.maxTextLength = maxTextLength
         speakable = canSpeak
         record = Mutex(Record(scripts: scripts))
     }

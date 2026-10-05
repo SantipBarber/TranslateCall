@@ -70,6 +70,8 @@ actor TTSPlaybackService: SynthesisService {
     // MARK: Dependencies
 
     private let primary: any UtteranceSynthesizer
+    /// Coalescing stops at the smaller of the configured limit and what the primary speaks uncut.
+    private let coalescingLimit: Int
     private let fallback: (any UtteranceSynthesizer)?
     private let output: any AudioOutputting
     private let limits: TTSPlaybackLimits
@@ -116,6 +118,7 @@ actor TTSPlaybackService: SynthesisService {
         metrics: TTSMetricsCollector = .shared
     ) {
         self.primary = primary
+        coalescingLimit = min(limits.maxCoalescedCharacters, primary.maxTextLength)
         self.fallback = fallback
         self.output = output
         self.limits = limits
@@ -197,7 +200,7 @@ actor TTSPlaybackService: SynthesisService {
     private func takeNext() -> Utterance {
         var next = queue.removeFirst()
         while let following = queue.first, following.locale == next.locale,
-              next.text.count + 1 + following.text.count <= limits.maxCoalescedCharacters {
+              next.text.count + 1 + following.text.count <= coalescingLimit {
             next = Utterance(text: next.text + " " + following.text, locale: next.locale)
             queue.removeFirst()
         }
