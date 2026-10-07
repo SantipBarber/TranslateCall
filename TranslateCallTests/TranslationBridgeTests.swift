@@ -87,18 +87,4 @@ struct AppleTranslationServiceTests {
             )
         }
     }
-
-    @Test func prepareThrowsBridgeUnavailableWhenModelDeallocated() async {
-        let service: AppleTranslationService
-        do {
-            let model = TranslationBridgeModel()
-            service = AppleTranslationService(model: model)
-        }
-        await #expect(throws: TranslationError.bridgeUnavailable) {
-            try await service.prepare(
-                source: Locale.Language(identifier: "en"),
-                target: Locale.Language(identifier: "es")
-            )
-        }
-    }
 }

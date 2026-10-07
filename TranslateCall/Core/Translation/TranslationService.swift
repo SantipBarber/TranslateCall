@@ -42,7 +42,6 @@ enum TranslationError: LocalizedError, Equatable {
 protocol TranslationService: AnyObject {
     var engineName: String { get }
     func translate(text: String, from source: Locale.Language, to target: Locale.Language) async throws -> String
-    func prepare(source: Locale.Language, target: Locale.Language) async throws
     func supports(source: Locale.Language, target: Locale.Language) async -> Bool
 }
 

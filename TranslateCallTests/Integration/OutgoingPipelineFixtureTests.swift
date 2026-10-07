@@ -16,7 +16,6 @@ extension IntegrationTests {
             let translator = AppleTranslationService(model: model)
             let src = Locale.Language(identifier: "es"), dst = Locale.Language(identifier: "en")
             try await requireTranslationPack(from: "es", to: "en")
-            try await translator.prepare(source: src, target: dst)
 
             var config = STTConfiguration.default
             config.minimumConfidence = 0

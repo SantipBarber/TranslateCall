@@ -28,17 +28,4 @@ actor AppleTranslationService: TranslationService {
             }
         }
     }
-
-    func prepare(source: Locale.Language, target: Locale.Language) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            let capturedModel = model
-            Task { @MainActor in
-                guard let model = capturedModel else {
-                    continuation.resume(throwing: TranslationError.bridgeUnavailable)
-                    return
-                }
-                model.enqueue(.prepare(continuation: continuation), from: source, to: target)
-            }
-        }
-    }
 }

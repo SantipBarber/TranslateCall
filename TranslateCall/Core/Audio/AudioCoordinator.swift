@@ -334,19 +334,6 @@ final class AudioCoordinator: ObservableObject {
         await incomingSTT?.setLocale(targetLocale)
     }
 
-    /// Prepare the language pair (download translation models if needed).
-    func downloadLanguages() async {
-        do {
-            try await outgoingTranslationService.prepare(
-                source: languagePairManager.sourceLanguage,
-                target: languagePairManager.targetLanguage
-            )
-            await languagePairManager.checkAvailability()
-        } catch {
-            errorAlert = makeAlertItem(for: error)
-        }
-    }
-
 }
 
 // MARK: - Mic echo gate and conversation state (F8.5.3 REQ-H-02…06, REQ-H-13, design §3.2–3.3)

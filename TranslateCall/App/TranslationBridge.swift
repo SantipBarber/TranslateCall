@@ -2,11 +2,30 @@ import Combine
 import SwiftUI
 @preconcurrency import Translation
 
+// MARK: - TranslationSessioning
+
+/// What the bridge and the download flow need from a `TranslationSession` (F8.5.4 design §1).
+/// Unit tests fake it, so they never touch the Translation framework (NFR-TR-03).
+protocol TranslationSessioning {
+    func translatedText(for text: String) async throws -> String
+    /// Downloads the pair's models if needed; may show the system sheet in the hosting window.
+    func prepare() async throws
+}
+
+extension TranslationSession: TranslationSessioning {
+    func translatedText(for text: String) async throws -> String {
+        try await translate(text).targetText
+    }
+
+    func prepare() async throws {
+        try await prepareTranslation()
+    }
+}
+
 // MARK: - PendingOperation
 
 enum PendingOperation {
     case translate(text: String, continuation: CheckedContinuation<String, Error>)
-    case prepare(continuation: CheckedContinuation<Void, Error>)
 }
 
 // MARK: - TranslationBridgeModel
@@ -59,14 +78,6 @@ final class TranslationBridgeModel: ObservableObject {
             } catch {
                 continuation.resume(throwing: TranslationError.sessionError(error))
             }
-
-        case .prepare(let continuation):
-            do {
-                try await session.prepareTranslation()
-                continuation.resume()
-            } catch {
-                continuation.resume(throwing: TranslationError.sessionError(error))
-            }
         }
     }
 
@@ -75,7 +86,6 @@ final class TranslationBridgeModel: ObservableObject {
     private func failOperation(_ operation: PendingOperation, with error: Error) {
         switch operation {
         case .translate(_, let cont): cont.resume(throwing: error)
-        case .prepare(let cont):      cont.resume(throwing: error)
         }
     }
 }
