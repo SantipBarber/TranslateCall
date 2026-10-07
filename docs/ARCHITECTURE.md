@@ -449,58 +449,33 @@ class TranslationService {
 }
 ```
 
-#### TranslationBridge (SwiftUI Workaround)
+#### TranslationBridge (F8.5.4)
 
-```swift
-import SwiftUI
+`TranslationSession` has no public initializer on macOS 15: it only exists inside SwiftUI's
+`.translationTask`. Each direction has a `TranslationBridgeModel` whose `TranslationBridge` view lives in
+`TranslationHostWindow`, an off-screen borderless window owned by `AppContainer` — translation keeps
+working with the main window closed.
 
-@MainActor
-class TranslationBridge {
-    static let shared = TranslationBridge()
-    
-    private var pendingTranslation: CheckedContinuation<String, Error>?
-    private var configuration: TranslationSession.Configuration?
-    private var textToTranslate: String = ""
-    
-    func translate(text: String, configuration: TranslationSession.Configuration) async throws -> String {
-        self.textToTranslate = text
-        self.configuration = configuration
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            self.pendingTranslation = continuation
-            // Trigger SwiftUI view update
-            NotificationCenter.default.post(name: .translateRequested, object: nil)
-        }
-    }
-    
-    // Called from SwiftUI translationTask
-    func handleTranslation(session: TranslationSession) async {
-        do {
-            let response = try await session.translate(textToTranslate)
-            pendingTranslation?.resume(returning: response.targetText)
-        } catch {
-            pendingTranslation?.resume(throwing: error)
-        }
-        pendingTranslation = nil
-    }
-}
-
-// Hidden SwiftUI View for translation
-struct TranslationHostView: View {
-    @State private var configuration: TranslationSession.Configuration?
-    
-    var body: some View {
-        Color.clear
-            .frame(width: 0, height: 0)
-            .translationTask(configuration) { session in
-                await TranslationBridge.shared.handleTranslation(session: session)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .translateRequested)) { _ in
-                configuration = TranslationBridge.shared.configuration
-            }
-    }
-}
 ```
+AudioCoordinator ─► AppleTranslationService ─► TranslationBridgeModel (FIFO queue, watchdog)
+                                                   │ configuration: pair change / warm-up / rebuild only
+                                                   ▼
+                    TranslationHostWindow ─► TranslationBridge ─ .translationTask { run(session:) }
+```
+
+- **One session per direction, kept open.** `run(session:)` serves queued requests until the
+  configuration changes; it never invalidates per sentence.
+- **Pack check, then warm-up at Start.** A call does not start unless both directions' packs are
+  installed (the hidden bridges cannot show the download sheet; the user gets "Languages Not
+  Downloaded"). The first translation of a pair costs ~0.8–1.1 s (model load); at Start each bridge
+  opens its session and translates a one-word probe, which brings the first sentence down to
+  ~0.2–0.45 s. Later sentences cost ~250–450 ms: that is model inference, not session set-up (measured
+  in F8.5.4, `TranslationLatencyTests`).
+- **Bounded.** The request being served has a 5 s watchdog: one retry on a rebuilt session, then
+  `TranslationError.timedOut`. The coordinator skips that sentence with a notice; only configuration
+  errors (unsupported pair, models not downloaded) raise an alert, once per session.
+- **Downloads** use a separate `.translationTask` on `LanguagePairView`, so the system sheet appears
+  in the main window.
 
 ---
 
@@ -883,9 +858,7 @@ mic ─► SessionAudioStream ─► MicEchoGate ─► VAD (Silero | Energy) �
 
 **Problem**: `TranslationSession` requires SwiftUI context.
 
-**Solution**: Use `TranslationBridge` pattern (see Section 4).
-
-**PoC Required**: Test before development to confirm workaround works.
+**Solution**: `TranslationBridge` in an off-screen `TranslationHostWindow`, one kept session per direction (see Section 4, F8.5.4).
 
 ---
 

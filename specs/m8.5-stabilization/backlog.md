@@ -11,7 +11,7 @@
 | F8.5.1 Capture & streams | `f8.5.1-capture-streams/` | A1, A1b, A2, A4, A5, A5b, T1, A10 (Core/Audio) |
 | F8.5.2 TTS playback | `f8.5.2-tts-playback/` | A3, A3b–e, A9, A9b, A12, A11, T6, A10 (Core/TTS, VoiceCloning) |
 | F8.5.3 Half-duplex + VAD | `f8.5.3-half-duplex-vad/` | A6, A7, A13, A14, A15, T3, T4 (VAD silence) |
-| F8.5.4 Translation | — | A8, T4 (`invalidate()`), T5 |
+| F8.5.4 Translation | `f8.5.4-translation/` | A8, T4 (translation), T5, A10 (Core/STT, Core/Translation) |
 | Whisper uk evaluation (after F8.5.4) | — | T2 |
 
 Out of M8.5 (strategic, later): min macOS 26 / SpeechAnalyzer, WhisperKit → Argmax SDK, own virtual audio driver.
@@ -36,9 +36,9 @@ Out of M8.5 (strategic, later): min macOS 26 / SpeechAnalyzer, WhisperKit → Ar
 | A5c | AVAudioEngine input-node client format stays at the default device's after rebinding CurrentDevice: other-rate devices are silent or crash in `installTap` (found in F8.5.1 integration) | `AudioManager.swift` | fixed in F8.5.1 (tap at hardware rate) — `MicCaptureIntegrationTests.hotSwapAcrossSampleRates` |
 | A6 | Half-duplex echo leak (suppression lifted before VAD/STT finish) | `HalfDuplexManager.swift:104-141`, `AudioCoordinator+Pipeline.swift:155-194` | fixed in F8.5.3 (PR #…) — `MicEchoGate` before the VAD: `MicEchoGateTests.tailKeepsMutedThenReopens`, `AudioCoordinatorEchoGateTests.speakersModeGatesOutgoingVADInput`, `.abandonedIncomingActivationReopensGate`, `.gateResetOnIncomingStop`, `SileroSegmentationTests.echoGateKeepsEchoOut`; opengrep `no-capture-suppression` (ERROR) |
 | A7 | Silero VAD never used in production; `VADServiceFactory` dead | `AppContainer.swift:39-40` | fixed in F8.5.3 — `VADProvider` (Silero, Energy fallback): `VADProviderTests` |
-| A8 | Translation bridge: single pending slot, no timeout, bridge view tied to the window | `TranslationBridge.swift:27-71` | — |
+| A8 | Translation bridge: single pending slot, no timeout, bridge view tied to the window | `TranslationBridge.swift:27-71` | fixed in F8.5.4 (PR #…) — FIFO queue, 5 s watchdog + one retry, bridges in `TranslationHostWindow`, downloads on their own `.translationTask`, no session without the packs: `TranslationBridgeModelTests.fifoOrder`, `.timeoutTwice`, `.neverFires`, `.lateAnswerIgnored`, `TranslationHostWindowTests`, `TranslationBridgeIntegrationTests.hostWindowTranslates`, `TranslationPipelineTests.downloadUsesSession`, `AudioCoordinatorTranslationTests.missingPackBlocksStart` |
 | A9 | Kokoro/Qwen actor reentrancy plays stale audio after `stopSpeaking` | `KokoroSpeechService.swift:104-110` | fixed in F8.5.2 — `TTSPlaybackServiceTests.stopDuringSynthesis`, `KokoroUtteranceSynthesizerTests.cancelledWhileLoading` |
-| A10 | `cont!` force unwraps (6) and 41 unjustified `nonisolated(unsafe)` | various | Core/Audio, Core/TTS, Core/VoiceCloning clean (F8.5.1–F8.5.2); `asyncstream-*` ERROR; 4 `nonisolated(unsafe)` left in Core/STT, Core/Translation |
+| A10 | `cont!` force unwraps (6) and 41 unjustified `nonisolated(unsafe)` | various | Core/Audio, Core/TTS, Core/VoiceCloning clean (F8.5.1–F8.5.2); Core/STT and Core/Translation clean (F8.5.4): `STTLocaleIsolationTests`; opengrep `no-nonisolated-unsafe-stt-translation` (ERROR); `asyncstream-*` ERROR |
 | A11 | No EdgeTTSWebSocket / EdgeTTSService playback tests | `TranslateCallTests/` | fixed in F8.5.2 — `EdgeTTSWebSocketTests`, `EdgeUtteranceSynthesizerTests`, `EdgeTTSIntegrationTests.hello` |
 
 ## Found by the F8.5.0 tiers
@@ -48,8 +48,8 @@ Out of M8.5 (strategic, later): min macOS 26 / SpeechAnalyzer, WhisperKit → Ar
 | T1 | `start()` skips incoming without an `SCRunningApplication`, which tests can't build → 5 AudioCoordinator tests disabled (incl. `stop()`/`updateLanguagePair()` coverage) | `AudioCoordinatorTests.swift` | fixed in F8.5.1 — the 5 re-enabled `AudioCoordinatorTests` |
 | T2 | Whisper `base` WER 0.5 on `uk-thanks` | integration tier | moved out of F8.5.3 (D-9): own task after F8.5.4 — `withKnownIssue` stays |
 | T3 | `VADConfiguration` has no validation; inconsistent values crash in Debug (FluidAudio asserts) | Silero test crash | fixed in F8.5.3 — `VADConfiguration.validated()`: `VADConfigurationValidationTests` |
-| T4 | VAD silence wait (~700 ms) dominates latency; translation 300–960 ms per call (`invalidate()` each time) | `build/reports/latency.json` | VAD part fixed in F8.5.3 — 0.6 s pause with chunk compensation, bound enforced: `SileroSegmentationTests.splitsAtPauseWithinBound` (716 ms measured); translation part → F8.5.4 |
-| T5 | `TranslationService.supports` defaults to `true` for Apple Translation | `TranslationService.swift:51` | tests use `LanguageAvailability` directly |
+| T4 | VAD silence wait (~700 ms) dominates latency; translation 300–960 ms per call (`invalidate()` each time) | `build/reports/latency.json` | VAD part fixed in F8.5.3 (716 ms); translation part fixed in F8.5.4 — no per-sentence `invalidate()`, probe warm-up at Start (cold first sentence ~0.8–1.1 s → ~0.2–0.45 s); steady state ~250–450 ms is model inference (see T7): `TranslationBridgeModelTests.persistentSession`, `.warmUp`, `TranslationBridgeIntegrationTests.keptSessionLatency`, `.firstSentenceAfterWarmUp` (latency.json) |
+| T5 | `TranslationService.supports` defaults to `true` for Apple Translation | `TranslationService.swift:51` | fixed in F8.5.4 — no default; Apple asks `LanguageAvailability`, the selector delegates: `TranslationPackTests.appleSupportsMirrorsAvailability`, `.selectorDelegatesToService` |
 | T6 | Qwen3-TTS (MLX) crashes the process when two inferences overlap; `VoicePreviewService.stop()` cancels the Task but not the running MLX inference, so rapid preview clicks can crash the app | crash reports 2026-10-03 17:10/17:14 (`mlx_slice_update` via `QwenCloneClient.synthesize`) | fixed in F8.5.2 — `MLXInferenceGateTests.oneAtATime`, `.timeoutKeepsGateClosed`, `.gateBusy`; manual M2 |
 
 ## Found by the F8.5.2 review (2026-10-04)
@@ -79,3 +79,9 @@ Out of M8.5 (strategic, later): min macOS 26 / SpeechAnalyzer, WhisperKit → Ar
 | A23 | Speakers mode gates only the mic: the user's own Monitor playback and the remote's original voice from the call app still reach the mic (needs AEC, D-2). Owner: unassigned | `MicEchoGate` (speakers mode) | — |
 | A24 | Qwen voice clone still truncates a single sentence longer than 200 characters, with only a log. Owner: unassigned | `QwenUtteranceSynthesizer.swift:38-40`, `QwenCloneConfiguration.textTruncationLimit` | — |
 | A25 | A skipped coalesced utterance (several sentences) is reported with the singular "sentence skipped" wording. Owner: unassigned | `TTSEvent+Notice.swift` | — |
+
+## Found in F8.5.4 (2026-10-07)
+
+| # | Finding | Where | Guard in place |
+|---|---------|-------|----------------|
+| T7 | Apple Translation costs ~250–450 ms per short sentence (model inference; 62 ms for one word), the same with a kept or a fresh session and with macOS 26 `TranslationSession(installedSource:target:)`. Further cuts need another engine or translating partial STT results. Owner: unassigned | `build/reports/latency.json` (`TranslationLatencyTests`) | recorded, ceiling 400 ms: `TranslationBridgeIntegrationTests.keptSessionLatency` |
