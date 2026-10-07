@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import OSLog
+import Synchronization
 @preconcurrency import WhisperKit
 
 private nonisolated let logger = Logger(
@@ -19,7 +20,10 @@ actor WhisperSpeechService: SpeechRecognizerService {
     // MARK: - Protocol conformance
 
     nonisolated let transcriptionStream: AsyncStream<TranslateCall.TranscriptionResult>
-    nonisolated(unsafe) private(set) var locale: Locale
+    /// Read without `await` (protocol requirement); written by `setLocale` on the actor. The lock makes
+    /// the cross-isolation read race-free (F8.5.4 REQ-TR-60).
+    private let localeState: Mutex<Locale>
+    nonisolated var locale: Locale { localeState.withLock { $0 } }
 
     // MARK: - Private state
 
@@ -42,7 +46,7 @@ actor WhisperSpeechService: SpeechRecognizerService {
             try await WhisperModelManager.shared.ensureReady()
         }
     ) {
-        self.locale = locale
+        self.localeState = Mutex(locale)
         self.config = config
         self.whisperConfig = whisperConfig
         self.pipeFactory = pipeFactory
@@ -73,7 +77,7 @@ actor WhisperSpeechService: SpeechRecognizerService {
     }
 
     func setLocale(_ newLocale: Locale) async {
-        locale = newLocale
+        localeState.withLock { $0 = newLocale }
     }
 
     // MARK: - Transcription

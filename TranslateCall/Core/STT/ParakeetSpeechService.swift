@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import OSLog
+import Synchronization
 
 nonisolated private let parakeetLogger = Logger(
     subsystem: "com.spbarber.TranslateCall",
@@ -24,9 +25,10 @@ actor ParakeetSpeechService: SpeechRecognizerService {
 
     nonisolated let transcriptionStream: AsyncStream<TranscriptionResult>
 
-    // nonisolated(unsafe): value type written only from actor context (setLocale);
-    // read nonisolated to satisfy protocol without requiring await at call site.
-    nonisolated(unsafe) private(set) var locale: Locale
+    /// Read without `await` (protocol requirement); written by `setLocale` on the actor. The lock makes
+    /// the cross-isolation read race-free (F8.5.4 REQ-TR-60).
+    private let localeState: Mutex<Locale>
+    nonisolated var locale: Locale { localeState.withLock { $0 } }
 
     // MARK: - Private state
 
@@ -54,7 +56,7 @@ actor ParakeetSpeechService: SpeechRecognizerService {
             try await ParakeetModelManager.shared.ensureReady()
         }
     ) {
-        self.locale = locale
+        self.localeState = Mutex(locale)
         self.config = config
         self.parakeetConfig = parakeetConfig
         self.transcriberFactory = transcriberFactory
@@ -97,7 +99,7 @@ actor ParakeetSpeechService: SpeechRecognizerService {
 
     func setLocale(_ newLocale: Locale) async {
         guard newLocale != locale else { return }
-        locale = newLocale
+        localeState.withLock { $0 = newLocale }
         // Non-English locales are rejected on the next activate(); no immediate action needed.
     }
 

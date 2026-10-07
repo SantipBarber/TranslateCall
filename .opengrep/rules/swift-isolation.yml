@@ -1,0 +1,9 @@
+rules:
+  - id: no-nonisolated-unsafe-stt-translation
+    languages: [regex]
+    severity: ERROR
+    message: "F8.5.4: no nonisolated(unsafe) in Core/STT or Core/Translation. Guard cross-isolation state with a Mutex or keep it actor-isolated (see specs/m8.5-stabilization/f8.5.4-translation)."
+    metadata: { audit_ref: "F8.5.4 / A10" }
+    pattern-regex: 'nonisolated\(unsafe\)'
+    paths:
+      include: ["TranslateCall/Core/STT/", "TranslateCall/Core/Translation/", ".opengrep/rules/"]
