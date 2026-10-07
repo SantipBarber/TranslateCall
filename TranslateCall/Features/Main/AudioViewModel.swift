@@ -369,6 +369,7 @@ private final class PassthroughTranslationService: TranslationService {
     func translate(
         text: String, from source: Locale.Language, to target: Locale.Language
     ) async throws -> String { text }
+    func supports(source: Locale.Language, target: Locale.Language) async -> Bool { true }
 }
 
 // MARK: - Conversation settings (F8.5.3)

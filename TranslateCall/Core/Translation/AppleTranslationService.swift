@@ -26,4 +26,10 @@ final class AppleTranslationService: TranslationService {
     static func isInstalled(from source: Locale.Language, to target: Locale.Language) async -> Bool {
         await LanguageAvailability().status(from: source, to: target) == .installed
     }
+
+    /// `.installed` or `.supported` (downloadable) — the framework's answer, not a default (T5, REQ-TR-50).
+    func supports(source: Locale.Language, target: Locale.Language) async -> Bool {
+        let status = await LanguageAvailability().status(from: source, to: target)
+        return status == .installed || status == .supported
+    }
 }

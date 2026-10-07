@@ -44,11 +44,11 @@ protocol TranslationService: AnyObject {
     func translate(text: String, from source: Locale.Language, to target: Locale.Language) async throws -> String
     /// Opens the session for a pair ahead of the first sentence (F8.5.4 REQ-TR-05). Must return at once.
     func warmUp(from source: Locale.Language, to target: Locale.Language) async
+    /// Whether the engine can translate this pair; no default, so every engine answers for itself (T5).
     func supports(source: Locale.Language, target: Locale.Language) async -> Bool
 }
 
 extension TranslationService {
     var engineName: String { "Unknown" }
     func warmUp(from source: Locale.Language, to target: Locale.Language) async {}
-    func supports(source: Locale.Language, target: Locale.Language) async -> Bool { true }
 }

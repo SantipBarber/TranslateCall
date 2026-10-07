@@ -1,6 +1,5 @@
 import Combine
 import Foundation
-@preconcurrency import Translation
 
 // MARK: - TranslationEngineSelector
 
@@ -49,13 +48,7 @@ final class TranslationEngineSelector: ObservableObject {
         source: Locale.Language,
         target: Locale.Language
     ) async -> Bool {
-        switch preferredEngine {
-        case .appleTranslation:
-            let status = await LanguageAvailability().status(
-                from: source, to: target
-            )
-            return status == .installed || status == .supported
-        }
+        await makeOutgoingService().supports(source: source, target: target)   // one source of truth (REQ-TR-51)
     }
 
     // MARK: - Engine Selection

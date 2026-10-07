@@ -9,6 +9,7 @@ import Foundation
 final class MockTranslationService: TranslationService {
     var shouldThrow: Error?
     var errors: [Error] = []
+    var supportsResult = true
     private(set) var translateCallCount = 0
     private(set) var lastTranslatedText: String?
     private(set) var warmUpCalls: [(source: Locale.Language, target: Locale.Language)] = []
@@ -24,6 +25,8 @@ final class MockTranslationService: TranslationService {
     func warmUp(from source: Locale.Language, to target: Locale.Language) async {
         warmUpCalls.append((source, target))
     }
+
+    func supports(source: Locale.Language, target: Locale.Language) async -> Bool { supportsResult }
 }
 
 // MARK: - Pipeline tests
