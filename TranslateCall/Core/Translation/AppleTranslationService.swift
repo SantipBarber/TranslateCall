@@ -1,31 +1,22 @@
 import Foundation
 
-/// Actor-based implementation of `TranslationService` using Apple's Translation framework
-/// via `TranslationBridgeModel`. Each call suspends until the SwiftUI bridge delivers
-/// a `TranslationSession` and completes the operation.
-actor AppleTranslationService: TranslationService {
-    // nonisolated(unsafe): weak reference to a @MainActor object read from actor context.
-    // Captured once per call before hopping to @MainActor — safe by design.
-    nonisolated(unsafe) private weak var model: TranslationBridgeModel?
+/// `TranslationService` over Apple's Translation framework. Requests go through this direction's
+/// `TranslationBridgeModel`, which owns the session, the queue, the timeout and the retry (F8.5.4).
+/// The model is held strongly: `AppContainer` owns both for the app's lifetime (REQ-TR-22, REQ-TR-60).
+final class AppleTranslationService: TranslationService {
+    let model: TranslationBridgeModel
 
     init(model: TranslationBridgeModel) {
         self.model = model
     }
 
-    // MARK: - TranslationService
-
-    nonisolated var engineName: String { "Apple Translation" }
+    var engineName: String { "Apple Translation" }
 
     func translate(text: String, from source: Locale.Language, to target: Locale.Language) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            let capturedModel = model
-            Task { @MainActor in
-                guard let model = capturedModel else {
-                    continuation.resume(throwing: TranslationError.bridgeUnavailable)
-                    return
-                }
-                model.enqueue(.translate(text: text, continuation: continuation), from: source, to: target)
-            }
-        }
+        try await model.translate(text, from: source, to: target)
+    }
+
+    func warmUp(from source: Locale.Language, to target: Locale.Language) async {
+        model.warmUp(from: source, to: target)
     }
 }

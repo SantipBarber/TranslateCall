@@ -326,12 +326,6 @@ extension AudioCoordinator {
                     + "Enable it in System Settings.",
                 action: .openSettings
             )
-        case TranslationError.bridgeUnavailable:
-            return AlertItem(
-                title: "Translation Unavailable",
-                message: "Translation bridge unavailable. Restart the app.",
-                action: nil
-            )
         case TranslationError.unsupportedPair(_, _):
             return AlertItem(
                 title: "Language Pair Unsupported",

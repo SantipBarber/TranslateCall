@@ -76,11 +76,11 @@ struct TranslationPipelineTests {
 @MainActor
 struct TranslationErrorMatchingTests {
 
-    @Test func bridgeUnavailableMatchesInSwitch() {
-        let error: Error = TranslationError.bridgeUnavailable
+    @Test func timedOutMatchesInSwitch() {
+        let error: Error = TranslationError.timedOut
         var matched = false
         switch error {
-        case TranslationError.bridgeUnavailable: matched = true
+        case TranslationError.timedOut: matched = true
         default: break
         }
         #expect(matched)

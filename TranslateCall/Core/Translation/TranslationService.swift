@@ -3,18 +3,18 @@ import Foundation
 // MARK: - TranslationError
 
 enum TranslationError: LocalizedError, Equatable {
-    case bridgeUnavailable
     case sessionError(Error)
+    case timedOut
     case unsupportedPair(Locale.Language, Locale.Language)
     case networkUnavailable
     case modelNotLoaded
 
     var errorDescription: String? {
         switch self {
-        case .bridgeUnavailable:
-            return "Translation bridge is unavailable. Restart the app."
         case .sessionError(let error):
             return "Translation failed: \(error.localizedDescription)"
+        case .timedOut:
+            return "Translation took too long."
         case .unsupportedPair(let source, let target):
             return "Translation from \(source.minimalIdentifier) to \(target.minimalIdentifier) is not supported."
         case .networkUnavailable:
@@ -26,8 +26,8 @@ enum TranslationError: LocalizedError, Equatable {
 
     static func == (lhs: TranslationError, rhs: TranslationError) -> Bool {
         switch (lhs, rhs) {
-        case (.bridgeUnavailable, .bridgeUnavailable): return true
         case (.sessionError, .sessionError): return true
+        case (.timedOut, .timedOut): return true
         case (.unsupportedPair(let lSrc, let lTgt), .unsupportedPair(let rSrc, let rTgt)):
             return lSrc == rSrc && lTgt == rTgt
         case (.networkUnavailable, .networkUnavailable): return true
@@ -42,10 +42,13 @@ enum TranslationError: LocalizedError, Equatable {
 protocol TranslationService: AnyObject {
     var engineName: String { get }
     func translate(text: String, from source: Locale.Language, to target: Locale.Language) async throws -> String
+    /// Opens the session for a pair ahead of the first sentence (F8.5.4 REQ-TR-05). Must return at once.
+    func warmUp(from source: Locale.Language, to target: Locale.Language) async
     func supports(source: Locale.Language, target: Locale.Language) async -> Bool
 }
 
 extension TranslationService {
     var engineName: String { "Unknown" }
+    func warmUp(from source: Locale.Language, to target: Locale.Language) async {}
     func supports(source: Locale.Language, target: Locale.Language) async -> Bool { true }
 }

@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 @testable import TranslateCall
 
@@ -58,5 +59,39 @@ final class FakeTranslationSession: TranslationSessioning {
     func prepare() async throws {
         prepareCount += 1
         if let prepareError { throw prepareError }
+    }
+}
+
+/// Plays SwiftUI's part in `.translationTask`: every new configuration cancels the running task and
+/// calls `run(session:)` again. `runs` counts the sessions opened.
+@MainActor
+final class TranslationSessionDriver {
+    let model: TranslationBridgeModel
+    let session: FakeTranslationSession
+    private(set) var runs = 0
+    private var task: Task<Void, Never>?
+    private var subscription: AnyCancellable?
+
+    init(model: TranslationBridgeModel, session: FakeTranslationSession = FakeTranslationSession()) {
+        self.model = model
+        self.session = session
+        subscription = model.$configuration.sink { [weak self] configuration in
+            guard configuration != nil else { return }
+            self?.restart()
+        }
+    }
+
+    /// Cancels the running task and starts a new one, as SwiftUI does on a configuration change.
+    func restart() {
+        task?.cancel()
+        runs += 1
+        let model = model
+        let session = session
+        task = Task { await model.run(session: session) }
+    }
+
+    func stop() {
+        subscription = nil
+        task?.cancel()
     }
 }
