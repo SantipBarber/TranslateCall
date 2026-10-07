@@ -213,6 +213,9 @@ final class TranslationBridgeModel: ObservableObject {
         let timeout = timeout
         watchdog = Task { [weak self] in
             do { try await clock.sleep(for: timeout) } catch { return }
+            // A restart cancels this task synchronously on the MainActor, but cannot stop a sleep that already
+            // woke: without this check a stale timeout would hit the retry and cost it its one attempt (REQ-TR-11).
+            guard !Task.isCancelled else { return }
             self?.attemptFailed(id, error: .timedOut)
         }
     }
