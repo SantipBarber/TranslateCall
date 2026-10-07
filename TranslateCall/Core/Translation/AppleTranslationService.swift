@@ -1,4 +1,5 @@
 import Foundation
+@preconcurrency import Translation
 
 /// `TranslationService` over Apple's Translation framework. Requests go through this direction's
 /// `TranslationBridgeModel`, which owns the session, the queue, the timeout and the retry (F8.5.4).
@@ -18,5 +19,11 @@ final class AppleTranslationService: TranslationService {
 
     func warmUp(from source: Locale.Language, to target: Locale.Language) async {
         model.warmUp(from: source, to: target)
+    }
+
+    /// Whether the pair's models are downloaded (F8.5.4 REQ-TR-06). The call-time bridges live in a hidden
+    /// window and cannot show the download sheet, so `AudioCoordinator.start` requires `.installed`.
+    static func isInstalled(from source: Locale.Language, to target: Locale.Language) async -> Bool {
+        await LanguageAvailability().status(from: source, to: target) == .installed
     }
 }

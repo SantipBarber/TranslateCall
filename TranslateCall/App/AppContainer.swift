@@ -56,7 +56,7 @@ final class AppContainer: ObservableObject {
             incomingTranslationService: translationSel.makeIncomingService(),
             outgoingTTSFactory: { [ttsSelector] in try ttsSelector.makeOutgoingService(for: $0, deviceID: $1) },
             incomingTTSFactory: { [ttsSelector] in try ttsSelector.makeIncomingService(for: $0, deviceID: $1) },
-            languagePairManager: lpm
+            languagePairManager: lpm, isTranslationPairInstalled: AppleTranslationService.isInstalled   // REQ-TR-06
         )
 
         let voiceProfiles = VoiceProfileManager(

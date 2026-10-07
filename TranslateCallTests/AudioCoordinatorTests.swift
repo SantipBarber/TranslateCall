@@ -20,7 +20,9 @@ struct CoordinatorMocks {
     let mockIncomingTTS = MockSynthesisService()
     let mockOutgoingTranslation = MockTranslationService()
     let mockIncomingTranslation = MockTranslationService()
-    let languagePairManager = LanguagePairManager()
+    /// No language loader: the manager must not re-resolve its pair in the background while a test runs
+    /// (the race made `updateLanguagePairReconfigures` flaky once `start()` gained the pack check, F8.5.4).
+    let languagePairManager = LanguagePairManager(languageLoader: { [] })
 }
 
 @MainActor

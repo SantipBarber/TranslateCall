@@ -14,5 +14,13 @@ extension IntegrationTests {
         @Test func installedPairIsDetected() async {
             #expect(await isTranslationPackInstalled(from: "es", to: "en"))
         }
+
+        @Test("AppleTranslationService.isInstalled requires downloaded packs (REQ-TR-06)") @MainActor
+        func appleIsInstalled() async {
+            #expect(await AppleTranslationService.isInstalled(from: Locale.Language(identifier: "es"),
+                                                              to: Locale.Language(identifier: "en")))
+            #expect(await AppleTranslationService.isInstalled(from: Locale.Language(identifier: "en"),
+                                                              to: Locale.Language(identifier: "tlh")) == false)
+        }
     }
 }

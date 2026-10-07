@@ -4,17 +4,25 @@ import Foundation
 
 // MARK: - Mock TranslationService
 
-/// Synchronous mock — returns "TRANSLATED: <input>" immediately, or throws if configured.
+/// Returns "TRANSLATED: <input>" at once. `errors` are thrown one per call, in order, before
+/// `shouldThrow` (thrown on every call) is considered.
 final class MockTranslationService: TranslationService {
     var shouldThrow: Error?
+    var errors: [Error] = []
     private(set) var translateCallCount = 0
     private(set) var lastTranslatedText: String?
+    private(set) var warmUpCalls: [(source: Locale.Language, target: Locale.Language)] = []
 
     func translate(text: String, from source: Locale.Language, to target: Locale.Language) async throws -> String {
         translateCallCount += 1
         lastTranslatedText = text
+        if !errors.isEmpty { throw errors.removeFirst() }
         if let error = shouldThrow { throw error }
         return "TRANSLATED: \(text)"
+    }
+
+    func warmUp(from source: Locale.Language, to target: Locale.Language) async {
+        warmUpCalls.append((source, target))
     }
 }
 
