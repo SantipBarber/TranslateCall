@@ -18,4 +18,12 @@ struct TranslationHostWindowTests {
         #expect(!window.isReleasedWhenClosed)
         #expect(window.contentView != nil)
     }
+
+    @Test("the host never qualifies for the menu bar's show-main-window lookup")
+    func hostIsNotMainCandidate() {
+        let host = TranslationHostWindow(outgoing: TranslationBridgeModel(), incoming: TranslationBridgeModel())
+        defer { host.close() }
+        #expect(host.window.isVisible)
+        #expect(!(host.window.canBecomeMain && host.window.isVisible))
+    }
 }

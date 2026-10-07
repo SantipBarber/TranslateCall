@@ -112,7 +112,7 @@ Translation is the pipeline's only unguarded failure point: a translation that n
 ## Manual checks (user)
 
 - **M1** Normal call ES↔EN: translations appear and are spoken; perceived delay is shorter than before.
-- **M2** Close the main window mid-call: translation continues (menu bar); reopen the window, state is consistent.
+- **M2** Close the main window mid-call: translation continues (menu bar); reopen the window, state is consistent. Then click the Dock icon: the main window comes back; closing the last window does not quit the app; the menu-bar 'show window' action raises the main window, not the hidden translation host.
 - **M3** Change the language pair between calls: next call translates in the new pair.
 - **M4** Press "Download" for an uninstalled pair: the system sheet appears in the main window; status updates afterwards.
 - **M5** Right after M4, Start a session in that pair: the first sentence is translated (no "Couldn't translate…" notice). (Replaces "Download during a call": the language row is disabled during a session — planning P7.)

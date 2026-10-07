@@ -96,8 +96,7 @@ final class MenuBarController: NSObject {
     }
 
     @objc private func openMainWindow() {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.windows.first(where: { $0.isVisible })?.makeKeyAndOrderFront(nil)
+        NSApp.showMainWindow()
     }
 
     // MARK: - State observation
@@ -126,5 +125,14 @@ final class MenuBarController: NSObject {
         let symbol = Self.iconName(state: state, isCapturing: isCapturing)
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "TranslateCall")
         button.image?.isTemplate = true
+    }
+}
+
+extension NSApplication {
+    /// Raises the visible main-capable window. The off-screen `TranslationHostWindow` is borderless
+    /// and cannot become main, so it is never picked (F8.5.4 D-2).
+    func showMainWindow() {
+        activate(ignoringOtherApps: true)
+        windows.first(where: { $0.canBecomeMain && $0.isVisible })?.makeKeyAndOrderFront(nil)
     }
 }
