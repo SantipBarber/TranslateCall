@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Translation never hangs a direction, never loses a sentence without telling the user, keeps working with the main window closed, and the first sentence of a call no longer pays the ~1 s cold start. Removes the last unchecked concurrency escapes in STT and Translation.
+**Goal:** Translation never hangs a direction, never loses a sentence without telling the user, keeps working with the main window closed, a call never starts with language packs that are not downloaded, and the first sentence of a call no longer pays the ~1 s cold start. Removes the last unchecked concurrency escapes in STT and Translation.
 
-**Architecture:** Each direction's `TranslationBridgeModel` keeps one Apple `TranslationSession` open (the `.translationTask` closure stays alive in `run(session:)`) and serves a FIFO queue; the configuration changes only on a pair change, on warm-up at call start, or to rebuild after a failure. A watchdog bounds the request at the head of the queue (5 s, one retry on a rebuilt session, then `timedOut`). Both bridges live in an off-screen `TranslationHostWindow` owned by `AppContainer`; "Download" uses its own `.translationTask` in the visible `LanguagePairView`. The coordinator warms both directions up at Start and turns a failed sentence into a notice (alerts only for configuration errors, once per session). STT `locale` moves behind a `Mutex`.
+**Architecture:** Each direction's `TranslationBridgeModel` keeps one Apple `TranslationSession` open (the `.translationTask` closure stays alive in `run(session:)`) and serves a FIFO queue; the configuration changes only on a pair change, on warm-up at call start, or to rebuild after a failure. A watchdog bounds the request at the head of the queue (5 s, one retry on a rebuilt session, then `timedOut`). Both bridges live in an off-screen `TranslationHostWindow` owned by `AppContainer`; "Download" uses its own `.translationTask` in the visible `LanguagePairView`. At Start the coordinator first checks that both directions' packs are installed (injected check; otherwise a "download first" alert and no session), then warms both directions up (the warm-up translates a one-word probe so the model is loaded), and turns a failed sentence into a notice (alerts only for configuration errors, once per session). STT `locale` moves behind a `Mutex`.
 
 **Tech Stack:** Swift 6 (app target: default MainActor isolation + approachable concurrency), Apple Translation (`TranslationSession`, `.translationTask`, `LanguageAvailability`), SwiftUI + AppKit (`NSWindow`, `NSHostingView`), Combine, `Synchronization.Mutex`, Swift Testing, `just`, opengrep, SwiftLint.
 
-**Spec:** `specs/m8.5-stabilization/f8.5.4-translation/requirements.md`, `specs/m8.5-stabilization/f8.5.4-translation/design.md`
+**Spec:** `specs/m8.5-stabilization/f8.5.4-translation/requirements.md`, `specs/m8.5-stabilization/f8.5.4-translation/design.md` (APPROVED 2026-10-07, with D-8/D-9)
 
 ## Global Constraints
 
@@ -38,42 +38,44 @@
 - **No session is ever delivered** (bridge view not in a window, e.g. the old main-window hosting closed) → the request fails with `timedOut`, it does not hang the direction (pinned in Task 4 `neverFires`; Task 5 moves the bridges out of the main window).
 - **A replaced session answers late, after the retry already answered** → no second resume (crash) and no wrong sentence (pinned in Task 4 `lateAnswerIgnored`).
 - **Stop is pressed while a sentence is being translated** → no alert, no notice, nothing left queued (pinned in Task 3 `callerCancellation`, Task 6 `cancellationIsSilent`).
-- **"Download" is dismissed or the view goes away mid-download** → no error alert (pinned in Task 2 `downloadCancelledIsSilent`).
+- **Start with a pair whose pack is missing in only one direction** → no session, the "Languages Not Downloaded" alert (pinned in Task 6 `missingReverseDirectionBlocksStart`); "Download" dismissed mid-way stays silent (Task 2 `downloadCancelledIsSilent`).
 
-## Decisions made while planning (spec ambiguities resolved, measurements)
+## Decisions made while planning (all resolved — user decisions 2026-10-07: P1 = (a), P9 in scope, subagent-driven; folded into requirements.md D-8/D-9 and design.md)
 
 | # | Point | Choice |
 |---|-------|--------|
-| P1 | **D-6 measured while planning (Mac16,10, ES→EN, 10 short sentences, Task 1 tests run on the current code)** | Session per sentence (pre-F8.5.4): median **266–282 ms**, p90 306–323. Kept session: median **261–262 ms**, p90 296–318; its first sentence 323–344 ms. macOS 26 `TranslationSession(installedSource:target:)`: median 258 ms, first call 1 521 ms. One-word input: 62 ms. After an idle pause (3 / 10 / 30 s) kept vs fresh session: 379/307, 391/378, 458/434 ms — **no difference**. Cold first sentence of a pair (no warm-up): **1 103–1 166 ms**; after a session-only warm-up: **181–302 ms**; after a warm-up that also translates one word: 144–248 ms. **Conclusion:** the per-sentence cost is model inference (~250–450 ms, grows with sentence length), not session creation (~10–20 ms). NFR-TR-01 (≤ 150 ms warm median) is **not reachable** with Apple Translation by any session strategy. The real latency win is the warm-up at Start (first sentence −0.8 to −1 s). **The Task 1 STOP GATE will therefore trigger**: the user decides between (a) keep the plan as written — robustness (A8) + warm-up gain; NFR-TR-01 becomes "recorded, regression ceiling 400 ms" (Task 5 asserts that); (b) keep a session per sentence but add queue/timeout/host window/warm-up (simpler bridge, same gains); (c) drop the latency goal and do only A8/T5/A10. Tasks 2–9 implement (a). |
-| P2 | Timeout scope (REQ-TR-10) | The watchdog bounds the **head** of the queue (the request being served), not each request from submission: a per-request timer would time out the second request while the first is being retried and rebuild the session twice. A request completes within 2 × 5 s of reaching the head. Each direction translates one sentence at a time (the coordinator awaits each), so the queue is normally one deep. |
-| P3 | Rebuild after the final failure (REQ-TR-12) | After the second failure the session is rebuilt too, so a stuck session cannot hold the next request (verified by `timeoutTwice`). |
-| P4 | Caller cancellation (REQ-TR-13) | Removes the request even when it is in flight; the session's late answer is ignored (`finish` finds nothing). |
-| P5 | opengrep rule file (design §6.2) | New pair `.opengrep/rules/swift-isolation.{yml,swift}` instead of adding to `swift-concurrency.*`: a `nonisolated(unsafe)` sample in the shared file would also be reported by `nonisolated-unsafe-justified` and break that rule's self-test. Rule id `no-nonisolated-unsafe-stt-translation`. |
-| P6 | Download API (design §3.3) | `TranslationSessioning` also has `prepare()` (wraps `prepareTranslation()`), so the download flow is unit-testable with the same fake. The view-model method is `downloadLanguages(using:)` (design said `download(using:)`). `CancellationError` from the sheet is silent. |
-| P7 | Manual check M5 | The language row is `.disabled` during a session, so "Download during a call" cannot happen. M5 becomes "Download an uninstalled pair, then Start: the first sentence is translated". |
-| P8 | `@preconcurrency import Translation` | See Global Constraints. |
-| P9 | Pair not downloaded at Start | Out of the spec: the hidden bridge cannot show the download sheet, so each sentence times out (2 × 5 s) and shows the failure notice. Recorded as backlog **A26** (Task 9); a Start-time check of `pairStatus` is the likely fix. |
-| P10 | Host window creation | `AppContainer.init` creates `TranslationHostWindow` (the test host *is* the app, and the integration tests translate through it). Real-app check: manual M2. |
-| P11 | Integration suite selection | `-only-testing:TranslateCallTests/IntegrationTests/<Suite>` works with Xcode 27 (verified while planning); the F8.5.3 note saying otherwise is outdated. |
-| P12 | `AudioViewModel.swift` line budget | `downloadLanguages(using:)` lives in an extension at the end of the file (type body ≤ 250), with a one-line doc comment (file ≤ 400). |
-| P13 | Notice texts | Outgoing: "Couldn't translate your sentence — skipped"; incoming: "Couldn't translate their sentence — skipped". `modelNotLoaded` alert: title "Languages Not Downloaded". Download failure alert: title "Download Failed". |
-| P14 | `TranslationError` | `timedOut` is added and `bridgeUnavailable` removed in Task 3 (one enum edit; the model's retry in Task 4 is the first producer of `timedOut`). |
+| P1 | **D-6 measured while planning (Mac16,10, ES→EN, 10 short sentences, Task 1 tests run on the current code)** | Session per sentence (pre-F8.5.4): median **266–282 ms**, p90 306–323. Kept session: median **261–262 ms**, p90 296–318; its first sentence 323–344 ms. macOS 26 `TranslationSession(installedSource:target:)`: median 258 ms, first call 1 521 ms. One-word input: 62 ms. After an idle pause (3 / 10 / 30 s) kept vs fresh session: 379/307, 391/378, 458/434 ms — **no difference**. Cold first sentence of a pair (no warm-up): **1 103–1 166 ms**; after a session-only warm-up: **181–302 ms**; after a warm-up that also translates one word: 144–248 ms. **Conclusion:** the per-sentence cost is model inference (~250–450 ms, grows with sentence length), not session creation (~10–20 ms). NFR-TR-01 (≤ 150 ms warm median) is **not reachable** with Apple Translation by any session strategy. The real latency win is the warm-up at Start (first sentence −0.8 to −1 s). **Resolved: the user chose (a)** — build as planned; NFR-TR-01 is now "warm median recorded, ≤ 400 ms; first sentence after warm-up ≤ 600 ms" (requirements D-8). Rejected: (b) session per sentence + queue/timeout/host/warm-up, (c) only A8/T5/A10. **Correction found while re-verifying (P15):** the "session-only warm-up 181–302 ms" figure above was measured after the same test had already loaded the model; on a cold pair a session-only warm-up still costs 424–1 086 ms, so the warm-up must translate a probe (169–440 ms). |
+| P2 | Timeout scope (REQ-TR-10) — resolved, now in REQ-TR-10 | The watchdog bounds the **head** of the queue (the request being served), not each request from submission: a per-request timer would time out the second request while the first is being retried and rebuild the session twice. A request completes within 2 × 5 s of reaching the head. Each direction translates one sentence at a time (the coordinator awaits each), so the queue is normally one deep. |
+| P3 | Rebuild after the final failure — resolved, now in REQ-TR-11 | After the second failure the session is rebuilt too, so a stuck session cannot hold the next request (verified by `timeoutTwice`). |
+| P4 | Caller cancellation — resolved, now in REQ-TR-13 | Removes the request even when it is in flight; the session's late answer is ignored (`finish` finds nothing). |
+| P5 | opengrep rule file — resolved, now in REQ-TR-61 / design §6.2 | New pair `.opengrep/rules/swift-isolation.{yml,swift}` instead of adding to `swift-concurrency.*`: a `nonisolated(unsafe)` sample in the shared file would also be reported by `nonisolated-unsafe-justified` and break that rule's self-test. Rule id `no-nonisolated-unsafe-stt-translation`. |
+| P6 | Download API — resolved, now in REQ-TR-40/41 / design §3.3 | `TranslationSessioning` also has `prepare()` (wraps `prepareTranslation()`), so the download flow is unit-testable with the same fake. The view-model method is `downloadLanguages(using:)` (design said `download(using:)`). `CancellationError` from the sheet is silent. |
+| P7 | Manual check M5 — resolved in requirements.md | The language row is `.disabled` during a session, so "Download during a call" cannot happen. M5 becomes "Download an uninstalled pair, then Start: the first sentence is translated". |
+| P8 | `@preconcurrency import Translation` — resolved | See Global Constraints. |
+| P9 | Pair not downloaded at Start — resolved: **in scope** (requirements D-9, REQ-TR-06) | The hidden bridge cannot show the download sheet, so without a check every sentence would time out. Task 6 adds an injected `isTranslationPairInstalled` check to `AudioCoordinator.start` (both directions, `.installed` only; `AppContainer` passes `AppleTranslationService.isInstalled`); a missing pack → "Languages Not Downloaded" alert, no capture, no warm-up. Unit tests inject the check; they never call `LanguageAvailability`. |
+| P10 | Host window creation — resolved | `AppContainer.init` creates `TranslationHostWindow` (the test host *is* the app, and the integration tests translate through it). Real-app check: manual M2. |
+| P11 | Integration suite selection — resolved | `-only-testing:TranslateCallTests/IntegrationTests/<Suite>` works with Xcode 27 (verified while planning); the F8.5.3 note saying otherwise is outdated. |
+| P12 | Line budgets — resolved | `downloadLanguages(using:)` lives in an extension at the end of the file (type body ≤ 250), with a one-line doc comment (file ≤ 400). `AppContainer.init` is at the 50-line function limit: Task 6 adds the pack check argument on the `languagePairManager:` line. |
+| P13 | Notice texts — resolved | Outgoing: "Couldn't translate your sentence — skipped"; incoming: "Couldn't translate their sentence — skipped". `modelNotLoaded` alert: title "Languages Not Downloaded". Download failure alert: title "Download Failed". |
+| P14 | `TranslationError` — resolved | `timedOut` is added and `bridgeUnavailable` removed in Task 3 (one enum edit; the model's retry in Task 4 is the first producer of `timedOut`). |
+| P15 | Warm-up must load the model (REQ-TR-05) | `TranslationBridgeModel.warmUp` opens the session **and** submits `warmUpProbe` (`"OK"`, result discarded). Measured on a cold es→uk pair: session-only warm-up 424–1 086 ms for the first sentence, probe warm-up 169–440 ms. The probe is skipped while requests are queued. |
+| P16 | Pre-existing test race | `CoordinatorMocks.languagePairManager` re-resolved its pair in the background (`loadSupportedLanguages`), which made `AudioCoordinatorTests.updateLanguagePairReconfigures` fail once `start()` gained the pack-check `await`. Task 6 gives it an empty `languageLoader`. |
 
 ## File Structure
 
 ```
 TranslateCall/App/
-  TranslationBridge.swift            MOD  T2 TranslationSessioning; T3 persistent-session model (queue, run loop, warm-up);
+  TranslationBridge.swift            MOD  T2 TranslationSessioning; T3 persistent-session model (queue, run loop, warm-up probe);
                                           T4 watchdog, retry, rebuild
   TranslationHostWindow.swift        NEW  T5
-  AppContainer.swift                 MOD  T5 owns TranslationHostWindow
+  AppContainer.swift                 MOD  T5 owns TranslationHostWindow; T6 passes the pack check
   TranslateCallApp.swift             MOD  T5 bridges out of the WindowGroup
 TranslateCall/Core/Translation/
   TranslationService.swift           MOD  T2 −prepare; T3 +warmUp, +timedOut, −bridgeUnavailable; T7 no default supports
-  AppleTranslationService.swift      MOD  T2 −prepare; T3 strong model ref, translate/warmUp via model; T7 supports
+  AppleTranslationService.swift      MOD  T2 −prepare; T3 strong model ref, translate/warmUp via model; T6 isInstalled; T7 supports
   TranslationEngineSelector.swift    MOD  T7 supports delegates to the service
 TranslateCall/Core/Audio/
-  AudioCoordinator.swift             MOD  T2 −downloadLanguages; T6 warm-up at start, alerted kinds
+  AudioCoordinator.swift             MOD  T2 −downloadLanguages; T6 pack check + warm-up at start, alerted kinds
   AudioCoordinator+Pipeline.swift    MOD  T3 −bridgeUnavailable alert; T6 failure → notice / alert once, warmUpTranslation
 TranslateCall/Features/Main/
   AudioViewModel.swift               MOD  T2 downloadLanguages(using:); T7 passthrough supports
@@ -90,18 +92,18 @@ TranslateCallTests/
   TranslationHostWindowTests.swift                                    NEW T5
   Integration/{Prerequisites,TranslationBridgeIntegrationTests}.swift MOD/NEW T5
   Integration/OutgoingPipelineFixtureTests.swift                      MOD T2, T3
-  AudioCoordinatorTranslationTests.swift                              NEW T6
-  Integration/TranslationPackTests.swift                              MOD T7
+  AudioCoordinatorTranslationTests.swift; AudioCoordinatorTests.swift (CoordinatorMocks)  NEW/MOD T6
+  Integration/TranslationPackTests.swift                              MOD T6, T7
   STTLocaleIsolationTests.swift                                       NEW T8
 ```
 
 Dependency order: T1 (gate) → T2 → T3 → T4 → T5 → T6 → T7 → T8 → T9. T7 and T8 only need T3.
 
-Everything below was implemented task by task on a throwaway clone while planning: each task's state built (`build-for-testing`), passed lint, and passed its suites; the final state passed the whole unit tier (575 tests), `just scan`, and the integration suites `TranslationLatencyTests`, `TranslationBridgeIntegrationTests`, `TranslationFixtureTests`, `OutgoingPipelineFixtureTests`, `TranslationPackTests`. The unit suites of Tasks 3, 4 and 6 passed 5 runs in a row.
+Everything below was implemented task by task on a throwaway clone while planning (and re-verified after the approval changes): each task's state built (`build-for-testing`), passed `swiftlint --strict`, and passed its suites; the final state passed the whole unit tier (579 tests, 3 runs in a row), `just scan`, and the integration suites `TranslationLatencyTests`, `TranslationBridgeIntegrationTests`, `TranslationFixtureTests`, `OutgoingPipelineFixtureTests`, `TranslationPackTests`. The unit suites of Tasks 3, 4 and 6 passed 3–5 runs in a row.
 
 ---
 
-### Task 1: Measure first — session per sentence vs kept session (D-6) — STOP GATE
+### Task 1: Measure first — session per sentence vs kept session (D-6) — STOP GATE (resolved: D-8)
 
 **Files:**
 - Create: `TranslateCallTests/Integration/TranslationLatencyTests.swift`
@@ -282,11 +284,11 @@ git commit -m "test(translation): measure session-per-sentence vs kept-session l
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 4: STOP GATE — report to the user before Task 2**
+- [ ] **Step 4: STOP GATE — check the rows against the approved NFR-TR-01 before Task 2**
 
-Compare `es→en kept session (median)` with `es→en session per sentence (median)` and with NFR-TR-01 (≤ 150 ms). Continue **only** if the kept median is ≤ 150 ms **and** at least 50 ms below the per-sentence median. Otherwise stop and report to the user, in Spanish, with the measured rows and the options of P1 ((a) as planned with NFR-TR-01 relaxed to a recorded value + 400 ms ceiling, (b) session per sentence + queue/timeout/host/warm-up, (c) only A8/T5/A10).
+Original criterion (spec draft): continue only if the kept median is ≤ 150 ms and at least 50 ms below `es→en session per sentence (median)`; otherwise report to the user with the options of P1. It is kept here as the record of the decision below.
 
-While planning, this gate **triggered** (P1: kept 261–262 ms vs per sentence 266–282 ms). Tasks 2–9 implement option (a); if the user picks (b) or (c), re-plan Tasks 3–5 before continuing. Record the user's decision and the measured rows in this file under P1 and in `requirements.md` (NFR-TR-01) in a `docs(spec)` commit.
+**Resolved before execution (2026-10-07):** while planning, the original criterion triggered (kept 256–262 ms vs per sentence 266–282 ms). The user chose option (a) and NFR-TR-01 was rewritten (requirements D-8): warm median recorded and ≤ 400 ms, first sentence after warm-up ≤ 600 ms — asserted in Task 5. **With the approved NFR the gate passes:** run Step 2, check that the rows are in the same range as P1 (kept median ≤ 400 ms), note the numbers in the Task 9 PR body, and continue. Stop and ask only if the kept median exceeds 400 ms on this machine.
 
 ---
 
@@ -607,7 +609,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: `TranslationSessioning`, `FakeTranslationSession` (Task 2).
 - Produces:
-  - `@MainActor final class TranslationBridgeModel: ObservableObject` with `@Published private(set) var configuration: TranslationSession.Configuration?`, `var queuedCount: Int`, `func translate(_ text: String, from source: Locale.Language, to target: Locale.Language) async throws -> String`, `func warmUp(from:to:)` (synchronous), `func run(session: some TranslationSessioning) async`. `init()` (Task 4 adds `init(timeout:clock:)` with defaults).
+  - `@MainActor final class TranslationBridgeModel: ObservableObject` with `@Published private(set) var configuration: TranslationSession.Configuration?`, `var queuedCount: Int`, `func translate(_ text: String, from source: Locale.Language, to target: Locale.Language) async throws -> String`, `func warmUp(from:to:)` (synchronous; opens the session and submits `static let warmUpProbe = "OK"`, result discarded — P15), `func run(session: some TranslationSessioning) async`. `init()` (Task 4 adds `init(timeout:clock:)` with defaults).
   - `final class AppleTranslationService: TranslationService` (MainActor by default isolation; was an `actor`) with `let model: TranslationBridgeModel` (strong), `translate`, `warmUp(from:to:)`.
   - `TranslationService.warmUp(from:to:) async` with an empty default; `TranslationError.timedOut`; `TranslationError.bridgeUnavailable` removed (P14).
   - Test support: `@MainActor final class TranslationSessionDriver` — `init(model:session:)`, `let session: FakeTranslationSession`, `private(set) var runs: Int`, `func restart()`, `func stop()`.
@@ -723,15 +725,34 @@ struct TranslationBridgeModelTests {
         #expect(model.configuration?.source == enLanguage)
     }
 
-    @Test("warm-up opens the session before the first sentence, which then reuses it (REQ-TR-05)")
+    @Test("warm-up opens the session and loads the model with a probe; the first sentence reuses it (REQ-TR-05)")
     func warmUp() async throws {
         let (model, driver) = makeModel()
         defer { driver.stop() }
         model.warmUp(from: esLanguage, to: enLanguage)
         #expect(model.configuration?.source == esLanguage)
         #expect(driver.runs == 1)
+        #expect(await waitUntil { driver.session.translated == [TranslationBridgeModel.warmUpProbe] })
+        #expect(await waitUntil { model.queuedCount == 0 })
         _ = try await model.translate("hola", from: esLanguage, to: enLanguage)
         #expect(driver.runs == 1)
+        #expect(driver.session.translated == [TranslationBridgeModel.warmUpProbe, "hola"])
+    }
+
+    @Test("warm-up does nothing while sentences are queued (REQ-TR-05)")
+    func warmUpSkippedWhileBusy() async throws {
+        let (model, driver) = makeModel()
+        defer { driver.stop() }
+        driver.session.script = [.hang]
+        let first = Task { try await model.translate("uno", from: esLanguage, to: enLanguage) }
+        #expect(await waitUntil { driver.session.hungCount == 1 })
+
+        model.warmUp(from: enLanguage, to: esLanguage)
+        #expect(model.queuedCount == 1)
+        #expect(model.configuration?.source == esLanguage)
+        driver.session.release(with: "EN:uno")
+        #expect(try await first.value == "EN:uno")
+        #expect(driver.session.translated == ["uno"])
     }
 
     @Test("a session error fails that request only; the next one is translated")
@@ -779,10 +800,13 @@ struct TranslationBridgeModelTests {
     @Test("AppleTranslationService.warmUp opens the model's session for the pair (REQ-TR-05)")
     func serviceWarmUpOpensSession() async {
         let model = TranslationBridgeModel()
+        let driver = TranslationSessionDriver(model: model)
+        defer { driver.stop() }
         let service = AppleTranslationService(model: model)
         await service.warmUp(from: esLanguage, to: enLanguage)
         #expect(model.configuration?.source == esLanguage)
         #expect(model.configuration?.target == enLanguage)
+        #expect(await waitUntil { driver.session.translated == [TranslationBridgeModel.warmUpProbe] })
     }
 }
 ```
@@ -944,11 +968,16 @@ final class TranslationBridgeModel: ObservableObject {
         }
     }
 
-    /// Opens a session for `pair` ahead of the first sentence (REQ-TR-05). No-op while requests are queued.
+    /// Opens a session for `pair` and translates `warmUpProbe` on it, so the model is loaded before the
+    /// first sentence (REQ-TR-05: opening a session alone does not load it). No-op while requests are queued.
     func warmUp(from source: Locale.Language, to target: Locale.Language) {
         guard queue.isEmpty else { return }
         ensureSession(for: Pair(source: source, target: target))
+        Task { _ = try? await translate(Self.warmUpProbe, from: source, to: target) }
     }
+
+    /// Translated (and discarded) by `warmUp`.
+    static let warmUpProbe = "OK"
 
     /// Called by `TranslationBridge` with each session SwiftUI creates. Returns when the session is
     /// replaced (pair change) or its task is cancelled.
@@ -1128,7 +1157,7 @@ add
 - [ ] **Step 4: Run the tests, grep and lint**
 
 Run: `just test-only TranslationBridgeModelTests AppleTranslationServiceTests TranslationErrorTests TranslationBridgeModelStateTests TranslationPipelineTests TranslationErrorMatchingTests TranslationEngineSelectorTests`
-Expected: PASS (26 tests).
+Expected: PASS (27 tests).
 Run: `grep -rn "bridgeUnavailable\|PendingOperation" TranslateCall TranslateCallTests; grep -rn "invalidate()" TranslateCall`
 Expected: no output (the per-sentence `invalidate()` is gone from the app — T4; the Task 1 probe keeps its own).
 Run: `just lint` → exit 0.
@@ -1339,11 +1368,16 @@ final class TranslationBridgeModel: ObservableObject {
         }
     }
 
-    /// Opens a session for `pair` ahead of the first sentence (REQ-TR-05). No-op while requests are queued.
+    /// Opens a session for `pair` and translates `warmUpProbe` on it, so the model is loaded before the
+    /// first sentence (REQ-TR-05: opening a session alone does not load it). No-op while requests are queued.
     func warmUp(from source: Locale.Language, to target: Locale.Language) {
         guard queue.isEmpty else { return }
         ensureSession(for: Pair(source: source, target: target))
+        Task { _ = try? await translate(Self.warmUpProbe, from: source, to: target) }
     }
+
+    /// Translated (and discarded) by `warmUp`.
+    static let warmUpProbe = "OK"
 
     /// Called by `TranslationBridge` with each session SwiftUI creates. Returns when the session is
     /// replaced (pair change, rebuild) or its task is cancelled.
@@ -1450,11 +1484,11 @@ final class TranslationBridgeModel: ObservableObject {
 }
 
 ```
-(Compared with Task 3: `Request.attempts`; `timeout`, `clock`, `watchdog`, `watchedID`; `armWatchdog` called on enqueue and after every completion; `attemptFailed` replaces the direct failure in `run`; `rebuildSession()`. The doc comment now names the watchdog.)
+(Compared with Task 3: `Request.attempts`; `timeout`, `clock`, `watchdog`, `watchedID`; `armWatchdog` called on enqueue and after every completion; `attemptFailed` replaces the direct failure in `run`; `rebuildSession()`. The doc comment now names the watchdog. `warmUp`/`warmUpProbe` are unchanged.)
 
 - [ ] **Step 4: Run the tests (several times: they drive timing through `TestClock`, so they must be deterministic) and lint**
 
-Run: `just test-only TranslationBridgeModelTests AppleTranslationServiceTests` three times → PASS every time (14 tests).
+Run: `just test-only TranslationBridgeModelTests AppleTranslationServiceTests` three times → PASS every time (15 tests).
 Run: `just lint` → exit 0.
 
 - [ ] **Step 5: Commit**
@@ -1477,7 +1511,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Test: `TranslateCallTests/TranslationHostWindowTests.swift`, `TranslateCallTests/Integration/TranslationBridgeIntegrationTests.swift`
 
 **Interfaces:**
-- Consumes: `TranslationBridge`, `TranslationBridgeModel` (Tasks 3–4); `latencySentences`, `median`, `percentile90` (Task 1).
+- Consumes: `TranslationBridge`, `TranslationBridgeModel` (Tasks 3–4, incl. the probe warm-up); `latencySentences`, `median`, `percentile90` (Task 1).
 - Produces: `@MainActor final class TranslationHostWindow` — `init(outgoing: TranslationBridgeModel, incoming: TranslationBridgeModel)`, `let window: NSWindow`, `func close()`. `AppContainer.translationHost: TranslationHostWindow`. `hostTranslationBridge() -> (TranslationBridgeModel, TranslationHostWindow)` (the call sites' `window.close()` keep compiling).
 
 - [ ] **Step 1: Write the failing tests**
@@ -1554,10 +1588,27 @@ extension IntegrationTests {
                                               ms: percentile90(samples))
             #expect(typical <= 400, "warm median \(typical) ms")
         }
+
+        @Test("the first sentence after warm-up is fast (NFR-TR-01; cold it costs ~0.8–1.1 s)")
+        func firstSentenceAfterWarmUp() async throws {
+            try await requireTranslationPack(from: "es", to: "uk")
+            let (model, host) = hostTranslationBridge()
+            defer { host.close() }
+            let service = AppleTranslationService(model: model)
+            let src = Locale.Language(identifier: "es"), dst = Locale.Language(identifier: "uk")
+            await service.warmUp(from: src, to: dst)
+            try await Task.sleep(for: .seconds(1))   // the user's first words: real time, integration tier only
+
+            let start = ContinuousClock.now
+            _ = try await service.translate(text: latencySentences[1], from: src, to: dst)
+            let first = start.duration(to: .now).milliseconds
+            await LatencyReport.shared.record(fixture: "es→uk first sentence after warm-up", stage: .translate, ms: first)
+            #expect(first <= 600, "first sentence \(first) ms")
+        }
     }
 }
 ```
-The 400 ms ceiling is option (a) of P1 (measured while planning: 246 ms median, p90 288). If the user chose another NFR-TR-01 at the Task 1 gate, put that value here.
+Both ceilings are NFR-TR-01 as approved (requirements D-8). Measured while planning: warm median 246–264 ms (p90 288–302); first sentence after the probe warm-up 169–440 ms (424–1 086 ms with a session-only warm-up — P15). es→uk is used so the pair is less likely to be warm from an earlier suite.
 
 `TranslateCallTests/Integration/Prerequisites.swift`: replace
 ```swift
@@ -1676,7 +1727,7 @@ with
 - [ ] **Step 4: Run the unit test, the translation integration suites and lint**
 
 Run: `just test-only TranslationHostWindowTests` → PASS.
-Run (one command per suite, see Global Constraints): `TranslationBridgeIntegrationTests`, `TranslationFixtureTests`, `OutgoingPipelineFixtureTests` → PASS; `build/reports/latency.json` gains `es→en AppleTranslationService warm (median)` and `(p90)`.
+Run (one command per suite, see Global Constraints): `TranslationBridgeIntegrationTests` (3 tests), `TranslationFixtureTests`, `OutgoingPipelineFixtureTests` → PASS; `build/reports/latency.json` gains `es→en AppleTranslationService warm (median)`, `(p90)` and `es→uk first sentence after warm-up`.
 Run: `just lint` → exit 0.
 
 - [ ] **Step 5: Commit**
@@ -1690,17 +1741,18 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 6: Coordinator — warm-up at Start; a failed sentence is a notice, configuration errors alert once (D-1, REQ-TR-05, REQ-TR-20/21)
+### Task 6: Coordinator — pack check and warm-up at Start; a failed sentence is a notice, configuration errors alert once (D-1, D-9, REQ-TR-05, REQ-TR-06, REQ-TR-20/21)
 
 **Files:**
-- Modify: `TranslateCall/Core/Audio/AudioCoordinator.swift:61` (state), `:186-188` (`start`)
+- Modify: `TranslateCall/Core/Audio/AudioCoordinator.swift:61` (state), `:83` and the init (pack check), `:186-188` (`start`), before `suppressNextOutgoingTurn` (helper)
 - Modify: `TranslateCall/Core/Audio/AudioCoordinator+Pipeline.swift` (translation handlers, `makeAlertItem`, end of file)
-- Modify: `TranslateCallTests/TranslationPipelineTests.swift` (`MockTranslationService`)
-- Test: `TranslateCallTests/AudioCoordinatorTranslationTests.swift`
+- Modify: `TranslateCall/Core/Translation/AppleTranslationService.swift` (`isInstalled`), `TranslateCall/App/AppContainer.swift` (passes it)
+- Modify: `TranslateCallTests/TranslationPipelineTests.swift` (`MockTranslationService`), `TranslateCallTests/AudioCoordinatorTests.swift` (`CoordinatorMocks`, P16)
+- Test: `TranslateCallTests/AudioCoordinatorTranslationTests.swift`, `TranslateCallTests/Integration/TranslationPackTests.swift`
 
 **Interfaces:**
 - Consumes: `TranslationService.warmUp(from:to:)`, `TranslationError.timedOut` (Task 3), `showTTSNotice(_:)` (F8.5.2), `CoordinatorMocks` (`AudioCoordinatorTests.swift`).
-- Produces: `AudioCoordinator.alertedTranslationErrors: Set<String>` (reset by `start`), `func warmUpTranslation() async`, `func handleTranslationFailure(_ error: Error, outgoing: Bool)`. `MockTranslationService.errors: [Error]` (thrown one per call before `shouldThrow`) and `warmUpCalls: [(source: Locale.Language, target: Locale.Language)]`.
+- Produces: `AudioCoordinator.init(…, isTranslationPairInstalled: @escaping (Locale.Language, Locale.Language) async -> Bool = { _, _ in true })` (last parameter); `AudioCoordinator.alertedTranslationErrors: Set<String>` (reset by `start`), `func warmUpTranslation() async`, `func handleTranslationFailure(_ error: Error, outgoing: Bool)`; `static func AppleTranslationService.isInstalled(from:to:) async -> Bool` (`LanguageAvailability` status `.installed`). `MockTranslationService.errors: [Error]` (thrown one per call before `shouldThrow`) and `warmUpCalls: [(source: Locale.Language, target: Locale.Language)]`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1738,8 +1790,20 @@ import Foundation
 import Testing
 @testable import TranslateCall
 
+/// Records the pack checks `start` makes and answers them from `installed` (REQ-TR-06).
 @MainActor
-private func makeCoordinator(_ mocks: CoordinatorMocks) -> AudioCoordinator {
+private final class PackChecks {
+    var installed: (Locale.Language, Locale.Language) -> Bool = { _, _ in true }
+    private(set) var asked: [(source: Locale.Language, target: Locale.Language)] = []
+
+    func check(_ source: Locale.Language, _ target: Locale.Language) -> Bool {
+        asked.append((source, target))
+        return installed(source, target)
+    }
+}
+
+@MainActor
+private func makeCoordinator(_ mocks: CoordinatorMocks, packs: PackChecks = PackChecks()) -> AudioCoordinator {
     AudioCoordinator(
         audioCapture: mocks.mockAudioCapture,
         systemCapture: mocks.mockSystemCapture,
@@ -1752,7 +1816,8 @@ private func makeCoordinator(_ mocks: CoordinatorMocks) -> AudioCoordinator {
         outgoingTTSFactory: { _, _ in mocks.mockOutgoingTTS },
         incomingTTSFactory: { _, _ in mocks.mockIncomingTTS },
         languagePairManager: mocks.languagePairManager,
-        noticeClock: TestClock()
+        noticeClock: TestClock(),
+        isTranslationPairInstalled: { packs.check($0, $1) }
     )
 }
 
@@ -1777,6 +1842,53 @@ struct AudioCoordinatorTranslationTests {
         #expect(outgoing.first?.target == incoming.first?.source)
         #expect(outgoing.first?.source != outgoing.first?.target)
         await coordinator.stop()
+    }
+
+    @Test("Start checks both directions' packs before anything else (REQ-TR-06)")
+    func startChecksBothDirections() async {
+        let mocks = CoordinatorMocks()
+        let packs = PackChecks()
+        let coordinator = makeCoordinator(mocks, packs: packs)
+        await coordinator.start()
+
+        #expect(packs.asked.count == 2)
+        #expect(packs.asked.first?.source == packs.asked.last?.target)
+        #expect(packs.asked.first?.target == packs.asked.last?.source)
+        #expect(coordinator.isOutgoingActive)
+        await coordinator.stop()
+    }
+
+    @Test("a pair that is not downloaded blocks Start with the download alert (REQ-TR-06)")
+    func missingPackBlocksStart() async {
+        let mocks = CoordinatorMocks()
+        let packs = PackChecks()
+        packs.installed = { _, _ in false }
+        let coordinator = makeCoordinator(mocks, packs: packs)
+        await coordinator.start()
+
+        #expect(coordinator.errorAlert?.title == "Languages Not Downloaded")
+        #expect(!coordinator.isOutgoingActive)
+        #expect(!coordinator.isStarting)
+        #expect(!mocks.mockAudioCapture.startCaptureCalled)
+        #expect(mocks.mockOutgoingTranslation.warmUpCalls.isEmpty)
+    }
+
+    @Test("one missing direction is enough to block Start (REQ-TR-06)")
+    func missingReverseDirectionBlocksStart() async {
+        let mocks = CoordinatorMocks()
+        let packs = PackChecks()
+        var first = true
+        packs.installed = { _, _ in
+            defer { first = false }
+            return first   // outgoing installed, incoming not
+        }
+        let coordinator = makeCoordinator(mocks, packs: packs)
+        await coordinator.start()
+
+        #expect(packs.asked.count == 2)
+        #expect(coordinator.errorAlert?.title == "Languages Not Downloaded")
+        #expect(!coordinator.isOutgoingActive)
+        #expect(!mocks.mockAudioCapture.startCaptureCalled)
     }
 
     @Test("a sentence that cannot be translated is skipped with a notice, no alert; the next one is spoken (REQ-TR-20)")
@@ -1850,33 +1962,134 @@ struct AudioCoordinatorTranslationTests {
 }
 ```
 
-- [ ] **Step 2: Run the tests to see them fail**
-
-Run: `just test-only AudioCoordinatorTranslationTests`
-Expected: build FAILS — `value of type 'AudioCoordinator' has no member 'alertedTranslationErrors'`. (With that line commented out, `startWarmsUpBothDirections`, `outgoingFailureIsANotice` and `incomingFailureIsANotice` fail: no warm-up, and failures still raise `errorAlert`.)
-
-- [ ] **Step 3: Implement**
-
-`TranslateCall/Core/Audio/AudioCoordinator.swift`: after
+In `TranslateCallTests/AudioCoordinatorTests.swift`, in `CoordinatorMocks`, replace
 ```swift
-    @Published var errorAlert: AlertItem?
-```
-add
-```swift
-    /// Translation errors already alerted in this session: each kind is alerted once (F8.5.4 REQ-TR-21).
-    var alertedTranslationErrors: Set<String> = []
-```
-and in `start(captureTarget:blackHoleDeviceID:)` replace
-```swift
-        self.captureTarget = captureTarget
-        micEchoGate = makeMicEchoGate()
+    let languagePairManager = LanguagePairManager()
 ```
 with
 ```swift
-        self.captureTarget = captureTarget
-        micEchoGate = makeMicEchoGate()
-        alertedTranslationErrors.removeAll()
-        await warmUpTranslation()   // returns at once: the sessions open while capture starts (REQ-TR-05)
+    /// No language loader: the manager must not re-resolve its pair in the background while a test runs
+    /// (the race made `updateLanguagePairReconfigures` flaky once `start()` gained the pack check, F8.5.4).
+    let languagePairManager = LanguagePairManager(languageLoader: { [] })
+```
+
+In `TranslateCallTests/Integration/TranslationPackTests.swift`, after the test `installedPairIsDetected` add:
+```swift
+
+        @Test("AppleTranslationService.isInstalled requires downloaded packs (REQ-TR-06)") @MainActor
+        func appleIsInstalled() async {
+            #expect(await AppleTranslationService.isInstalled(from: Locale.Language(identifier: "es"),
+                                                              to: Locale.Language(identifier: "en")))
+            #expect(await AppleTranslationService.isInstalled(from: Locale.Language(identifier: "en"),
+                                                              to: Locale.Language(identifier: "tlh")) == false)
+        }
+```
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `just test-only AudioCoordinatorTranslationTests`
+Expected: build FAILS — `extra argument 'isTranslationPairInstalled' in call`, `value of type 'AudioCoordinator' has no member 'alertedTranslationErrors'`. (Once it builds, `startChecksBothDirections`, `missingPackBlocksStart`, `missingReverseDirectionBlocksStart`, `startWarmsUpBothDirections`, `outgoingFailureIsANotice` and `incomingFailureIsANotice` fail until Step 3 is complete.)
+
+- [ ] **Step 3: Implement**
+
+`TranslateCall/Core/Audio/AudioCoordinator.swift`:
+- after
+  ```swift
+      @Published var errorAlert: AlertItem?
+  ```
+  add
+  ```swift
+      /// Translation errors already alerted in this session: each kind is alerted once (F8.5.4 REQ-TR-21).
+      var alertedTranslationErrors: Set<String> = []
+  ```
+- after
+  ```swift
+      private let ttsNoticeDuration: Duration
+  ```
+  add
+  ```swift
+      /// Whether a pair's translation models are downloaded (F8.5.4 REQ-TR-06). Injected: unit tests never
+      /// ask the real `LanguageAvailability`; the default (previews, tests) says yes.
+      private let isTranslationPairInstalled: (Locale.Language, Locale.Language) async -> Bool
+  ```
+- in `init`, replace
+  ```swift
+          ttsNoticeDuration: Duration = .seconds(5)
+      ) {
+  ```
+  with
+  ```swift
+          ttsNoticeDuration: Duration = .seconds(5),
+          isTranslationPairInstalled: @escaping (Locale.Language, Locale.Language) async -> Bool = { _, _ in true }
+      ) {
+  ```
+  and after `        self.ttsNoticeDuration = ttsNoticeDuration` add
+  ```swift
+          self.isTranslationPairInstalled = isTranslationPairInstalled
+  ```
+- in `start(captureTarget:blackHoleDeviceID:)` replace
+  ```swift
+          let generation = sessionGeneration
+          self.captureTarget = captureTarget
+          micEchoGate = makeMicEchoGate()
+  ```
+  with
+  ```swift
+          let generation = sessionGeneration
+          // The hidden bridges cannot show the download sheet: no session without the packs (REQ-TR-06).
+          guard await translationPacksInstalled(), generation == sessionGeneration else { return }
+          self.captureTarget = captureTarget
+          micEchoGate = makeMicEchoGate()
+          alertedTranslationErrors.removeAll()
+          await warmUpTranslation()   // returns at once: the sessions open while capture starts (REQ-TR-05)
+  ```
+- before
+  ```swift
+      /// Silently drops the next outgoing utterance from STT (one-shot mute turn).
+  ```
+  add
+  ```swift
+      /// Both directions' packs are downloaded; otherwise alerts "download first" (F8.5.4 REQ-TR-06).
+      private func translationPacksInstalled() async -> Bool {
+          let source = languagePairManager.sourceLanguage
+          let target = languagePairManager.targetLanguage
+          guard await isTranslationPairInstalled(source, target), await isTranslationPairInstalled(target, source) else {
+              errorAlert = makeAlertItem(for: TranslationError.modelNotLoaded)
+              return false
+          }
+          return true
+      }
+
+  ```
+
+`TranslateCall/Core/Translation/AppleTranslationService.swift`: replace
+```swift
+import Foundation
+```
+with
+```swift
+import Foundation
+@preconcurrency import Translation
+```
+and after the `warmUp(from:to:)` method add
+```swift
+
+    /// Whether the pair's models are downloaded (F8.5.4 REQ-TR-06). The call-time bridges live in a hidden
+    /// window and cannot show the download sheet, so `AudioCoordinator.start` requires `.installed`.
+    static func isInstalled(from source: Locale.Language, to target: Locale.Language) async -> Bool {
+        await LanguageAvailability().status(from: source, to: target) == .installed
+    }
+```
+
+`TranslateCall/App/AppContainer.swift`, in the `AudioCoordinator(…)` call replace
+```swift
+            languagePairManager: lpm
+        )
+```
+with (one line: `init()` is at the 50-line limit — P12)
+```swift
+            languagePairManager: lpm, isTranslationPairInstalled: AppleTranslationService.isInstalled   // REQ-TR-06
+        )
 ```
 
 `TranslateCall/Core/Audio/AudioCoordinator+Pipeline.swift`:
@@ -1963,14 +2176,15 @@ with
 
 - [ ] **Step 4: Run the tests and lint**
 
-Run: `just test-only AudioCoordinatorTranslationTests AudioCoordinatorTests AudioCoordinatorTTSTests TranslationPipelineTests` → PASS (49 tests).
+Run: `just test-only AudioCoordinatorTranslationTests AudioCoordinatorTests AudioCoordinatorTTSTests TranslationPipelineTests` → PASS (52 tests); run it three times.
+Run the integration suite `TranslationPackTests` (Global Constraints command) → PASS (3 tests).
 Run: `just lint` → exit 0.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add TranslateCall/Core/Audio TranslateCallTests
-git commit -m "feat(pipeline): warm translation up at Start; a failed sentence is a notice, configuration errors alert once (F8.5.4 REQ-TR-05, 20, 21)
+git add TranslateCall TranslateCallTests
+git commit -m "feat(pipeline): no session without language packs; warm translation up at Start; a failed sentence is a notice (F8.5.4 REQ-TR-05, 06, 20, 21)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -1986,7 +2200,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Test: `TranslateCallTests/Integration/TranslationPackTests.swift`
 
 **Interfaces:**
-- Consumes: Task 3 services.
+- Consumes: Task 3 services; Task 6 `AppleTranslationService.isInstalled` (and its Translation import).
 - Produces: `TranslationService.supports(source:target:) async -> Bool` with **no default**; `AppleTranslationService.supports` = `LanguageAvailability` status `.installed` or `.supported`; `TranslationEngineSelector.supports` delegates to `makeOutgoingService()`; `MockTranslationService.supportsResult: Bool`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -2001,7 +2215,7 @@ with
     /// Prerequisites ask the framework whether a pack is *installed*; `supports` also accepts packs that
     /// are only downloadable (review finding: missing packs hung until the 300 s allowance).
 ```
-and after the test `installedPairIsDetected` add:
+and after the test `installedPairIsDetected` (before Task 6's `appleIsInstalled`) add:
 ```swift
 
         @Test("AppleTranslationService.supports is the framework's answer (T5, REQ-TR-50)") @MainActor
@@ -2045,16 +2259,7 @@ and in `extension TranslationService` delete
     func supports(source: Locale.Language, target: Locale.Language) async -> Bool { true }
 ```
 
-`TranslateCall/Core/Translation/AppleTranslationService.swift`: replace
-```swift
-import Foundation
-```
-with
-```swift
-import Foundation
-@preconcurrency import Translation
-```
-and after `warmUp(from:to:)` add
+`TranslateCall/Core/Translation/AppleTranslationService.swift` (Translation is already imported since Task 6): after `isInstalled(from:to:)` add
 ```swift
 
     /// `.installed` or `.supported` (downloadable) — the framework's answer, not a default (T5, REQ-TR-50).
@@ -2100,7 +2305,7 @@ and after its `warmUp` method add
 
 - [ ] **Step 4: Run the tests and lint**
 
-Run the integration suite `TranslationPackTests` → PASS (4 tests). `just test-only TranslationEngineSelectorTests TranslationPipelineTests` → PASS. `just lint` → exit 0 (`AudioViewModel.swift` is now 399 lines — P12).
+Run the integration suite `TranslationPackTests` → PASS (5 tests). `just test-only TranslationEngineSelectorTests TranslationPipelineTests` → PASS. `just lint` → exit 0 (`AudioViewModel.swift` is now 399 lines — P12).
 
 - [ ] **Step 5: Commit**
 
@@ -2299,7 +2504,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: the finished feature (Tasks 1–8).
-- Produces: backlog rows fixed with their pinning tests; new rows A26, T7; manual results recorded.
+- Produces: backlog rows fixed with their pinning tests; new row T7; manual results recorded.
 
 - [ ] **Step 1: Architecture docs**
 
@@ -2321,9 +2526,12 @@ AudioCoordinator ─► AppleTranslationService ─► TranslationBridgeModel (F
 
 - **One session per direction, kept open.** `run(session:)` serves queued requests until the
   configuration changes; it never invalidates per sentence.
-- **Warm-up at Start.** The first translation of a pair costs ~1.1 s (model load); opening the session
-  at Start brings the first sentence down to ~0.2–0.3 s. Later sentences cost ~250–450 ms: that is
-  model inference, not session set-up (measured in F8.5.4, `TranslationLatencyTests`).
+- **Pack check, then warm-up at Start.** A call does not start unless both directions' packs are
+  installed (the hidden bridges cannot show the download sheet; the user gets "Languages Not
+  Downloaded"). The first translation of a pair costs ~0.8–1.1 s (model load); at Start each bridge
+  opens its session and translates a one-word probe, which brings the first sentence down to
+  ~0.2–0.45 s. Later sentences cost ~250–450 ms: that is model inference, not session set-up (measured
+  in F8.5.4, `TranslationLatencyTests`).
 - **Bounded.** The request being served has a 5 s watchdog: one retry on a rebuilt session, then
   `TranslationError.timedOut`. The coordinator skips that sentence with a notice; only configuration
   errors (unsupported pair, models not downloaded) raise an alert, once per session.
@@ -2350,9 +2558,9 @@ In `specs/m8.5-stabilization/backlog.md`:
 
 | # | Guard in place |
 |---|---|
-| A8 | fixed in F8.5.4 (PR #…) — FIFO queue, 5 s watchdog + one retry, bridges in `TranslationHostWindow`, downloads on their own `.translationTask`: `TranslationBridgeModelTests.fifoOrder`, `.timeoutTwice`, `.neverFires`, `.lateAnswerIgnored`, `TranslationHostWindowTests`, `TranslationBridgeIntegrationTests.hostWindowTranslates`, `TranslationPipelineTests.downloadUsesSession` |
+| A8 | fixed in F8.5.4 (PR #…) — FIFO queue, 5 s watchdog + one retry, bridges in `TranslationHostWindow`, downloads on their own `.translationTask`, no session without the packs: `TranslationBridgeModelTests.fifoOrder`, `.timeoutTwice`, `.neverFires`, `.lateAnswerIgnored`, `TranslationHostWindowTests`, `TranslationBridgeIntegrationTests.hostWindowTranslates`, `TranslationPipelineTests.downloadUsesSession`, `AudioCoordinatorTranslationTests.missingPackBlocksStart` |
 | A10 | Core/Audio, Core/TTS, Core/VoiceCloning clean (F8.5.1–F8.5.2); Core/STT and Core/Translation clean (F8.5.4): `STTLocaleIsolationTests`; opengrep `no-nonisolated-unsafe-stt-translation` (ERROR); `asyncstream-*` ERROR |
-| T4 | VAD part fixed in F8.5.3 (716 ms); translation part fixed in F8.5.4 — no per-sentence `invalidate()`, warm-up at Start (cold first sentence ~1.1 s → ~0.2–0.3 s); steady state ~250–450 ms is model inference (see T7): `TranslationBridgeModelTests.persistentSession`, `.warmUp`, `TranslationBridgeIntegrationTests.keptSessionLatency` (latency.json) |
+| T4 | VAD part fixed in F8.5.3 (716 ms); translation part fixed in F8.5.4 — no per-sentence `invalidate()`, probe warm-up at Start (cold first sentence ~0.8–1.1 s → ~0.2–0.45 s); steady state ~250–450 ms is model inference (see T7): `TranslationBridgeModelTests.persistentSession`, `.warmUp`, `TranslationBridgeIntegrationTests.keptSessionLatency`, `.firstSentenceAfterWarmUp` (latency.json) |
 | T5 | fixed in F8.5.4 — no default; Apple asks `LanguageAvailability`, the selector delegates: `TranslationPackTests.appleSupportsMirrorsAvailability`, `.selectorDelegatesToService` |
 
 - append a section:
@@ -2362,7 +2570,6 @@ In `specs/m8.5-stabilization/backlog.md`:
 
 | # | Finding | Where | Guard in place |
 |---|---------|-------|----------------|
-| A26 | Starting a call with a language pair that is not downloaded: the hidden bridge cannot show the download sheet, so every sentence times out (2 × 5 s) and shows "Couldn't translate…". Likely fix: check `pairStatus` at Start and point to Download (`modelNotLoaded` alert exists). Owner: unassigned | `AudioCoordinator.start`, `LanguagePairManager.pairStatus` | — |
 | T7 | Apple Translation costs ~250–450 ms per short sentence (model inference; 62 ms for one word), the same with a kept or a fresh session and with macOS 26 `TranslationSession(installedSource:target:)`. Further cuts need another engine or translating partial STT results. Owner: unassigned | `build/reports/latency.json` (`TranslationLatencyTests`) | recorded, ceiling 400 ms: `TranslationBridgeIntegrationTests.keptSessionLatency` |
 ```
 
@@ -2370,13 +2577,13 @@ Fill in the PR number once the PR exists (Step 6).
 
 - [ ] **Step 3: Lint, scan and the whole unit tier**
 
-Run: `just lint` → exit 0. `just scan` → `✓ no blocking findings`. `just test` → PASS (575 tests while planning).
+Run: `just lint` → exit 0. `just scan` → `✓ no blocking findings`. `just test` → PASS (579 tests while planning).
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add docs/ARCHITECTURE.md specs/m8.5-stabilization/backlog.md
-git commit -m "docs: F8.5.4 translation bridge in ARCHITECTURE; backlog A8, A10, T4, T5 fixed; A26, T7
+git commit -m "docs: F8.5.4 translation bridge in ARCHITECTURE; backlog A8, A10, T4, T5 fixed; T7
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -2392,11 +2599,12 @@ Build and run the app (`just build`, then open `build/DerivedData/Build/Products
 | M3 | Stop; change the language pair; Start | The next session translates in the new pair from the first sentence | |
 | M4 | Pick a pair that is not downloaded; press "Download" | The system sheet appears in the main window; after downloading, the pair shows as installed | |
 | M5 | (P7) Right after M4, Start a session in that pair | The first sentence is translated (no "Couldn't translate…" notice) | |
+| M6 | Pick a pair that is not downloaded and press Start | The alert "Languages Not Downloaded" appears; no session starts; "Download" is available in the language row | |
 
 - [ ] **Step 6: Full gate (done by the controller with the user)**
 
 Run: `just pr`
-Expected: build → check → test → test-integration all pass; `local/just-pr` status = success on HEAD; PR created against `main` with the template filled in (spec + this plan, tests, `just pr`, manual checklist M1–M5, the P1 measurements and the user's NFR-TR-01 decision). Then put the PR number into the backlog rows of Step 2 (follow-up commit, and run `just pr` again).
+Expected: build → check → test → test-integration all pass; `local/just-pr` status = success on HEAD; PR created against `main` with the template filled in (spec + this plan, tests, `just pr`, manual checklist M1–M6, the P1 measurements and the approved NFR-TR-01 (D-8)). Then put the PR number into the backlog rows of Step 2 (follow-up commit, and run `just pr` again).
 
 ---
 
@@ -2404,12 +2612,13 @@ Expected: build → check → test → test-integration all pass; `local/just-pr
 
 | Requirement | Task | Pinned by |
 |---|---|---|
-| D-6 measure first, stop gate | 1 | `TranslationLatencyTests` (latency.json); Task 1 Step 4 |
+| D-6 measure first, stop gate (resolved by D-8) | 1 | `TranslationLatencyTests` (latency.json); Task 1 Step 4 |
 | REQ-TR-01 one session serves the queue | 3 | `TranslationBridgeModelTests.persistentSession`; Task 3 Step 4 grep (`invalidate()` gone) |
 | REQ-TR-02 configuration only on pair change / warm-up / rebuild | 3, 4 | `.pairChange`, `.warmUp`, `.timeoutThenRetry` (`driver.runs`) |
 | REQ-TR-03 FIFO; in-flight survives a session change | 3 | `.fifoOrder`, `.inFlightSurvivesSessionRestart` |
 | REQ-TR-04 request of another pair switches the session | 3 | `.pairChange` |
-| REQ-TR-05 warm-up at Start, non-blocking | 3, 6 | `.warmUp`, `.serviceWarmUpOpensSession`, `AudioCoordinatorTranslationTests.startWarmsUpBothDirections` |
+| REQ-TR-05 warm-up at Start (session + probe), non-blocking, skipped while busy | 3, 5, 6 | `.warmUp`, `.warmUpSkippedWhileBusy`, `.serviceWarmUpOpensSession`, `AudioCoordinatorTranslationTests.startWarmsUpBothDirections`, `TranslationBridgeIntegrationTests.firstSentenceAfterWarmUp` |
+| REQ-TR-06 no session without both directions' packs; download alert; injected check | 6 | `AudioCoordinatorTranslationTests.startChecksBothDirections`, `.missingPackBlocksStart`, `.missingReverseDirectionBlocksStart`; `TranslationPackTests.appleIsInstalled`; manual M6 |
 | REQ-TR-10 bounded completion, also with no session | 4 | `.neverFires`, `.timeoutTwice` (P2: bound applies from the head) |
 | REQ-TR-11 retry once on a rebuilt session, then throw | 4 | `.timeoutThenRetry`, `.timeoutTwice`, `.sessionErrorRetried`, `.sessionErrorTwice` |
 | REQ-TR-12 a failure does not affect later requests | 4 | `.timeoutTwice`, `.sessionErrorTwice` (P3) |
@@ -2426,7 +2635,7 @@ Expected: build → check → test → test-integration all pass; `local/just-pr
 | REQ-TR-51 selector delegates | 7 | `TranslationPackTests.selectorDelegatesToService` |
 | REQ-TR-60 no `nonisolated(unsafe)` in Core/STT, Core/Translation | 3, 8 | `STTLocaleIsolationTests`; Task 8 Step 4 grep |
 | REQ-TR-61 opengrep rule | 8 | `no-nonisolated-unsafe-stt-translation` + rule self-test |
-| NFR-TR-01 warm median | 1, 5 | `TranslationBridgeIntegrationTests.keptSessionLatency` — 400 ms ceiling pending the user's decision (P1); 150 ms not reachable |
+| NFR-TR-01 warm median ≤ 400 ms recorded; first sentence after warm-up ≤ 600 ms (D-8) | 1, 5 | `TranslationBridgeIntegrationTests.keptSessionLatency`, `.firstSentenceAfterWarmUp` (latency.json); baselines by `TranslationLatencyTests` |
 | NFR-TR-02 no continuation left unresumed | 3, 4 | `.lateAnswerIgnored`, `.callerCancellation`, `.neverFires` (exactly-once `finish`) |
 | NFR-TR-03 unit tests without a real session | 2, 3 | `FakeTranslationSession`, `TranslationSessionDriver` |
-| Manual M1–M5 | 9 | Task 9 Step 5 |
+| Manual M1–M6 | 9 | Task 9 Step 5 |
