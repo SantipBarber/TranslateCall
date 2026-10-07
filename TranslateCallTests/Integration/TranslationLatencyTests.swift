@@ -98,10 +98,11 @@ extension IntegrationTests {
             let src = Locale.Language(identifier: "es"), dst = Locale.Language(identifier: "en")
 
             var samples: [Double] = []
+            var failures: [String] = []
             for sentence in latencySentences {
                 let start = ContinuousClock.now
                 await probe.run(source: src, target: dst, freshSession: true) { session in
-                    _ = try? await session.translate(sentence)
+                    do { _ = try await session.translate(sentence) } catch { failures.append("\(error)") }
                 }
                 samples.append(start.duration(to: .now).milliseconds)
             }
@@ -110,6 +111,7 @@ extension IntegrationTests {
             await LatencyReport.shared.record(fixture: "es→en session per sentence (p90)", stage: .translate,
                                               ms: percentile90(samples))
             #expect(samples.count == latencySentences.count)
+            #expect(failures.isEmpty, "translation failures would skew the latency: \(failures)")
         }
 
         @Test("one session kept open (F8.5.4 bridge), first sentence excluded")
@@ -122,11 +124,12 @@ extension IntegrationTests {
 
             var first: Double = 0
             var samples: [Double] = []
+            var failures: [String] = []
             let opened = ContinuousClock.now
             await probe.run(source: src, target: dst, freshSession: false) { session in
                 for (index, sentence) in latencySentences.enumerated() {
                     let start = index == 0 ? opened : ContinuousClock.now
-                    _ = try? await session.translate(sentence)
+                    do { _ = try await session.translate(sentence) } catch { failures.append("\(error)") }
                     let elapsed = start.duration(to: .now).milliseconds
                     if index == 0 { first = elapsed } else { samples.append(elapsed) }
                 }
@@ -138,6 +141,7 @@ extension IntegrationTests {
             await LatencyReport.shared.record(fixture: "es→en kept session (p90)", stage: .translate,
                                               ms: percentile90(samples))
             #expect(samples.count == latencySentences.count - 1)
+            #expect(failures.isEmpty, "translation failures would skew the latency: \(failures)")
         }
     }
 }
