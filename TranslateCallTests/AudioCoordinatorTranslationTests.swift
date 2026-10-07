@@ -15,7 +15,11 @@ private final class PackChecks {
 }
 
 @MainActor
-private func makeCoordinator(_ mocks: CoordinatorMocks, packs: PackChecks = PackChecks()) -> AudioCoordinator {
+private func makeCoordinator(
+    _ mocks: CoordinatorMocks,
+    packs: PackChecks = PackChecks(),
+    packCheck: (@MainActor (Locale.Language, Locale.Language) async -> Bool)? = nil
+) -> AudioCoordinator {
     AudioCoordinator(
         audioCapture: mocks.mockAudioCapture,
         systemCapture: mocks.mockSystemCapture,
@@ -29,7 +33,7 @@ private func makeCoordinator(_ mocks: CoordinatorMocks, packs: PackChecks = Pack
         incomingTTSFactory: { _, _ in mocks.mockIncomingTTS },
         languagePairManager: mocks.languagePairManager,
         noticeClock: TestClock(),
-        isTranslationPairInstalled: { packs.check($0, $1) }
+        isTranslationPairInstalled: { await (packCheck?($0, $1) ?? packs.check($0, $1)) }
     )
 }
 
@@ -46,10 +50,13 @@ struct AudioCoordinatorTranslationTests {
         let coordinator = makeCoordinator(mocks)
         await coordinator.start()
 
-        // LanguagePairManager may still be settling its pair in the background: compare the two calls.
+        // The mocks' LanguagePairManager has an empty loader, so its pair is fixed: source -> target outgoing.
+        let pair = (source: mocks.languagePairManager.sourceLanguage, target: mocks.languagePairManager.targetLanguage)
         let outgoing = mocks.mockOutgoingTranslation.warmUpCalls
         let incoming = mocks.mockIncomingTranslation.warmUpCalls
         #expect(outgoing.count == 1 && incoming.count == 1)
+        #expect(outgoing.first?.source == pair.source && outgoing.first?.target == pair.target)
+        #expect(incoming.first?.source == pair.target && incoming.first?.target == pair.source)
         #expect(outgoing.first?.source == incoming.first?.target)
         #expect(outgoing.first?.target == incoming.first?.source)
         #expect(outgoing.first?.source != outgoing.first?.target)
@@ -83,6 +90,32 @@ struct AudioCoordinatorTranslationTests {
         #expect(!coordinator.isStarting)
         #expect(!mocks.mockAudioCapture.startCaptureCalled)
         #expect(mocks.mockOutgoingTranslation.warmUpCalls.isEmpty)
+        #expect(mocks.mockIncomingTranslation.warmUpCalls.isEmpty)
+    }
+
+    @Test("a Stop during the pack check supersedes Start: no alert, no capture, no warm-up")
+    func stopDuringPackCheckShowsNoAlert() async {
+        let mocks = CoordinatorMocks()
+        var release: CheckedContinuation<Bool, Never>?
+        var entered = false
+        let coordinator = makeCoordinator(mocks, packCheck: { _, _ in
+            await withCheckedContinuation { continuation in
+                release = continuation
+                entered = true
+            }
+        })
+        let starting = Task { await coordinator.start() }
+        #expect(await waitUntil { entered })
+
+        await coordinator.stop()
+        release?.resume(returning: false)   // the check answers "not installed" after the Stop
+        await starting.value
+
+        #expect(coordinator.errorAlert == nil)
+        #expect(!coordinator.isOutgoingActive)
+        #expect(!mocks.mockAudioCapture.startCaptureCalled)
+        #expect(mocks.mockOutgoingTranslation.warmUpCalls.isEmpty)
+        #expect(mocks.mockIncomingTranslation.warmUpCalls.isEmpty)
     }
 
     @Test("one missing direction is enough to block Start (REQ-TR-06)")

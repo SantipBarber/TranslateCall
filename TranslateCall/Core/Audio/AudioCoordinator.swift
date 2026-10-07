@@ -190,7 +190,12 @@ final class AudioCoordinator: ObservableObject {
         sessionGeneration &+= 1
         let generation = sessionGeneration
         // The hidden bridges cannot show the download sheet: no session without the packs (REQ-TR-06).
-        guard await translationPacksInstalled(), generation == sessionGeneration else { return }
+        let packsInstalled = await translationPacksInstalled()
+        guard generation == sessionGeneration else { return }   // a Stop during the check: no alert
+        guard packsInstalled else {
+            errorAlert = makeAlertItem(for: TranslationError.modelNotLoaded)
+            return
+        }
         self.captureTarget = captureTarget
         micEchoGate = makeMicEchoGate()
         alertedTranslationErrors.removeAll()
@@ -272,15 +277,12 @@ final class AudioCoordinator: ObservableObject {
         incomingActivationTask = Task { await self.activateIncoming() }
     }
 
-    /// Both directions' packs are downloaded; otherwise alerts "download first" (F8.5.4 REQ-TR-06).
+    /// Both directions' packs are downloaded; `start` alerts "download first" (F8.5.4 REQ-TR-06).
     private func translationPacksInstalled() async -> Bool {
         let source = languagePairManager.sourceLanguage
         let target = languagePairManager.targetLanguage
-        guard await isTranslationPairInstalled(source, target), await isTranslationPairInstalled(target, source) else {
-            errorAlert = makeAlertItem(for: TranslationError.modelNotLoaded)
-            return false
-        }
-        return true
+        guard await isTranslationPairInstalled(source, target) else { return false }
+        return await isTranslationPairInstalled(target, source)
     }
 
     /// Silently drops the next outgoing utterance from STT (one-shot mute turn).
