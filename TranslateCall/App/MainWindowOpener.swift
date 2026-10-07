@@ -29,8 +29,11 @@ final class MainWindowOpener {
     var openWindow: (() -> Void)?
 
     /// Raises the first visible (or Dock-minimised) main-capable window, else requests a new one. Returns what it did.
+    /// A hidden app (Cmd-H) has every window ordered out, so it is unhidden first: otherwise the lookup would
+    /// miss the main window and a data-less `WindowGroup` would open a duplicate.
     @discardableResult
-    func show(in windows: [any MainWindowCandidate]) -> Outcome {
+    func show(in windows: [any MainWindowCandidate], appIsHidden: Bool = false, unhide: () -> Void = {}) -> Outcome {
+        if appIsHidden { unhide() }
         if let window = windows.first(where: { $0.canBecomeMain && ($0.isVisible || $0.isMiniaturized) }) {
             window.raise()
             return .raised

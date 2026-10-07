@@ -133,6 +133,6 @@ extension NSApplication {
     /// `TranslationHostWindow` is borderless and cannot become main, so it is never picked (F8.5.4 D-2).
     func showMainWindow() {
         activate(ignoringOtherApps: true)
-        MainWindowOpener.shared.show(in: windows)
+        MainWindowOpener.shared.show(in: windows, appIsHidden: isHidden, unhide: { unhide(nil) })
     }
 }

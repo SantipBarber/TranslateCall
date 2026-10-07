@@ -4,7 +4,7 @@ import Testing
 @MainActor
 private final class FakeWindow: MainWindowCandidate {
     let canBecomeMain: Bool
-    let isVisible: Bool
+    private(set) var isVisible: Bool
     let isMiniaturized: Bool
     private(set) var raised = false
 
@@ -15,6 +15,9 @@ private final class FakeWindow: MainWindowCandidate {
     }
 
     func raise() { raised = true }
+
+    /// What `NSApplication.unhide` does: orders the window back in.
+    func orderBackIn() { isVisible = true }
 }
 
 @Suite("MainWindowOpener (F8.5.4)") @MainActor
@@ -67,5 +70,27 @@ struct MainWindowOpenerTests {
         let (opener, opens) = makeOpener()
         #expect(opener.show(in: []) == .openRequested)
         #expect(opens() == 1)
+    }
+
+    @Test("hidden app (Cmd-H): unhide first, then the existing main window is raised and nothing is opened")
+    func hiddenAppUnhidesInsteadOfDuplicating() {
+        let (opener, opens) = makeOpener()
+        let main = FakeWindow(canBecomeMain: true, isVisible: false)
+        var unhides = 0
+        let outcome = opener.show(in: [main], appIsHidden: true, unhide: {
+            unhides += 1
+            main.orderBackIn()
+        })
+        #expect(outcome == .raised)
+        #expect(unhides == 1)
+        #expect(main.raised && opens() == 0)
+    }
+
+    @Test("a visible app is never unhidden")
+    func visibleAppIsNotUnhidden() {
+        let (opener, _) = makeOpener()
+        var unhides = 0
+        _ = opener.show(in: [FakeWindow(canBecomeMain: true, isVisible: true)], unhide: { unhides += 1 })
+        #expect(unhides == 0)
     }
 }
