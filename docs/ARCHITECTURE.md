@@ -418,36 +418,7 @@ class RecognizerFactory {
 
 #### TranslationService
 
-```swift
-class TranslationService {
-    private var session: TranslationSession?
-    
-    func translate(
-        text: String,
-        from sourceLanguage: Language,
-        to targetLanguage: Language
-    ) async throws -> String {
-        let config = TranslationSession.Configuration(
-            source: sourceLanguage.localeLanguage,
-            target: targetLanguage.localeLanguage
-        )
-        
-        // Note: TranslationSession requires SwiftUI context
-        // Use TranslationBridge for background translation
-        return try await TranslationBridge.shared.translate(
-            text: text,
-            configuration: config
-        )
-    }
-    
-    func isLanguagePairSupported(from: Language, to: Language) -> Bool {
-        // Check Apple's supported pairs
-        TranslationSession.supportedLanguagePairs.contains { pair in
-            pair.source == from.localeLanguage && pair.target == to.localeLanguage
-        }
-    }
-}
-```
+See [TranslationBridge (F8.5.4)](#translationbridge-f854) below for the current design.
 
 #### TranslationBridge (F8.5.4)
 

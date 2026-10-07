@@ -18,6 +18,8 @@ final class TranslationHostWindow {
         window.isReleasedWhenClosed = false
         window.ignoresMouseEvents = true
         window.isExcludedFromWindowsMenu = true
+        window.canHide = false        // Cmd-H must not order it out: .translationTask needs a visible host
+        window.isRestorable = false   // never part of window restoration
         window.collectionBehavior = [.transient, .ignoresCycle, .stationary]
         window.contentView = NSHostingView(rootView: HStack(spacing: 0) {
             TranslationBridge(model: outgoing)

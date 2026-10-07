@@ -16,6 +16,8 @@ struct TranslationHostWindowTests {
         #expect(window.isExcludedFromWindowsMenu)
         #expect(window.ignoresMouseEvents)
         #expect(!window.isReleasedWhenClosed)
+        #expect(!window.canHide)   // Cmd-H keeps it on screen
+        #expect(!window.isRestorable)
         #expect(window.contentView != nil)
     }
 

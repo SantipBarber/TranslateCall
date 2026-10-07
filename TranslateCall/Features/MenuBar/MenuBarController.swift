@@ -129,10 +129,10 @@ final class MenuBarController: NSObject {
 }
 
 extension NSApplication {
-    /// Raises the visible main-capable window. The off-screen `TranslationHostWindow` is borderless
-    /// and cannot become main, so it is never picked (F8.5.4 D-2).
+    /// Raises the visible main-capable window, or opens one if the user closed it. The off-screen
+    /// `TranslationHostWindow` is borderless and cannot become main, so it is never picked (F8.5.4 D-2).
     func showMainWindow() {
         activate(ignoringOtherApps: true)
-        windows.first(where: { $0.canBecomeMain && $0.isVisible })?.makeKeyAndOrderFront(nil)
+        MainWindowOpener.shared.show(in: windows)
     }
 }

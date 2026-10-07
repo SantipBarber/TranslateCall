@@ -192,10 +192,7 @@ final class AudioCoordinator: ObservableObject {
         // The hidden bridges cannot show the download sheet: no session without the packs (REQ-TR-06).
         let packsInstalled = await translationPacksInstalled()
         guard generation == sessionGeneration else { return }   // a Stop during the check: no alert
-        guard packsInstalled else {
-            errorAlert = makeAlertItem(for: TranslationError.modelNotLoaded)
-            return
-        }
+        guard packsInstalled else { return errorAlert = makeAlertItem(for: TranslationError.modelNotLoaded) }
         self.captureTarget = captureTarget
         micEchoGate = makeMicEchoGate()
         alertedTranslationErrors.removeAll()
@@ -279,8 +276,7 @@ final class AudioCoordinator: ObservableObject {
 
     /// Both directions' packs are downloaded; `start` alerts "download first" (F8.5.4 REQ-TR-06).
     private func translationPacksInstalled() async -> Bool {
-        let source = languagePairManager.sourceLanguage
-        let target = languagePairManager.targetLanguage
+        let (source, target) = (languagePairManager.sourceLanguage, languagePairManager.targetLanguage)
         guard await isTranslationPairInstalled(source, target) else { return false }
         return await isTranslationPairInstalled(target, source)
     }

@@ -85,3 +85,4 @@ Out of M8.5 (strategic, later): min macOS 26 / SpeechAnalyzer, WhisperKit → Ar
 | # | Finding | Where | Guard in place |
 |---|---------|-------|----------------|
 | T7 | Apple Translation costs ~250–450 ms per short sentence (model inference; 62 ms for one word), the same with a kept or a fresh session and with macOS 26 `TranslationSession(installedSource:target:)`. Further cuts need another engine or translating partial STT results. Owner: unassigned | `build/reports/latency.json` (`TranslationLatencyTests`) | recorded, ceiling 400 ms: `TranslationBridgeIntegrationTests.keptSessionLatency` |
+| T8 | Apple Translation framework errors are always wrapped as `.sessionError`, so a pack removed mid-call gives retries and notices instead of the REQ-TR-21 alert. Proposed fix: map `Translation.TranslationError` notInstalled / unsupportedLanguagePairing to the app's configuration errors, without retrying. Owner: unassigned | `TranslationBridge.swift` (~136) | — |
