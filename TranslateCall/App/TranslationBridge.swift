@@ -224,7 +224,7 @@ final class TranslationBridgeModel: ObservableObject {
 // MARK: - TranslationBridge View
 
 /// Invisible view anchoring `.translationTask()`; `TranslationSession` has no public initializer on
-/// macOS 15. Each new configuration makes SwiftUI cancel the running task and call `run` again.
+/// macOS 15. Lives in `TranslationHostWindow`, never in the main window (F8.5.4 D-2).
 struct TranslationBridge: View {
     @ObservedObject private var model: TranslationBridgeModel
 

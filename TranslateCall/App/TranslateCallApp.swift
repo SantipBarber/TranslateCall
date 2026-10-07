@@ -8,11 +8,8 @@ struct TranslateCallApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ZStack {
-                ContentView()
-                TranslationBridge(model: container.outgoingBridgeModel)
-                TranslationBridge(model: container.incomingBridgeModel)
-            }
+            // Translation bridges live in AppContainer's TranslationHostWindow, not here (F8.5.4 D-2).
+            ContentView()
             .environmentObject(container.audioViewModel)
             .environmentObject(container.languagePairManager)
             .environmentObject(container.setupManager)
