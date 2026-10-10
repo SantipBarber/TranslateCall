@@ -42,16 +42,13 @@ func requireTranslationPack(from source: String, to target: String) async throws
                             "Translation language pack \(source)→\(target) (System Settings → General → Language & Region → Translation Languages)")
 }
 
-/// Hosts a TranslationBridge in an offscreen window so `.translationTask` runs inside the test host.
-/// Keep the returned window alive for the duration of the test.
+/// Hosts a bridge the way the app does (`TranslationHostWindow`, F8.5.4 D-2) so `.translationTask`
+/// runs inside the test host. Keep the returned host alive for the duration of the test; close it after.
 @MainActor
-func hostTranslationBridge() -> (TranslationBridgeModel, NSWindow) {
+func hostTranslationBridge() -> (TranslationBridgeModel, TranslationHostWindow) {
     let model = TranslationBridgeModel()
-    let window = NSWindow(contentRect: .init(x: -10_000, y: -10_000, width: 10, height: 10),
-                          styleMask: .borderless, backing: .buffered, defer: false)
-    window.contentView = NSHostingView(rootView: TranslationBridge(model: model))
-    window.orderBack(nil)
-    return (model, window)
+    let host = TranslationHostWindow(outgoing: model, incoming: TranslationBridgeModel())
+    return (model, host)
 }
 
 struct TranscriptRun {

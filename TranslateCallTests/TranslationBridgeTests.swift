@@ -7,10 +7,8 @@ import Foundation
 @MainActor
 struct TranslationErrorTests {
 
-    @Test func bridgeUnavailableHasDescription() {
-        let error = TranslationError.bridgeUnavailable
-        #expect(error.errorDescription != nil)
-        #expect(!error.errorDescription!.isEmpty)
+    @Test func timedOutHasDescription() {
+        #expect(TranslationError.timedOut.errorDescription == "Translation took too long.")
     }
 
     @Test func sessionErrorWrapsInnerDescription() {
@@ -32,7 +30,7 @@ struct TranslationErrorTests {
 
     @Test func allCasesHaveNonEmptyDescription() {
         let errors: [TranslationError] = [
-            .bridgeUnavailable,
+            .timedOut,
             .sessionError(NSError(domain: "test", code: 0)),
             .unsupportedPair(Locale.Language(identifier: "en"), Locale.Language(identifier: "de"))
         ]
@@ -44,7 +42,7 @@ struct TranslationErrorTests {
     }
 
     @Test func equatableSameCasesAreEqual() {
-        #expect(TranslationError.bridgeUnavailable == TranslationError.bridgeUnavailable)
+        #expect(TranslationError.timedOut == TranslationError.timedOut)
         #expect(
             TranslationError.sessionError(NSError(domain: "a", code: 1)) ==
             TranslationError.sessionError(NSError(domain: "b", code: 2))
@@ -52,7 +50,7 @@ struct TranslationErrorTests {
     }
 
     @Test func equatableDifferentCasesNotEqual() {
-        #expect(TranslationError.bridgeUnavailable != TranslationError.sessionError(NSError(domain: "x", code: 0)))
+        #expect(TranslationError.timedOut != TranslationError.sessionError(NSError(domain: "x", code: 0)))
     }
 }
 
@@ -67,38 +65,20 @@ struct TranslationBridgeModelStateTests {
     }
 }
 
-// MARK: - AppleTranslationService (bridgeUnavailable path — no window needed)
+// MARK: - AppleTranslationService
 
-@Suite(.serialized) @MainActor
+@Suite("AppleTranslationService (F8.5.4)", .serialized) @MainActor
 struct AppleTranslationServiceTests {
 
-    @Test func translateThrowsBridgeUnavailableWhenModelDeallocated() async {
-        let service: AppleTranslationService
-        do {
-            let model = TranslationBridgeModel()
-            service = AppleTranslationService(model: model)
-        }
-        // model is now deallocated — weak ref should be nil
-        await #expect(throws: TranslationError.bridgeUnavailable) {
-            try await service.translate(
-                text: "hello",
-                from: Locale.Language(identifier: "en"),
-                to: Locale.Language(identifier: "es")
-            )
-        }
-    }
-
-    @Test func prepareThrowsBridgeUnavailableWhenModelDeallocated() async {
-        let service: AppleTranslationService
-        do {
-            let model = TranslationBridgeModel()
-            service = AppleTranslationService(model: model)
-        }
-        await #expect(throws: TranslationError.bridgeUnavailable) {
-            try await service.prepare(
-                source: Locale.Language(identifier: "en"),
-                target: Locale.Language(identifier: "es")
-            )
-        }
+    @Test("translate goes through the direction's bridge model")
+    func translateUsesModel() async throws {
+        let model = TranslationBridgeModel()
+        let driver = TranslationSessionDriver(model: model)
+        defer { driver.stop() }
+        let service = AppleTranslationService(model: model)
+        let output = try await service.translate(text: "hola", from: Locale.Language(identifier: "es"),
+                                                 to: Locale.Language(identifier: "en"))
+        #expect(output == "EN:hola")
+        #expect(service.engineName == "Apple Translation")
     }
 }

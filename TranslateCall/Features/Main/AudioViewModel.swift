@@ -288,10 +288,6 @@ final class AudioViewModel: ObservableObject {
         )
     }
 
-    func downloadLanguages() async {
-        await coordinator.downloadLanguages()
-    }
-
     /// Suppresses the next outgoing utterance — the user's next spoken segment is silently dropped.
     /// Has no effect if the session is not active.
     func muteTurn() {
@@ -373,7 +369,7 @@ private final class PassthroughTranslationService: TranslationService {
     func translate(
         text: String, from source: Locale.Language, to target: Locale.Language
     ) async throws -> String { text }
-    func prepare(source: Locale.Language, target: Locale.Language) async throws {}
+    func supports(source: Locale.Language, target: Locale.Language) async -> Bool { true }
 }
 
 // MARK: - Conversation settings (F8.5.3)
@@ -384,5 +380,20 @@ extension AudioViewModel {
         conversationSettings.$listeningMode
             .sink { [weak self] mode in self?.coordinator.listeningMode = mode }
             .store(in: &cancellables)
+    }
+}
+
+// MARK: - Language download (F8.5.4)
+
+extension AudioViewModel {
+    /// Downloads the pair with `LanguagePairView`'s own session: the sheet shows there (F8.5.4 REQ-TR-40/41).
+    func downloadLanguages(using session: some TranslationSessioning) async {
+        do {
+            try await session.prepare()
+        } catch is CancellationError {   // the view went away: nothing to report
+        } catch {
+            errorAlert = AlertItem(title: "Download Failed", message: error.localizedDescription, action: nil)
+        }
+        await languagePairManager.checkAvailability()
     }
 }

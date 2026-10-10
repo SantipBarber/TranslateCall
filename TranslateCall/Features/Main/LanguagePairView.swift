@@ -1,10 +1,13 @@
 import SwiftUI
+@preconcurrency import Translation
 
 struct LanguagePairView: View {
     @EnvironmentObject private var viewModel: AudioViewModel
     @EnvironmentObject private var manager: LanguagePairManager
     @EnvironmentObject private var selector: STTEngineSelector
     @EnvironmentObject private var ttsSelector: TTSEngineSelector
+    /// Set by "Download"; drives this view's own `.translationTask` (F8.5.4 D-3). Nil when idle.
+    @State private var downloadConfiguration: TranslationSession.Configuration?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -32,7 +35,7 @@ struct LanguagePairView: View {
 
                 if manager.pairStatus == .supported {
                     Button("Download") {
-                        Task { await viewModel.downloadLanguages() }
+                        downloadConfiguration = .init(source: manager.sourceLanguage, target: manager.targetLanguage)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -46,6 +49,11 @@ struct LanguagePairView: View {
             ttsEngineSelectorRow
         }
         .disabled(viewModel.isCapturing)
+        // Runs in the visible window so the system download sheet appears here (REQ-TR-40).
+        .translationTask(downloadConfiguration) { session in
+            await viewModel.downloadLanguages(using: session)
+            downloadConfiguration = nil
+        }
     }
 
     // MARK: - STT engine row

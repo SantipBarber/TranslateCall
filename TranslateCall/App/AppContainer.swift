@@ -7,7 +7,7 @@ import Foundation
 /// 1. `LanguagePairManager` (no deps)
 /// 2. `AudioManager` (no deps)
 /// 3. `SetupManager` (no deps)
-/// 4. `TranslationBridgeModel` × 2 (outgoing + incoming, no deps)
+/// 4. `TranslationBridgeModel` × 2 (outgoing + incoming, no deps), hosted off-screen by `TranslationHostWindow`
 /// 5. `TranslationEngineSelector` (depends on bridge models)
 /// 6. `AudioCoordinator` (depends on audio manager + translation services + language pair manager)
 /// 7. `AudioViewModel` (depends on coordinator + audio manager + language pair manager + setup manager)
@@ -15,6 +15,8 @@ import Foundation
 final class AppContainer: ObservableObject {
     let outgoingBridgeModel: TranslationBridgeModel
     let incomingBridgeModel: TranslationBridgeModel
+    /// Keeps both bridges running with the main window closed (F8.5.4 REQ-TR-30/31).
+    let translationHost: TranslationHostWindow
     let translationSelector: TranslationEngineSelector
     let audioCoordinator: AudioCoordinator
     let audioViewModel: AudioViewModel
@@ -35,6 +37,7 @@ final class AppContainer: ObservableObject {
         let setup = SetupManager()
         let outBridge = TranslationBridgeModel()
         let inBridge = TranslationBridgeModel()
+        translationHost = TranslationHostWindow(outgoing: outBridge, incoming: inBridge)
         let translationSel = TranslationEngineSelector(outgoingBridge: outBridge, incomingBridge: inBridge)
         let selector = STTEngineSelector()
         let ttsSelector = TTSEngineSelector()
@@ -53,7 +56,7 @@ final class AppContainer: ObservableObject {
             incomingTranslationService: translationSel.makeIncomingService(),
             outgoingTTSFactory: { [ttsSelector] in try ttsSelector.makeOutgoingService(for: $0, deviceID: $1) },
             incomingTTSFactory: { [ttsSelector] in try ttsSelector.makeIncomingService(for: $0, deviceID: $1) },
-            languagePairManager: lpm
+            languagePairManager: lpm, isTranslationPairInstalled: AppleTranslationService.isInstalled   // REQ-TR-06
         )
 
         let voiceProfiles = VoiceProfileManager(

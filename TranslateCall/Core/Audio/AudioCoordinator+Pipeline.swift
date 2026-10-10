@@ -287,7 +287,7 @@ extension AudioCoordinator {
             let locale = Locale(identifier: languagePairManager.targetLanguage.minimalIdentifier)
             await outgoingTTS?.speak(text: translated, locale: locale)
         } catch {
-            errorAlert = makeAlertItem(for: error)
+            handleTranslationFailure(error, outgoing: true)
         }
     }
 
@@ -305,8 +305,31 @@ extension AudioCoordinator {
             let locale = Locale(identifier: languagePairManager.sourceLanguage.minimalIdentifier)
             await incomingTTS?.speak(text: translated, locale: locale)
         } catch {
-            errorAlert = makeAlertItem(for: error)
+            handleTranslationFailure(error, outgoing: false)
         }
+    }
+
+    /// Opens both directions' translation sessions ahead of the first sentence (F8.5.4 REQ-TR-05).
+    func warmUpTranslation() async {
+        let source = languagePairManager.sourceLanguage
+        let target = languagePairManager.targetLanguage
+        await outgoingTranslationService.warmUp(from: source, to: target)
+        await incomingTranslationService.warmUp(from: target, to: source)
+    }
+
+    /// A sentence could not be translated (F8.5.4 D-1). The bridge already retried once, so the
+    /// sentence is skipped with a notice and the direction moves on (REQ-TR-20). Errors that will
+    /// repeat for every sentence raise the alert, once per session per kind (REQ-TR-21).
+    func handleTranslationFailure(_ error: Error, outgoing: Bool) {
+        if error is CancellationError { return }   // the session is stopping
+        if let kind = (error as? TranslationError)?.configurationKind {
+            guard alertedTranslationErrors.insert(kind).inserted else { return }
+            errorAlert = makeAlertItem(for: error)
+            return
+        }
+        logger.warning("Translation failed — \(error.localizedDescription, privacy: .public)")
+        showTTSNotice(outgoing ? "Couldn't translate your sentence — skipped"
+                               : "Couldn't translate their sentence — skipped")
     }
 
     // MARK: - Error helpers
@@ -326,10 +349,10 @@ extension AudioCoordinator {
                     + "Enable it in System Settings.",
                 action: .openSettings
             )
-        case TranslationError.bridgeUnavailable:
+        case TranslationError.modelNotLoaded:
             return AlertItem(
-                title: "Translation Unavailable",
-                message: "Translation bridge unavailable. Restart the app.",
+                title: "Languages Not Downloaded",
+                message: "Download this language pair (the Download button next to the languages), then start again.",
                 action: nil
             )
         case TranslationError.unsupportedPair(_, _):
@@ -340,6 +363,19 @@ extension AudioCoordinator {
             )
         default:
             return AlertItem(title: "Error", message: error.localizedDescription, action: nil)
+        }
+    }
+}
+
+// MARK: - Translation error kinds
+
+private extension TranslationError {
+    /// Errors that repeat for every sentence until the user changes the setup (F8.5.4 REQ-TR-21).
+    var configurationKind: String? {
+        switch self {
+        case .unsupportedPair: "unsupportedPair"
+        case .modelNotLoaded: "modelNotLoaded"
+        case .sessionError, .timedOut, .networkUnavailable: nil
         }
     }
 }

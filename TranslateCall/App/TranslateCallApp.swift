@@ -3,16 +3,15 @@ import SwiftUI
 
 @main
 struct TranslateCallApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var container = AppContainer()
     @State private var menuBarController: MenuBarController?
 
     var body: some Scene {
-        WindowGroup {
-            ZStack {
-                ContentView()
-                TranslationBridge(model: container.outgoingBridgeModel)
-                TranslationBridge(model: container.incomingBridgeModel)
-            }
+        WindowGroup(id: MainWindowOpener.windowID) {
+            // Translation bridges live in AppContainer's TranslationHostWindow, not here (F8.5.4 D-2).
+            ContentView()
             .environmentObject(container.audioViewModel)
             .environmentObject(container.languagePairManager)
             .environmentObject(container.setupManager)
@@ -20,6 +19,7 @@ struct TranslateCallApp: App {
             .environmentObject(container.audioViewModel.engineSelector)
             .environmentObject(container.audioViewModel.ttsEngineSelector)
             .onAppear {
+                MainWindowOpener.shared.openWindow = { [openWindow] in openWindow(id: MainWindowOpener.windowID) }
                 guard menuBarController == nil else { return }
                 menuBarController = MenuBarController(viewModel: container.audioViewModel)
             }

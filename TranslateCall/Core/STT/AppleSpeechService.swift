@@ -2,6 +2,7 @@ import AVFoundation
 import Foundation
 import OSLog
 import Speech
+import Synchronization
 
 nonisolated private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "AppleSpeechService")
 
@@ -12,9 +13,10 @@ actor AppleSpeechService: SpeechRecognizerService {
     // MARK: - SpeechRecognizerService conformance
 
     nonisolated let transcriptionStream: AsyncStream<TranscriptionResult>
-    // nonisolated(unsafe): locale is a value type written only from actor context (setLocale),
-    // read nonisolated to satisfy protocol without requiring await at call site.
-    nonisolated(unsafe) private(set) var locale: Locale
+    /// Read without `await` (protocol requirement); written by `setLocale` on the actor. The lock makes
+    /// the cross-isolation read race-free (F8.5.4 REQ-TR-60).
+    private let localeState: Mutex<Locale>
+    nonisolated var locale: Locale { localeState.withLock { $0 } }
 
     // MARK: - Private state
 
@@ -27,7 +29,7 @@ actor AppleSpeechService: SpeechRecognizerService {
     // MARK: - Init
 
     init(locale: Locale, config: STTConfiguration = .default) {
-        self.locale = locale
+        self.localeState = Mutex(locale)
         self.config = config
         var cont: AsyncStream<TranscriptionResult>.Continuation?
         transcriptionStream = AsyncStream { cont = $0 }
@@ -75,7 +77,7 @@ actor AppleSpeechService: SpeechRecognizerService {
         guard newLocale != locale else { return }
         activeRecognitionTask?.cancel()
         activeRecognitionTask = nil
-        locale = newLocale
+        localeState.withLock { $0 = newLocale }
         recognizer = SFSpeechRecognizer(locale: newLocale)
     }
 

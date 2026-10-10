@@ -65,8 +65,7 @@ struct MenuBarPopoverView: View {
 
             // Open main window
             Button("Open Main Window") {
-                NSApp.activate(ignoringOtherApps: true)
-                NSApp.windows.first(where: { $0.isVisible })?.makeKeyAndOrderFront(nil)
+                NSApp.showMainWindow()
             }
             .buttonStyle(.plain)
             .font(.subheadline)

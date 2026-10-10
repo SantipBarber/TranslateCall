@@ -59,6 +59,8 @@ final class AudioCoordinator: ObservableObject {
     // MARK: - Shared state
 
     @Published var errorAlert: AlertItem?
+    /// Translation errors already alerted in this session: each kind is alerted once (F8.5.4 REQ-TR-21).
+    var alertedTranslationErrors: Set<String> = []
     @Published var isSpeechActive: Bool = false
     @Published private(set) var isStarting: Bool = false
     @Published private(set) var availableCaptureApps: [SCRunningApplication] = []
@@ -79,6 +81,9 @@ final class AudioCoordinator: ObservableObject {
     private var ttsNoticeTask: Task<Void, Never>?
     private let noticeClock: any Clock<Duration>
     private let ttsNoticeDuration: Duration
+    /// Whether a pair's translation models are downloaded (F8.5.4 REQ-TR-06). Injected: unit tests never
+    /// ask the real `LanguageAvailability`; the default (previews, tests) says yes.
+    private let isTranslationPairInstalled: (Locale.Language, Locale.Language) async -> Bool
 
     // MARK: - Injected dependencies
 
@@ -150,7 +155,8 @@ final class AudioCoordinator: ObservableObject {
         echoGateTail: Duration = .milliseconds(300),
         echoGateClock: any Clock<Duration> = ContinuousClock(),
         noticeClock: any Clock<Duration> = ContinuousClock(),
-        ttsNoticeDuration: Duration = .seconds(5)
+        ttsNoticeDuration: Duration = .seconds(5),
+        isTranslationPairInstalled: @escaping (Locale.Language, Locale.Language) async -> Bool = { _, _ in true }
     ) {
         self.audioCapture = audioCapture
         self.systemCapture = systemCapture
@@ -167,6 +173,7 @@ final class AudioCoordinator: ObservableObject {
         self.echoGateClock = echoGateClock
         self.noticeClock = noticeClock
         self.ttsNoticeDuration = ttsNoticeDuration
+        self.isTranslationPairInstalled = isTranslationPairInstalled
     }
 
     // MARK: - Public actions
@@ -182,8 +189,14 @@ final class AudioCoordinator: ObservableObject {
         defer { isStarting = false }
         sessionGeneration &+= 1
         let generation = sessionGeneration
+        // The hidden bridges cannot show the download sheet: no session without the packs (REQ-TR-06).
+        let packsInstalled = await translationPacksInstalled()
+        guard generation == sessionGeneration else { return }   // a Stop during the check: no alert
+        guard packsInstalled else { return errorAlert = makeAlertItem(for: TranslationError.modelNotLoaded) }
         self.captureTarget = captureTarget
         micEchoGate = makeMicEchoGate()
+        alertedTranslationErrors.removeAll()
+        await warmUpTranslation()   // returns at once: the sessions open while capture starts (REQ-TR-05)
 
         do {
             try await startOutgoingPipeline(blackHoleDeviceID: blackHoleDeviceID)
@@ -261,6 +274,13 @@ final class AudioCoordinator: ObservableObject {
         incomingActivationTask = Task { await self.activateIncoming() }
     }
 
+    /// Both directions' packs are downloaded; `start` alerts "download first" (F8.5.4 REQ-TR-06).
+    private func translationPacksInstalled() async -> Bool {
+        let (source, target) = (languagePairManager.sourceLanguage, languagePairManager.targetLanguage)
+        guard await isTranslationPairInstalled(source, target) else { return false }
+        return await isTranslationPairInstalled(target, source)
+    }
+
     /// Silently drops the next outgoing utterance from STT (one-shot mute turn).
     /// Calling this during an active session causes the very next recognized segment
     /// to be suppressed before translation and TTS. The flag resets automatically.
@@ -332,19 +352,6 @@ final class AudioCoordinator: ObservableObject {
         let targetLocale = Locale(identifier: languagePairManager.targetLanguage.minimalIdentifier)
         await outgoingSTT?.setLocale(sourceLocale)
         await incomingSTT?.setLocale(targetLocale)
-    }
-
-    /// Prepare the language pair (download translation models if needed).
-    func downloadLanguages() async {
-        do {
-            try await outgoingTranslationService.prepare(
-                source: languagePairManager.sourceLanguage,
-                target: languagePairManager.targetLanguage
-            )
-            await languagePairManager.checkAvailability()
-        } catch {
-            errorAlert = makeAlertItem(for: error)
-        }
     }
 
 }

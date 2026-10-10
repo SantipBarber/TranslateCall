@@ -4,24 +4,29 @@ import Foundation
 
 // MARK: - Mock TranslationService
 
-/// Synchronous mock — returns "TRANSLATED: <input>" immediately, or throws if configured.
+/// Returns "TRANSLATED: <input>" at once. `errors` are thrown one per call, in order, before
+/// `shouldThrow` (thrown on every call) is considered.
 final class MockTranslationService: TranslationService {
     var shouldThrow: Error?
+    var errors: [Error] = []
+    var supportsResult = true
     private(set) var translateCallCount = 0
     private(set) var lastTranslatedText: String?
-    private(set) var prepareCallCount = 0
+    private(set) var warmUpCalls: [(source: Locale.Language, target: Locale.Language)] = []
 
     func translate(text: String, from source: Locale.Language, to target: Locale.Language) async throws -> String {
         translateCallCount += 1
         lastTranslatedText = text
+        if !errors.isEmpty { throw errors.removeFirst() }
         if let error = shouldThrow { throw error }
         return "TRANSLATED: \(text)"
     }
 
-    func prepare(source: Locale.Language, target: Locale.Language) async throws {
-        prepareCallCount += 1
-        if let error = shouldThrow { throw error }
+    func warmUp(from source: Locale.Language, to target: Locale.Language) async {
+        warmUpCalls.append((source, target))
     }
+
+    func supports(source: Locale.Language, target: Locale.Language) async -> Bool { supportsResult }
 }
 
 // MARK: - Pipeline tests
@@ -29,42 +34,36 @@ final class MockTranslationService: TranslationService {
 @Suite(.serialized) @MainActor
 struct TranslationPipelineTests {
 
-    @Test func downloadLanguagesCallsPrepare() async {
-        let mock = MockTranslationService()
-        let viewModel = AudioViewModel(translationService: mock, conversationSettings: .forTesting())
+    @Test("Download prepares the pair with the view's session (REQ-TR-40)")
+    func downloadUsesSession() async {
+        let viewModel = AudioViewModel(translationService: MockTranslationService(), conversationSettings: .forTesting())
+        let session = FakeTranslationSession()
 
-        await viewModel.downloadLanguages()
+        await viewModel.downloadLanguages(using: session)
 
-        #expect(mock.prepareCallCount == 1)
-    }
-
-    @Test func downloadLanguagesErrorSetsAlert() async {
-        let mock = MockTranslationService()
-        mock.shouldThrow = TranslationError.bridgeUnavailable
-        let viewModel = AudioViewModel(translationService: mock, conversationSettings: .forTesting())
-
-        await viewModel.downloadLanguages()
-
-        #expect(viewModel.errorAlert != nil)
-    }
-
-    @Test func downloadLanguagesSuccessChecksAvailability() async {
-        let mock = MockTranslationService()
-        let lpm = LanguagePairManager()
-        let viewModel = AudioViewModel(translationService: mock, languagePairManager: lpm, conversationSettings: .forTesting())
-
-        // Ensure status isn't unknown after a successful download flow
-        await viewModel.downloadLanguages()
-
-        // After prepare + checkAvailability, status should not be .unknown (it ran)
-        // We can't assert .installed without real models, but it shouldn't be .unknown
+        #expect(session.prepareCount == 1)
         #expect(viewModel.errorAlert == nil)
     }
 
-    @Test func nilTranslationServiceDownloadIsNoop() async {
-        let viewModel = AudioViewModel(translationService: nil, conversationSettings: .forTesting())
-        // Should not crash and should not set an error alert
-        await viewModel.downloadLanguages()
+    @Test("a failed download shows an alert (REQ-TR-41)")
+    func downloadErrorSetsAlert() async {
+        let viewModel = AudioViewModel(translationService: MockTranslationService(), conversationSettings: .forTesting())
+        let session = FakeTranslationSession()
+        session.prepareError = TranslationError.networkUnavailable
+
+        await viewModel.downloadLanguages(using: session)
+
+        #expect(viewModel.errorAlert?.title == "Download Failed")
+    }
+
+    @Test("a cancelled download is silent")
+    func downloadCancelledIsSilent() async {
+        let viewModel = AudioViewModel(translationService: MockTranslationService(), conversationSettings: .forTesting())
+        let session = FakeTranslationSession()
+        session.prepareError = CancellationError()
+
+        await viewModel.downloadLanguages(using: session)
+
         #expect(viewModel.errorAlert == nil)
     }
 
@@ -88,11 +87,11 @@ struct TranslationPipelineTests {
 @MainActor
 struct TranslationErrorMatchingTests {
 
-    @Test func bridgeUnavailableMatchesInSwitch() {
-        let error: Error = TranslationError.bridgeUnavailable
+    @Test func timedOutMatchesInSwitch() {
+        let error: Error = TranslationError.timedOut
         var matched = false
         switch error {
-        case TranslationError.bridgeUnavailable: matched = true
+        case TranslationError.timedOut: matched = true
         default: break
         }
         #expect(matched)
