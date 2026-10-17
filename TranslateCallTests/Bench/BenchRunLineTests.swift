@@ -18,8 +18,14 @@ extension BenchTests {
             let env = try BenchEnvironment.current()
             let manifest = try JSONDecoder().decode(BenchManifest.self, from: Data(contentsOf: env.manifest))
             let clips = manifest.clips(variant: line.variant, set: env.set)
-            try requirePrerequisite(!clips.isEmpty,
-                                    "clips for \(line.variant) in set \(env.set) — run `just bench-fetch`")
+            try requirePrerequisite(
+                !clips.isEmpty,
+                "the manifest has no \(line.variant) clips in set \(env.set) — regenerate it (just bench-manifest) or add a source")
+            let missing = clips.filter { !FileManager.default.fileExists(atPath: env.cache.appending(path: $0.audio).path) }
+            try requirePrerequisite(
+                missing.isEmpty,
+                "\(missing.count) of \(clips.count) \(line.variant) clips in set \(env.set) are not in the cache "
+                    + "(first: \(missing.first?.id ?? "-")) — run `just bench-fetch`")
             try await requireSpeechAuthorization()
             try await requireTranslationPack(from: "es", to: "en")
             try await requireTranslationPack(from: "en", to: "es")

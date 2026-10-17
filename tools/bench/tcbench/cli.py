@@ -31,8 +31,10 @@ def _cmd_manifest(args) -> int:
     import numpy as np
 
     for k, v in sorted(cfg.stats.items()):
-        shown = {a: b for a, b in v.items() if not a.startswith("end_offsets")}
-        print(f"{k}: {shown}")
+        print(f"{k}: candidates {v['candidates']}, tried {v['tried']}, drops {v['dropped']}, duplicates {v['dropped_dup']}")
+        print(f"  kept full {v['kept']} / quota {v['quota']}, kept PR {v['kept_pr']} / {v['quota_pr']}")
+        if v["kept"] < v["quota"] or v["kept_pr"] < v["quota_pr"]:
+            print(f"WARNING: {k} fell short: full {v['kept']}/{v['quota']}, PR {v['kept_pr']}/{v['quota_pr']}", file=sys.stderr)
         for name in ("end_offsets_all", "end_offsets_kept"):
             if v[name]:
                 print(f"  silero end - refined end ({name}): median {np.median(v[name]):.0f} ms, p90 {np.percentile(v[name], 90):.0f} ms, n={len(v[name])}")

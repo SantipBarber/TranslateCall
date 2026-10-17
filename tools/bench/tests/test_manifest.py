@@ -7,7 +7,7 @@ from tcbench import audio, manifest
 from tcbench.sources import Candidate
 
 FIELDS = {
-    "id", "source", "lang", "variant", "speaker", "nativeSpeaker", "transcript", "translations",
+    "id", "source", "lang", "variant", "speaker", "nativeSpeaker", "transcript", "translations", "gainDb",
     "speechStartMs", "speechEndMs", "tags", "tiers", "sha256", "licence", "audio",
 }
 SAMPLE = json.load(open(__file__.replace("test_manifest.py", "fixtures/manifest-v1-sample.json"), encoding="utf-8"))
@@ -57,7 +57,11 @@ class StubText:
         return [(f"{s} sentence {i}", f"{t} sentence {i}") for i in range(300)]
 
 
+SEEN = []
+
+
 def span(samples, sr=16000, why=None):
+    SEEN.append(samples)
     return 300.0, len(samples) * 1000.0 / sr - 400
 
 
@@ -139,7 +143,7 @@ def test_sha256_is_of_the_normalised_wav(tmp_path):
     m = manifest.build(cfg([StubAudio("vox", ["es-ES"])]))
     c = m["clips"][0]
     raw = StubAudio("vox", ["es-ES"]).raw_audio([c["source"]["originalId"]])[c["source"]["originalId"]]
-    audio.write_wav16(tmp_path / "x.wav", audio.normalize(raw))
+    audio.write_wav16(tmp_path / "x.wav", audio.apply_gain_q16(audio.normalize(raw), c["gainDb"]))
     assert audio.sha256(tmp_path / "x.wav") == c["sha256"]
 
 
@@ -152,3 +156,26 @@ def test_clips_too_close_to_the_file_edges_are_dropped(monkeypatch):
     c = cfg()
     assert manifest.build(c)["clips"] == []
     assert c.stats["vox/es-ES"]["dropped"]["tail<300ms"] > 0
+
+
+def test_ground_truth_runs_on_the_quantised_samples_that_are_written(tmp_path):
+    SEEN.clear()
+    m = manifest.build(cfg([StubAudio("vox", ["es-ES"], n=4)]))
+    c = m["clips"][0]
+    # The last call for each accepted clip is on int16-exact samples: x * 32768 is integral.
+    quantised = [x for x in SEEN if np.allclose(x * 32768, np.rint(x * 32768))]
+    assert quantised and len(quantised) >= len(m["clips"])
+    raw = StubAudio("vox", ["es-ES"], n=4).raw_audio([c["source"]["originalId"]])[c["source"]["originalId"]]
+    written = audio.apply_gain_q16(audio.normalize(raw), c["gainDb"])
+    assert any(len(x) == len(written) and np.array_equal(audio.from_int16(written), x) for x in SEEN)
+
+
+def test_every_clip_records_its_gain():
+    assert all(isinstance(c["gainDb"], float) for c in manifest.build(cfg())["clips"])
+
+
+def test_stats_report_kept_quota_and_pr():
+    c = cfg()
+    manifest.build(c)
+    st = c.stats["fl/en"]
+    assert (st["kept"], st["quota"], st["kept_pr"], st["quota_pr"]) == (12, 12, 3, 3)

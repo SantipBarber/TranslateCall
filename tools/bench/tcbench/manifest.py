@@ -57,7 +57,7 @@ def _order(cands: list[Candidate], rng: random.Random) -> list[Candidate]:
 
 
 def _select_variant(src, variant: str, cfg: SourcesConfig, seed: int, claimed: set[str], tmp: Path):
-    """Return [(Candidate, wav sha256, start_ms, end_ms, is_pr)] for one source variant."""
+    """Return [(Candidate, wav sha256, start_ms, end_ms, is_pr, gain_db)] for one source variant."""
     rng = random.Random(f"{seed}:{src.dataset}:{variant}")
     ordered = [c for c in _order(src.candidates(variant), rng) if cfg.min_s <= c.duration_s <= cfg.max_s]
     stat = cfg.stats.setdefault(f"{src.dataset}/{variant}", {"candidates": len(ordered), "tried": 0, "dropped": {}, "dropped_dup": 0, "end_offsets_all": [], "end_offsets_kept": []})
@@ -75,9 +75,19 @@ def _select_variant(src, variant: str, cfg: SourcesConfig, seed: int, claimed: s
                 return
             tried.add(c.original_id)
             stat["tried"] += 1
-            samples = audio_mod.normalize(raw[c.original_id])
+            source_samples = audio_mod.normalize(raw[c.original_id])
             why: dict = {}
-            span = speech_span(samples, why=why)
+            # Pass 1 locates the speech on the float source to set the level; pass 2 measures the ground
+            # truth on the exact int16 samples written to the cache (the runner plays those).
+            first = speech_span(source_samples, why=why)
+            if first is None:
+                span, gain, samples = None, 0.0, source_samples
+            else:
+                gain = audio_mod.level_gain_db(source_samples, first)
+                q = audio_mod.apply_gain_q16(source_samples, gain)
+                samples = audio_mod.from_int16(q)
+                why = {}
+                span = speech_span(samples, why=why)
             reason = why.get("reason", "unknown") if span is None else None
             if span is not None and span[0] < cfg.min_lead_ms:
                 reason = "lead<%dms" % cfg.min_lead_ms
@@ -90,7 +100,7 @@ def _select_variant(src, variant: str, cfg: SourcesConfig, seed: int, claimed: s
                 cfg.log(f"drop {src.dataset}/{variant} {c.original_id}: {reason}")
                 continue
             path = tmp / "candidate.wav"
-            audio_mod.write_wav16(path, samples)
+            audio_mod.write_wav16(path, q)
             sha = audio_mod.sha256(path)
             if sha in claimed:
                 stat["dropped_dup"] += 1
@@ -98,7 +108,7 @@ def _select_variant(src, variant: str, cfg: SourcesConfig, seed: int, claimed: s
             claimed.add(sha)
             if "silero" in why:
                 stat["end_offsets_kept"].append(why["silero"][1] - why["refined"][1])
-            accepted.append((c, sha, span[0], span[1], is_pr))
+            accepted.append((c, sha, span[0], span[1], is_pr, gain))
 
     short = [c for c in ordered if c.duration_s <= cfg.pr_max_s]
     process(short[: cfg.pr_n * 4], cfg.pr_n, True)
@@ -108,6 +118,7 @@ def _select_variant(src, variant: str, cfg: SourcesConfig, seed: int, claimed: s
         batch = ordered[pos : pos + max(need + need // 4, 8)]
         pos += len(batch)
         process(batch, cfg.full_n, False)
+    stat.update(kept=len(accepted), kept_pr=sum(1 for a in accepted if a[4]), quota=cfg.full_n, quota_pr=cfg.pr_n)
     return accepted
 
 
@@ -144,7 +155,7 @@ def build(sources_cfg: SourcesConfig, seed: int = 1729) -> dict:
                 lang_key = variant.split("-")[0]
                 sel = _select_variant(src, variant, cfg, seed, claimed.setdefault(lang_key, set()), tmp)
                 sel.sort(key=lambda a: a[0].original_id)
-                for n, (c, sha, start, end, is_pr) in enumerate(sel, 1):
+                for n, (c, sha, start, end, is_pr, gain) in enumerate(sel, 1):
                     clips.append(
                         {
                             "id": f"{SHORT.get(src.dataset, src.dataset)}-{variant.lower()}-{n:04d}",
@@ -155,6 +166,7 @@ def build(sources_cfg: SourcesConfig, seed: int = 1729) -> dict:
                             "nativeSpeaker": c.native,
                             "transcript": c.transcript,
                             "translations": c.translations,
+                            "gainDb": gain,
                             "speechStartMs": start,
                             "speechEndMs": end,
                             "tags": c.tags,

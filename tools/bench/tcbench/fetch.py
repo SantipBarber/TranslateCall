@@ -10,6 +10,9 @@ from . import audio as audio_mod
 from .sources import ALLOWED_LICENCES, audio_source
 
 
+RUN_LINE_VARIANTS = ("es-ES", "es-419", "en")
+
+
 def _fail(msg: str) -> None:
     print(f"tcbench fetch: {msg}", file=sys.stderr)
     raise SystemExit(1)
@@ -29,6 +32,11 @@ def run(manifest_path, cache_dir, set_name: str = "pr", limit: int | None = None
     clips = [c for c in manifest["clips"] if set_name == "full" or set_name in c["tiers"]]
     if limit is not None:
         clips = clips[:limit]
+
+    if set_name == "pr" and limit is None:
+        for v in RUN_LINE_VARIANTS:
+            if not any(c["variant"] == v for c in clips):
+                print(f"WARNING: the manifest has 0 PR clips for run-line variant {v}", file=sys.stderr)
 
     for ds in sorted({c["source"]["dataset"] for c in clips}):
         entry = licences.get(ds)
@@ -64,7 +72,8 @@ def run(manifest_path, cache_dir, set_name: str = "pr", limit: int | None = None
             target = cache_dir / c["audio"]
             partial = target.with_suffix(".wav.part")
             try:
-                audio_mod.write_wav16(partial, audio_mod.normalize(raw[c["source"]["originalId"]]))
+                q = audio_mod.apply_gain_q16(audio_mod.normalize(raw[c["source"]["originalId"]]), c.get("gainDb", 0.0))
+                audio_mod.write_wav16(partial, q)
             except Exception as e:  # noqa: BLE001
                 partial.unlink(missing_ok=True)
                 _fail(f"clip {c['id']} ({ds}): cannot decode audio: {e}")

@@ -32,9 +32,9 @@ def world(tmp_path):
         oid = f"c/{i}" + "x" * i
         raw = p.raw_audio([oid])[oid]
         ref = tmp_path / "ref.wav"
-        audio.write_wav16(ref, audio.normalize(raw))
+        audio.write_wav16(ref, audio.apply_gain_q16(audio.normalize(raw), 3.0))
         cid = f"stub-es-{i:04d}"
-        clips.append({"id": cid, "source": {"dataset": "stub", "revision": "r", "originalId": oid}, "tiers": tiers,
+        clips.append({"id": cid, "variant": "es-ES", "gainDb": 3.0, "source": {"dataset": "stub", "revision": "r", "originalId": oid}, "tiers": tiers,
                       "sha256": audio.sha256(ref), "audio": f"stub/es/{cid}.wav"})
     p.calls.clear()
     bench = tmp_path / "bench"
@@ -106,3 +106,11 @@ def test_source_missing_from_allow_list_is_refused(world, capsys):
     with pytest.raises(SystemExit):
         fetch.run(m, cache, "pr", providers={"stub": p})
     assert "stub" in capsys.readouterr().err and p.calls == []
+
+
+def test_fetch_pr_warns_for_run_line_variants_without_pr_clips(world, capsys):
+    m, cache, p, _ = world
+    fetch.run(m, cache, "pr", providers={"stub": p})
+    err = capsys.readouterr().err
+    assert "0 PR clips for run-line variant es-419" in err and "variant en" in err
+    assert "variant es-ES" not in err
