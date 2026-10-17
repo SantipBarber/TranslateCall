@@ -93,4 +93,56 @@ struct BenchModelsTests {
         #expect(bytes == (try Data(contentsOf: url)))
         #expect(try JSONDecoder().decode(RawRun.self, from: Data(contentsOf: url)) == run)
     }
+
+    // MARK: - BenchEnvironment
+
+    @Test func environmentDefaults() throws {
+        let env = try BenchEnvironment.parse(["TC_BENCH_OUT": "/tmp/out"])
+        #expect(env.set == "pr")
+        #expect(env.profiles == [.basic, .best])
+        #expect(!env.edge)
+        #expect(env.overrideSTT == nil)
+        #expect(env.overrideTTS == nil)
+        #expect(env.out.path == "/tmp/out")
+        #expect(env.manifest.path.hasSuffix("bench/manifests/phase1.json"))
+        #expect(env.cache.path.hasSuffix("Library/Caches/TranslateCallBench"))
+        #expect(env.commit == "unknown")
+        #expect(!env.dirty)
+    }
+
+    @Test func environmentReadsEveryVariable() throws {
+        let env = try BenchEnvironment.parse([
+            "TC_BENCH_OUT": "/tmp/out", "TC_BENCH_SET": "full", "TC_BENCH_PROFILE": "best",
+            "TC_BENCH_EDGE": "1", "TC_BENCH_OVERRIDE_STT": "parakeet", "TC_BENCH_OVERRIDE_TTS": "kokoro",
+            "TC_BENCH_CACHE": "/tmp/cache", "TC_BENCH_MANIFEST": "/tmp/m.json",
+            "TC_COMMIT": "abc1234", "TC_DIRTY": "1",
+        ])
+        #expect(env.set == "full")
+        #expect(env.profiles == [.best])
+        #expect(env.edge)
+        #expect(env.overrideSTT == .parakeet)
+        #expect(env.overrideTTS == .kokoro)
+        #expect(env.cache.path == "/tmp/cache")
+        #expect(env.manifest.path == "/tmp/m.json")
+        #expect(env.commit == "abc1234")
+        #expect(env.dirty)
+    }
+
+    @Test func environmentProfileAllMeansBasicAndBest() throws {
+        let env = try BenchEnvironment.parse(["TC_BENCH_OUT": "/tmp/out", "TC_BENCH_PROFILE": "all"])
+        #expect(env.profiles == [.basic, .best])
+        let basic = try BenchEnvironment.parse(["TC_BENCH_OUT": "/tmp/out", "TC_BENCH_PROFILE": "basic"])
+        #expect(basic.profiles == [.basic])
+    }
+
+    @Test func environmentRejectsMissingOutAndUnknownValues() {
+        #expect(throws: BenchSetupError.self) { try BenchEnvironment.parse([:]) }
+        #expect(throws: BenchSetupError.self) { try BenchEnvironment.parse(["TC_BENCH_OUT": ""]) }
+        #expect(throws: BenchSetupError.self) {
+            try BenchEnvironment.parse(["TC_BENCH_OUT": "/o", "TC_BENCH_SET": "huge"])
+        }
+        #expect(throws: BenchSetupError.self) {
+            try BenchEnvironment.parse(["TC_BENCH_OUT": "/o", "TC_BENCH_OVERRIDE_STT": "nope"])
+        }
+    }
 }

@@ -275,7 +275,7 @@ enum BenchPipelineFactory {
     }
 
     /// The language the measured direction recognizes: the user's outgoing, the other side's incoming.
-    private static func recognizedLocale(_ line: BenchRunLine) -> Locale {
+    static func recognizedLocale(_ line: BenchRunLine) -> Locale {
         Locale(identifier: line.incoming ? line.otherLanguage : line.userLanguage)
     }
 
