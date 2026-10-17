@@ -3,7 +3,7 @@
 # Usage: bench.sh [set=pr|full] [profile=all|basic|best] [edge=0|1] [lines=<comma-separated run-line slugs>]
 # lines: outgoing-es-ES-en, outgoing-es-419-en, outgoing-en-es, incoming-en-es (empty = all).
 # Exits with `tcbench compare`'s exit code (0 when there is no baseline yet).
-set -euo pipefail
+set -Eeuo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 set_name=${1:-pr}
@@ -72,11 +72,14 @@ for n in json.load(sys.stdin).get("testNodes", []): walk(n, [])
 }
 trap failed ERR
 
+# One manifest for every phase: fetch, estimate, test, and the Swift side via TEST_RUNNER_TC_BENCH_MANIFEST.
+manifest=${TC_BENCH_MANIFEST:-$PWD/bench/manifests/phase1.json}
+
 echo "━━ prepare ━━"
 phase=fetch
-tcbench fetch --set "$set_name"
+tcbench fetch --set "$set_name" --manifest "$manifest"
 phase=estimate
-uv run --locked --project tools/bench python -m tcbench.estimate "$set_name" "$profile" "$lines"
+uv run --locked --project tools/bench python -m tcbench.estimate "$set_name" "$profile" "$lines" --manifest "$manifest"
 
 commit=$(git rev-parse --short HEAD)
 run_id=$(date -u +%Y-%m-%dT%H-%M-%SZ)-$commit
@@ -96,7 +99,7 @@ phase=test
 rm -rf build/logs/bench.xcresult
 TEST_RUNNER_TC_BENCH_SET=$set_name TEST_RUNNER_TC_BENCH_PROFILE=$profile TEST_RUNNER_TC_BENCH_EDGE=$edge \
 TEST_RUNNER_TC_BENCH_LINES=$lines TEST_RUNNER_TC_BENCH_OUT=$PWD/$out TEST_RUNNER_TC_BENCH_CACHE=$cache \
-TEST_RUNNER_TC_BENCH_MANIFEST=${TC_BENCH_MANIFEST:-$PWD/bench/manifests/phase1.json} \
+TEST_RUNNER_TC_BENCH_MANIFEST=$manifest \
 TEST_RUNNER_TC_COMMIT=$commit TEST_RUNNER_TC_DIRTY=$dirty TEST_RUNNER_TC_XCODE=$xcode \
   "${xcb[@]}" test-without-building -testPlan Bench -only-testing:TranslateCallTests/BenchTests/BenchRunLineTests \
   -resultBundlePath build/logs/bench.xcresult 2>&1 | tee build/logs/bench.log | xcbeautify

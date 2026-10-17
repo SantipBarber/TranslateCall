@@ -111,7 +111,8 @@ def _trend(run_dir: Path, history_dir: Path, last_n: int, aggregates: dict) -> l
     entries: list[tuple[str, dict]] = []
     if history_dir.is_dir():
         for d in sorted(history_dir.iterdir()):
-            if d.is_symlink() or d.resolve() == here or not (d / "metrics.json").is_file():
+            if (d.is_symlink() or d.name.endswith("-failed") or d.resolve() == here
+                    or not (d / "metrics.json").is_file()):
                 continue
             try:
                 entries.append((d.name, json.loads((d / "metrics.json").read_text())["aggregates"]))
