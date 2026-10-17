@@ -841,7 +841,7 @@
                       "id": "NunmE",
                       "name": "Ready · translation runs",
                       "fill": "$text-secondary",
-                      "content": "Ready · runs on this Mac",
+                      "content": "Ready",
                       "fontFamily": "$font",
                       "fontSize": 12,
                       "fontWeight": "normal"
@@ -2024,7 +2024,7 @@
                       "id": "R5d1JX",
                       "name": "Ready · translation runs",
                       "fill": "$text-secondary",
-                      "content": "Ready · runs on this Mac",
+                      "content": "Ready",
                       "fontFamily": "$font",
                       "fontSize": 12,
                       "fontWeight": "normal"
@@ -6710,8 +6710,8 @@
     {
       "type": "frame",
       "id": "x33xYm",
-      "x": 1920,
-      "y": 759,
+      "x": 1890,
+      "y": 1053,
       "name": "Voice Clone — 1 Intro (Light)",
       "theme": {
         "mode": "light"
@@ -7308,8 +7308,8 @@
     {
       "type": "frame",
       "id": "BaQLy",
-      "x": 2540,
-      "y": 759,
+      "x": 2488,
+      "y": 1053,
       "name": "Voice Clone — 2 Recording (Light)",
       "theme": {
         "mode": "light"
@@ -8181,7 +8181,7 @@
                           "id": "M1UPb3",
                           "name": "Background noise",
                           "fill": "$text-secondary",
-                          "content": "Background noise",
+                          "content": "Noise",
                           "fontFamily": "$font",
                           "fontSize": 11,
                           "fontWeight": "600"
@@ -8348,8 +8348,8 @@
     {
       "type": "frame",
       "id": "rOxoD",
-      "x": 3160,
-      "y": 759,
+      "x": 3114,
+      "y": 1053,
       "name": "Voice Clone — 3 Listen & Save (Light)",
       "theme": {
         "mode": "light"
@@ -8905,7 +8905,7 @@
                           "id": "A3pQB",
                           "name": "Waveform",
                           "width": "fill_container",
-                          "height": 18,
+                          "height": 22,
                           "gap": 2,
                           "padding": [
                             4,
