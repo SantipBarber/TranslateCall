@@ -35,7 +35,7 @@ Features follow Spec-Driven Development under `specs/`: `requirements.md` → `d
 | `just build` | Debug build |
 | `just test` | Unit tier (fast: no network, mic or models) |
 | `just test-only <Suite>…` | Selected unit suites |
-| `just test-integration` | Real Apple frameworks + audio fixtures; prints `LATENCY …` lines (no report file) |
+| `just test-integration` | Real Apple frameworks + audio fixtures; prints `LATENCY …` lines (latency measurements come from `just bench`) |
 | `just check` | SwiftLint (strict) + opengrep — exactly what GitHub runs |
 | `just fixtures` | Regenerate audio fixtures from `TranslateCallTests/Fixtures/Audio/manifest.json` |
 | `just pr` | Full gate (below) |

@@ -130,4 +130,4 @@ Establish a professional, reproducible development workflow for TranslateCall be
 1. On a fresh clone, `just setup && just pr` on a feature branch either passes and sets `local/just-pr` = success, or fails at a clearly named step.
 2. `just test` passes on `main` after this feature merges.
 3. A PR to `main` cannot be merged without both `check` and `local/just-pr` green for its HEAD SHA.
-4. `build/reports/latency.json` exists after `just test-integration` with entries for ES, EN and UK fixtures. (superseded by REQ-BH-50 in `specs/m9-product/benchmark-harness/`)
+4. `build/reports/latency.json` exists after `just test-integration` with entries for ES, EN and UK fixtures. (superseded by the M9 benchmark harness)

@@ -149,7 +149,7 @@ Requirements: macOS 15+ on Apple Silicon, Xcode 27, Homebrew, [just](https://git
 ```bash
 just setup            # once: pinned tools + Metal Toolchain
 just test             # unit tier
-just test-integration  # real Apple frameworks + audio fixtures; prints LATENCY lines (no report file; bench produces a single golden_comparison.md, not latency.json)
+just test-integration # real Apple frameworks + audio fixtures (prints LATENCY lines; use just bench for latency)
 just pr               # full gate before opening a PR
 ```
 
