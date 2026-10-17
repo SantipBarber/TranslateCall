@@ -780,11 +780,11 @@ enum PipelineState {
 
 ---
 
-## 8. UI Layer
+### 8. UI Layer
 
 The M9 UI core replaces the previous main window with a focused setup window, a floating in-call status panel, a menu bar popover, and a Settings scene. The pipeline keeps running with every window closed.
 
-### 8.1 Main Setup Window
+#### 8.1 Main Setup Window
 
 `MainSetupView` (420 pt wide, content-fit height) is hosted in the `WindowGroup("main")`. It is built from:
 
@@ -796,7 +796,7 @@ The M9 UI core replaces the previous main window with a focused setup window, a 
 
 `MainSetupModel` observes `CallAppMonitor`, `LanguagePairManager`, `SetupManager`, and `CallSessionModel`, and publishes `permissions`, `pair`, and `readiness`. `Readiness.derive` is a pure function that yields the primary button title and enabled state plus any pre-call cards.
 
-### 8.2 Session State
+#### 8.2 Session State
 
 `CallSessionModel` bridges `AudioCoordinator` to the UI. It derives:
 
@@ -808,32 +808,32 @@ The M9 UI core replaces the previous main window with a focused setup window, a 
 
 `DirectionState` is a pure priority function (unavailable → paused → mic paused → speaking → translating → hearing → listening). `TranscriptEntry` records original text, optional translation, skipped flag, and optional latency.
 
-### 8.3 Status Panel
+#### 8.3 Status Panel
 
 `StatusPanel` is a non-activating `NSPanel` (`canBecomeKey == false`, `canBecomeMain == false`) that floats on all Spaces and over full-screen apps. `StatusPanelController` shows it while the session runs when "Show the status panel" is enabled, hides it on stop, and resizes it compact ↔ expanded anchored at the top edge. `StatusPanelView` renders the header, two `DirectionRow`s, `PanelNotices`, and the expanded `TranscriptView`.
 
-### 8.4 Menu Bar
+#### 8.4 Menu Bar
 
 `MenuBarController` owns the `NSStatusItem`. The icon is an SF Symbol `translate` glyph with a green or orange dot overlay while a session runs or is paused (`MenuBarDot`). Left-click opens `MenuBarPopoverView`; right-click shows a context menu with Start/Stop, Pause/Resume, "Skip My Next Sentence", and Settings. `MenuBarStart` brings up the main window first when readiness requires it.
 
-### 8.5 Settings
+#### 8.5 Settings
 
 A SwiftUI `Settings` scene holds a `TabView` opened via `SettingsOpener.open(tab:)`:
 
 - `GeneralSettingsView` — listening mode, device pickers, pause-seconds slider, status-panel / latency toggles, open-at-login, downloaded languages.
 - `LegacyAdvancedSettingsView` — STT/TTS engine pickers with "Automatic (recommended)", Kokoro voice picker, diagnostics, VAD label, voice profiles, setup wizard.
 
-### 8.6 Automatic Model Choice
+#### 8.6 Automatic Model Choice
 
 `ModelCatalog.json` (bundled) lists ordered engine preferences per language and stage. `ModelCatalog` decodes it; `ModelChoice` is a pure function that picks the first engine that supports the locale and is ready on disk. `ModelCache` checks model files without loading or networking. `STTEngineSelector` and `TTSEngineSelector` share one `tlk.models.automatic` flag and call `ModelChoice.automaticService(...)` / `.automaticPrimary(...)`.
 
 `ModelPreloader` runs at launch and on every language-pair change, loading the chosen cached models in the background; it respects MLX exclusivity (only one MLX TTS model at a time) and never downloads.
 
-### 8.7 Pause
+#### 8.7 Pause
 
 `PauseGate` sits before each VAD (`mic → PauseGate → MicEchoGate → VAD`, `call audio → PauseGate → VAD`). While paused it replaces every buffer with zeros of the same format and length, so the VAD ends an in-progress utterance by silence. `AudioCoordinator.pause()` stops both TTS queues; translation handlers drop text that arrives while paused. Resume restores normal processing without reloading.
 
-### 8.8 Shared UI Primitives
+#### 8.8 Shared UI Primitives
 
 - `Theme` — accent, status colours, soft backgrounds, radii and spacing.
 - `Chip`, `SectionHeader`, `CardBox` — reusable components used across the new views.
