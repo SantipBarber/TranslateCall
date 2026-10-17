@@ -623,20 +623,21 @@ git commit -m "test(bench): run lines × profiles writing raw.json v1 (M9 REQ-BH
 **Interfaces:**
 - Consumes: the schema of `tools/bench/tests/fixtures/manifest-v1-sample.json` (Task 4).
 - Produces:
-  - `groundtruth.speech_span(samples: np.ndarray, sr: int = 16000) -> tuple[float, float] | None`, returning (start_ms, end_ms):
+  - `groundtruth.speech_span(samples: np.ndarray, sr: int = 16000, why: dict | None = None) -> tuple[float, float] | None`, returning (start_ms, end_ms); `why` receives the drop reason:
     - Silero (`silero-vad`, 512-sample windows, threshold 0.35) gives the span;
-    - each edge is moved, in 10 ms hops, to the last frame whose RMS is within 25 dB of the clip's peak RMS;
-    - `None` when the two methods disagree by more than 150 ms on either edge.
+    - each Silero edge is refined, in both directions and only within ±300 ms of it, on 10 ms frame energy: the noise floor is the 20th percentile of the frame dB outside Silero's span (whole clip if fewer than 20 frames), the threshold is floor + 10 dB but never below peak − 40 dB, and an edge needs at least 3 consecutive frames (30 ms) above the threshold;
+    - `None` (with the reason) when the clip is silent, has SNR (peak − floor) below 20 dB, has no run at an edge, or the refined end is more than 200 ms from Silero's end.
   - `audio.normalize(path_or_bytes) -> np.ndarray`: 16 kHz mono float32 (soundfile + soxr).
   - `audio.write_wav16(path, samples)`: 16-bit PCM WAV; `audio.sha256(path)`.
   - `manifest.build(sources_cfg, seed=1729) -> dict` (schema 1, deterministic), `manifest.dump(m, path)` (sorted keys, indent 2, `ensure_ascii=False`, trailing newline).
   - `fetch.run(manifest_path, cache_dir, set_name, limit=None)`: idempotent, verifies `sha256`, and exits non-zero naming the clip or source.
   - The per-source selection rules and pinned revisions are those of design §4.1:
     - **FLEURS:** `google/fleurs`, configs `es_419` and `en_us`, test split. Only ids present in both; 2–12 s; 300 full; 8 per run line in PR, chosen ≤ 6 s.
-    - **VoxPopuli:** `facebook/voxpopuli` `es` test → `es-ES`.
-    - **Smart Turn v3 test:** `pipecat-ai/smart-turn-data-v3-test`, rows `spa`/`eng`, balanced; full only. Spanish is `es-xx`.
+    - **All audio sources:** the span must leave at least 200 ms of file before `speechStartMs` and 300 ms after `speechEndMs`. If a variant cannot reach its quota under the quality filters, the smaller N is accepted and recorded; the filters are not relaxed.
+    - **VoxPopuli:** `facebook/voxpopuli` `es` test → `es-ES`; transcripts must start with a capital letter and end with sentence-final punctuation.
+    - **Smart Turn v3 test:** deferred to project 2 (controller ruling R1); not fetched and not in the manifest.
     - **NTREX-128:** pinned git commit. 200 sentences per direction in full, **100 in PR (P5)**, seed 1729.
-    - **Common Voice:** only when `TC_BENCH_CV_TOKEN` is set, with a clear skip message otherwise.
+    - **Common Voice:** only when `TC_BENCH_CV_TOKEN` is set, with a clear skip message otherwise. Selection with a token is a recorded phase-1 deferral.
 
     `huggingface_hub` revisions are pinned in `sources.py` as commit SHAs, resolved once at execution time and written as constants.
 - **Manifest entry fields:** every field of REQ-BH-01, plus `audio`, the cache-relative path `"<dataset>/<variant>/<id>.wav"`.

@@ -119,9 +119,9 @@ class Fleurs:
                     variant=variant,
                     transcript=r[2],
                     duration_s=int(r[5]) / 16000,
-                    speaker=f"fleurs-{variant}-{r[6].lower()}",
+                    speaker=f"fleurs-{variant}-unknown-{r[6][:1].lower()}",  # FLEURS has no speaker id: visibly synthetic
                     translations=dict(ref.get(r[0], {})),
-                    tags=["fleurs"],
+                    tags=["fleurs", "speaker-unknown"],
                 )
             )
         return out
@@ -145,6 +145,17 @@ class Fleurs:
             if remaining:
                 raise RuntimeError(f"fleurs {config}: {len(remaining)} clips missing from archive, e.g. {sorted(remaining)[0]}")
         return out
+
+
+_OPEN = "¿¡«“\"'(—-– "
+_CLOSE = "»”\"')"
+
+
+def sentence_like(text: str) -> bool:
+    """Starts with a capital letter and ends with sentence-final punctuation."""
+    t = text.strip().lstrip(_OPEN)
+    e = text.strip().rstrip(_CLOSE)
+    return bool(t) and bool(e) and t[0].isupper() and e[-1] in ".?!…"
 
 
 class VoxPopuli:
@@ -175,8 +186,8 @@ class VoxPopuli:
         out = []
         for m, nbytes in zip(meta, sizes, strict=True):
             text = (m["raw_text"] or "").strip()
-            if not text:
-                continue
+            if not sentence_like(text):
+                continue  # segment edges cut mid-sentence give unreliable clips (lowercase start / no final punctuation)
             # 16 kHz mono WAV: 44-byte header, 32-bit float samples (checked on the pinned revision).
             dur = (nbytes - 44) / 4 / 16000
             out.append(
@@ -187,7 +198,7 @@ class VoxPopuli:
                     transcript=text,
                     duration_s=dur,
                     speaker=f"vp-es-{m['speaker_id']}",
-                    tags=["voxpopuli"],
+                    tags=["voxpopuli", "accent-unverified"],
                 )
             )
         return out
@@ -248,9 +259,7 @@ class CommonVoice:
     def skip_reason() -> str | None:
         if not os.environ.get(CommonVoice.TOKEN_ENV):
             return f"Common Voice skipped: {CommonVoice.TOKEN_ENV} is not set (gated dataset, optional in phase 1)"
-        return (
-            "Common Voice skipped: token present but selection from Common Voice is not implemented in phase 1"
-        )
+        return "Common Voice skipped: token present, but selection from Common Voice is a recorded phase-1 deferral"
 
 
 def audio_source(dataset: str, cache: Path) -> AudioSource:

@@ -28,8 +28,14 @@ def _cmd_manifest(args) -> int:
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     manifest.dump(m, out)
+    import numpy as np
+
     for k, v in sorted(cfg.stats.items()):
-        print(f"{k}: {v}")
+        shown = {a: b for a, b in v.items() if not a.startswith("end_offsets")}
+        print(f"{k}: {shown}")
+        for name in ("end_offsets_all", "end_offsets_kept"):
+            if v[name]:
+                print(f"  silero end - refined end ({name}): median {np.median(v[name]):.0f} ms, p90 {np.percentile(v[name], 90):.0f} ms, n={len(v[name])}")
     print(f"wrote {out}: {len(m['clips'])} clips, {len(m['mtOnly'])} mt-only sentences")
     return 0
 

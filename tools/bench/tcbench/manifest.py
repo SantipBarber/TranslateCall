@@ -26,6 +26,8 @@ class SourcesConfig:
     pr_max_s: float = 6.0
     min_s: float = 2.0
     max_s: float = 12.0
+    min_lead_ms: float = 200.0  # silence required before speechStart ...
+    min_tail_ms: float = 300.0  # ... and after speechEnd, inside the file
     mt_full: int = 200
     mt_pr: int = 100
     mt_directions: tuple = (("en", "es"), ("es", "en"))
@@ -58,7 +60,7 @@ def _select_variant(src, variant: str, cfg: SourcesConfig, seed: int, claimed: s
     """Return [(Candidate, wav sha256, start_ms, end_ms, is_pr)] for one source variant."""
     rng = random.Random(f"{seed}:{src.dataset}:{variant}")
     ordered = [c for c in _order(src.candidates(variant), rng) if cfg.min_s <= c.duration_s <= cfg.max_s]
-    stat = cfg.stats.setdefault(f"{src.dataset}/{variant}", {"candidates": len(ordered), "tried": 0, "dropped_gt": 0, "dropped_dup": 0})
+    stat = cfg.stats.setdefault(f"{src.dataset}/{variant}", {"candidates": len(ordered), "tried": 0, "dropped": {}, "dropped_dup": 0, "end_offsets_all": [], "end_offsets_kept": []})
     accepted: list[tuple] = []
     tried: set[str] = set()
 
@@ -74,10 +76,18 @@ def _select_variant(src, variant: str, cfg: SourcesConfig, seed: int, claimed: s
             tried.add(c.original_id)
             stat["tried"] += 1
             samples = audio_mod.normalize(raw[c.original_id])
-            span = speech_span(samples)
-            if span is None:
-                stat["dropped_gt"] += 1
-                cfg.log(f"drop {src.dataset}/{variant} {c.original_id}: no reliable speech span")
+            why: dict = {}
+            span = speech_span(samples, why=why)
+            reason = why.get("reason", "unknown") if span is None else None
+            if span is not None and span[0] < cfg.min_lead_ms:
+                reason = "lead<%dms" % cfg.min_lead_ms
+            elif span is not None and len(samples) * 1000.0 / 16000 - span[1] < cfg.min_tail_ms:
+                reason = "tail<%dms" % cfg.min_tail_ms
+            if "silero" in why and "refined" in why:
+                stat["end_offsets_all"].append(why["silero"][1] - why["refined"][1])
+            if reason:
+                stat["dropped"][reason] = stat["dropped"].get(reason, 0) + 1
+                cfg.log(f"drop {src.dataset}/{variant} {c.original_id}: {reason}")
                 continue
             path = tmp / "candidate.wav"
             audio_mod.write_wav16(path, samples)
@@ -86,6 +96,8 @@ def _select_variant(src, variant: str, cfg: SourcesConfig, seed: int, claimed: s
                 stat["dropped_dup"] += 1
                 continue
             claimed.add(sha)
+            if "silero" in why:
+                stat["end_offsets_kept"].append(why["silero"][1] - why["refined"][1])
             accepted.append((c, sha, span[0], span[1], is_pr))
 
     short = [c for c in ordered if c.duration_s <= cfg.pr_max_s]

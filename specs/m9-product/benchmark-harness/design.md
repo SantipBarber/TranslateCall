@@ -226,14 +226,16 @@ The total is about 10 min, which is tight. **Measure-first gate (task 1 of the p
 | Source | HF id / origin | Revision | Variant | Phase 1 selection |
 |---|---|---|---|---|
 | FLEURS | `google/fleurs` (`es_419`, `en_us`, test) | pinned commit | es-419, en | Sentence ids present in both; clips 2–12 s; seed 1729; full 300, PR 8 per line (≤ 6 s) |
-| VoxPopuli | `facebook/voxpopuli` (`es`, test) | pinned | es-ES | Transcribed segments 2–12 s; full 300, PR 8 |
-| Smart Turn v3 test | `pipecat-ai/smart-turn-data-v3-test` | pinned | es-ES*, en | `spa`/`eng` rows, balanced complete/incomplete; full 200 per language; not in PR |
+| VoxPopuli | `facebook/voxpopuli` (`es`, test) | pinned | es-ES | Transcribed segments 2–12 s; transcript starts with a capital and ends with sentence-final punctuation; full up to 300, PR up to 8 (see the lead/tail rule) |
+| Smart Turn v3 test | `pipecat-ai/smart-turn-data-v3-test` | pinned | es-ES*, en | **Deferred to project 2.** `spa`/`eng` rows, balanced complete/incomplete; full 200 per language; not in PR |
 | NTREX-128 | GitHub `MicrosoftTranslator/NTREX` | pinned commit | text | 200 sentences per direction, seed 1729 |
 | Own recordings | local folder | — | es-ES, en (non-native) | Everything ingested; PR 8 per variant once present |
 
 \* Smart Turn does not tag Spanish variants. Its Spanish rows go in as `es-xx` (unknown) and are reported apart, never mixed into `es-ES` (D-5).
 
-- **Ground truth** (REQ-BH-03). Silero (python, 512-sample / 32 ms windows, threshold 0.35) finds the speech span. An energy refinement at 10 ms hops moves each edge to the last frame within 25 dB of the clip's peak RMS. If the two methods disagree by more than 150 ms, the clip is dropped from the manifest and logged. The production VAD uses 256 ms chunks and threshold 0.85, so the configurations differ but the model is the same. That bias is recorded in the report footer.
+- **Ground truth** (REQ-BH-03). Silero (python, 512-sample / 32 ms windows, threshold 0.35) finds the speech span; an energy step then refines each edge locally. Frame energy is RMS in dB at 10 ms hops. The noise floor is the 20th percentile of the frame dB outside Silero's span (whole clip if fewer than 20 such frames); the threshold is floor + 10 dB, never below peak − 40 dB. Each edge is searched in both directions but only within ±300 ms of Silero's edge, and needs at least 3 consecutive frames (30 ms) above the threshold, so a click cannot set it. (A rule "within 25 dB of peak, trimming inward" was tried and rejected: on clean recordings it sits far above the noise floor and cuts soft codas, so `speechEnd` came out early.) A clip is dropped and logged, with its reason, when: it is silent; SNR (peak − floor) is below 20 dB; no run is found at an edge; or the refined end is more than 200 ms from Silero's end (the 32 ms windows and hangover give a known positive Silero offset, measured at about 70 ms median and 160–190 ms p90 on FLEURS). Every source also requires at least 200 ms of file before the span and 300 ms after it. If a variant cannot reach its quota under these filters, the smaller N is accepted and recorded; the filters are not relaxed. The production VAD uses 256 ms chunks and threshold 0.85, so the configurations differ but the model is the same. That bias is recorded in the report footer.
+- **Common Voice** (gated, optional) is a recorded phase-1 deferral: with `TC_BENCH_CV_TOKEN` set, selection is still not implemented.
+- **Phase-1 counts** (pinned revisions of 2026-10-17): FLEURS en 300 (PR 8), FLEURS es-419 300 (PR 8), VoxPopuli es-ES 1 full and no PR clip, because almost every segment lacks the required lead/tail silence (see the Task 8 report).
 - **Licence allow-list** lives in `bench/licences.json`. `fetch` refuses any source missing from it.
 
 ### 4.2 Metrics (`tcbench analyze`)

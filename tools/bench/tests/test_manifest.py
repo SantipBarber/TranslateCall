@@ -57,8 +57,8 @@ class StubText:
         return [(f"{s} sentence {i}", f"{t} sentence {i}") for i in range(300)]
 
 
-def span(samples, sr=16000):
-    return 100.0, len(samples) * 1000.0 / sr - 50
+def span(samples, sr=16000, why=None):
+    return 300.0, len(samples) * 1000.0 / sr - 400
 
 
 @pytest.fixture(autouse=True)
@@ -128,11 +128,11 @@ def test_non_commercial_licence_is_refused_naming_the_source():
 
 
 def test_clips_without_reliable_span_are_dropped(monkeypatch):
-    monkeypatch.setattr(manifest, "speech_span", lambda s, sr=16000: None)
+    monkeypatch.setattr(manifest, "speech_span", lambda s, sr=16000, why=None: (why.update(reason="low-snr"), None)[1])
     c = cfg()
     m = manifest.build(c)
     assert m["clips"] == []
-    assert c.stats["vox/es-ES"]["dropped_gt"] > 0
+    assert c.stats["vox/es-ES"]["dropped"]["low-snr"] > 0
 
 
 def test_sha256_is_of_the_normalised_wav(tmp_path):
@@ -141,3 +141,14 @@ def test_sha256_is_of_the_normalised_wav(tmp_path):
     raw = StubAudio("vox", ["es-ES"]).raw_audio([c["source"]["originalId"]])[c["source"]["originalId"]]
     audio.write_wav16(tmp_path / "x.wav", audio.normalize(raw))
     assert audio.sha256(tmp_path / "x.wav") == c["sha256"]
+
+
+def test_clips_too_close_to_the_file_edges_are_dropped(monkeypatch):
+    monkeypatch.setattr(manifest, "speech_span", lambda s, sr=16000, why=None: (150.0, 1000.0))
+    c = cfg()
+    assert manifest.build(c)["clips"] == []
+    assert c.stats["vox/es-ES"]["dropped"]["lead<200ms"] > 0
+    monkeypatch.setattr(manifest, "speech_span", lambda s, sr=16000, why=None: (300.0, len(s) * 1000.0 / sr - 100))
+    c = cfg()
+    assert manifest.build(c)["clips"] == []
+    assert c.stats["vox/es-ES"]["dropped"]["tail<300ms"] > 0

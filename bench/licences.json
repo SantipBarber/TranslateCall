@@ -35,8 +35,9 @@
       "name": "Mozilla Common Voice (optional, gated)",
       "licence": "CC0-1.0",
       "url": "https://commonvoice.mozilla.org/",
-      "evidence": "Common Voice is published under CC0; access to the Hugging Face copy is gated and needs TC_BENCH_CV_TOKEN. Not verified against a card in phase 1 (no token); not selected.",
-      "attribution": "Mozilla Common Voice contributors. CC0 1.0."
+      "evidence": "Common Voice is published under CC0; access to the Hugging Face copy is gated (TC_BENCH_CV_TOKEN). Not verified against a card in phase 1 (no token); not selected.",
+      "attribution": "Mozilla Common Voice contributors. CC0 1.0.",
+      "note": "Phase-1 deferral: with TC_BENCH_CV_TOKEN set, selection from Common Voice is still not implemented; revisit in a later phase."
     }
   ]
 }
