@@ -31,6 +31,8 @@ final class CallSessionModel: ObservableObject {
     private var noticeTask: Task<Void, Never>?
     /// Which transient notice is newest: the TTS line or the panel notice.
     private var newestTransient: String?
+    /// The last `ttsNotice` seen, so a still-showing TTS line is not re-promoted over a newer notice.
+    private var lastTTSNotice: String?
     /// "Open <App> and start" is waiting for the app: a second press is ignored (P24).
     private var isLaunching = false
     /// Brings up the main window for an alert of a start that did not go active (P27).
@@ -91,6 +93,8 @@ final class CallSessionModel: ObservableObject {
             isLaunching = false
             recompute()
         }
+        // Another entry point (menu bar, popover) may have started it during the wait: toggling would stop it.
+        guard !coordinator.isOutgoingActive, !coordinator.isStarting else { return }
         await viewModel.toggleCapture()
     }
 
@@ -129,9 +133,9 @@ final class CallSessionModel: ObservableObject {
         title = .derive(isStarting: coordinator.isStarting, isPaused: coordinator.isPaused, incoming: incoming)
         if transcript != coordinator.transcript { transcript = coordinator.transcript }
         sessionStartedAt = coordinator.sessionStartedAt
-        if let tts = coordinator.ttsNotice, tts != newestTransient, tts != panelNotice { newestTransient = tts }
-        if coordinator.ttsNotice == nil, newestTransient != nil, newestTransient != panelNotice {
-            newestTransient = nil
+        if coordinator.ttsNotice != lastTTSNotice {   // only a new TTS line is newer than the panel notice
+            lastTTSNotice = coordinator.ttsNotice
+            newestTransient = lastTTSNotice ?? panelNotice
         }
         if phase == .idle { clearPanelNotice() }
         routeAlert()
@@ -180,7 +184,7 @@ final class CallSessionModel: ObservableObject {
 
     private func clearPanelNotice() {
         guard panelNotice != nil else { return }
-        if newestTransient == panelNotice { newestTransient = nil }
+        if newestTransient == panelNotice { newestTransient = lastTTSNotice }
         panelNotice = nil
     }
 }

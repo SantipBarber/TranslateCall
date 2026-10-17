@@ -141,6 +141,48 @@ struct CallSessionModelTests {
         await harness.session.stop()
     }
 
+    @Test("Fix R29: a session started elsewhere while the call app launches is not stopped when the wait ends")
+    func startedElsewhereWhileLaunching() async {
+        let harness = SessionHarness()
+        let (workspace, monitor, clock) = zoomNotRunning()
+        let launch = Task { await harness.session.start(launching: monitor.rows[0], monitor: monitor) }
+        #expect(await waitUntil { clock.sleeperCount == 1 })
+        await harness.coordinator.start()   // e.g. the menu bar's right-click Start
+        #expect(harness.coordinator.isOutgoingActive)
+        workspace.setRunning("us.zoom.xos", true)
+        clock.advance(by: .milliseconds(200))
+        await launch.value
+        #expect(harness.coordinator.isOutgoingActive, "the wait's end must not toggle the session off")
+        #expect(await waitUntil { harness.session.phase == .running })
+        await harness.session.stop()
+    }
+
+    @Test("Fix R30: the newest transient notice wins and the panel notice outlives an older TTS line")
+    func newestNoticeWins() async {
+        let harness = SessionHarness()
+        await harness.coordinator.start()
+        #expect(await waitUntil { harness.session.phase == .running })
+        harness.coordinator.ttsNotice = "1 sentence skipped"
+        #expect(await waitUntil { harness.session.notices.last == "1 sentence skipped" })
+
+        harness.coordinator.errorAlert = AlertItem(title: "Error", message: "Something broke", action: nil)
+        #expect(await waitUntil { harness.session.panelNotice == "Something broke" })
+        harness.coordinator.isSpeechActive = true   // any later coordinator change
+        #expect(await waitUntil { harness.session.outgoing == .hearing })
+        #expect(harness.session.notices.last == "Something broke")
+
+        harness.coordinator.ttsNotice = nil
+        #expect(await waitUntil { harness.session.notices.last == "Something broke" })
+        harness.coordinator.isSpeechActive = false
+        #expect(await waitUntil { harness.session.outgoing == .listening })
+        #expect(harness.session.notices.last == "Something broke", "still live until its 8 s expiry")
+
+        #expect(await waitUntil { harness.clock.sleeperCount > 0 })
+        harness.clock.advance(by: .seconds(8))
+        #expect(await waitUntil { harness.session.notices.isEmpty })
+        await harness.session.stop()
+    }
+
     @Test("speakers mode adds the standing line first")
     func speakersLine() {
         let lines = CallSessionModel.composeNotices(listeningMode: .speakers, transient: "1 sentence skipped")
