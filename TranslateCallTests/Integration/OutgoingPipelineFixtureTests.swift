@@ -43,7 +43,7 @@ extension IntegrationTests {
             print("LATENCY \(id) tts_first_audio \(ttsMs) ms")
             print("LATENCY \(id) total \(total) ms")
             #expect(!text.isEmpty)
-            // Latency is recorded, not enforced, in F8.5.0 (spec: Out of Scope).
+            // Latency is printed, not enforced, in F8.5.0 (spec: Out of Scope).
         }
     }
 }

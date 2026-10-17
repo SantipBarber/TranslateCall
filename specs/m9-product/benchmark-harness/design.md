@@ -75,7 +75,7 @@ struct NoopTraceSink: TraceSink { func record(_ event: TraceEvent) {} }
 
 ### 2.3 Wiring
 
-- the builder wraps the coordinator's factories with `PipelineTracer`'s wrappers (`tasks.md` P1); `AudioCoordinator` is unchanged.
+- The builder wraps the coordinator's factories with `PipelineTracer`'s wrappers (`tasks.md` P1); `AudioCoordinator` is unchanged.
 - A later task, out of scope here, may pass a bounded ring-buffer sink for the in-app latency indicator in the UI thread. The UI thread (2026-10-17) asked for a per-direction latency, "end of speech → first audio", shown as one number such as "0.9 s".
   - In production there is no ground-truth speech end. So the `vadEnd` event carries `segmentAudioMs` and `trailingSilenceMs`, which come from the VAD configuration's `minSilence`. A sink can estimate `speechEnd ≈ vadEnd − trailingSilenceMs`.
   - The other status-panel fields (state, last line, notices, incoming lost) already come from the coordinator's published state and events. They are not part of the trace.
@@ -185,13 +185,10 @@ The MT-only text set (REQ-BH-08) runs inside the same session, before the clip l
 | Run lines × profiles (PR) | Clips | Seconds per clip (≤ 6 s clip + 0.6 s pause + ~1 s idle + 0.5 s gap) | Total |
 |---|---|---|---|
 | 4 lines × Basic + 3 lines × Best (incoming Best = Basic engines, so skipped) | 8 each → 56 | ~8 | ~7.5 min |
-| MT-only 2 × 200 sentences (once per pair) | — | ~0.3 | ~2 min |
+| MT-only 2 × 100 sentences in PR, 2 × 200 in full (P5) | — | ~0.3 | ~1 min (PR) |
 | Session warm-ups, 7 × ~3 s | — | — | ~0.4 min |
 
-The total is about 10 min, which is tight. **Measure-first gate (task 1 of the plan):** measure the real PR duration and the run-to-run variance (NFR-BH-01) before building the analysis side. If the duration goes over 10 min, the plan stops with options:
-- (a) PR runs only Basic;
-- (b) cut to 6 clips per line;
-- (c) MT-only drops to 100 sentences.
+The total is about 10 min, which is tight. **Measure-first gate (task 1 of the plan):** measure the real PR duration and the run-to-run variance (NFR-BH-01) before building the analysis side. Planning options were (a) PR runs only Basic, (b) 6 clips per line, (c) MT-only 100 sentences. Resolved: (c) applied in planning (P5) and (a) chosen by the user after T14 (see Decision below).
 
 **Measured (2026-10-17, T14):** a Basic line takes about 2.25 min (137, 131 and 136 s for 3 lines); 3 lines took 7m18s end to end, including the build and analysis. The estimate in `tcbench.estimate` is calibrated on this (clip seconds x 2.0 + 15 s per line + 0.3 s per MT sentence + 60 s fixed). The full 4-line Basic run is therefore about 9 min, and adding Best would pass the 10 min limit.
 
@@ -322,7 +319,6 @@ It is local by default; Claude may publish it as a private page when the user as
   - `PipelineTracer` order matching: STT drops, translation errors, TTS merges.
   - Each decorator passes values through unchanged.
   - Overhead (§2.2).
-  - `AudioCoordinator` with `traceSink: nil` builds exactly the stage objects the factories return (identity check).
   - `BenchAudioSource` pacing and chunk timestamps under `TestClock`.
   - Seq-to-clip assignment.
 - **Unit (Python).** As listed in §4.
@@ -334,7 +330,7 @@ It is local by default; Claude may publish it as a private page when the user as
 
 | New | Changed |
 |---|---|
-| `TranslateCall/Core/Trace/{TraceEvent,TraceSink,PipelineTracer,Tracing*}.swift` | `AudioCoordinator.swift` (+`traceSink`, wrap factories) |
+| `TranslateCall/Core/Trace/{TraceEvent,TraceSink,PipelineTracer,Tracing*}.swift` | none in `AudioCoordinator` (P1: builders wrap the factories with `PipelineTracer`) |
 | `TranslateCallTests/Bench/{BenchTests,BenchPipelineFactory,BenchAudioSource,BenchSystemAudioCapture,BenchRunWriter}.swift` | `justfile`, `tools/scripts/pr.sh`, `tools/scripts/setup.sh`, `tools/versions.env` |
 | `TranslateCallTests/TestPlans/Bench.xctestplan` | Integration tests listed in §7, `LatencyReport.swift` (deleted) |
 | `tools/bench/` (pyproject, uv.lock, `tcbench/`, `tests/`) | `.gitignore` (`tools/bench/.venv`) |
