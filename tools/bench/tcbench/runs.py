@@ -28,6 +28,10 @@ A run directory must contain a ``metrics.json`` file with this exact shape:
       }
     }
 
+``<runLine>`` is an opaque key with the grammar ``"<direction> <src>><tgt>"`` (for example
+``"outgoing es-ES>en"``).  Aggregates are keyed verbatim and es-ES / es-419 lines are never merged.
+The only place a part of it is read is ``target_lang``, which gives the reference language.
+
 ``load_run`` returns ``(meta, aggregates)`` and raises ``FileNotFoundError`` if
 ``metrics.json`` is missing or ``ValueError`` if the required keys are absent.
 """
@@ -61,3 +65,10 @@ def load_run(run_dir: Path | str) -> tuple[dict[str, Any], dict[str, Any]]:
         raise ValueError(f"Run aggregates must be a dict in {run_dir}")
 
     return meta, aggregates
+
+
+def target_lang(run_line: str) -> str | None:
+    """Base target language of a runLine ``"<direction> <src>><tgt>"``: ``"outgoing es-ES>en"`` -> ``"en"``."""
+    if ">" not in run_line:
+        return None
+    return run_line.rsplit(">", 1)[1].strip().split("-")[0] or None

@@ -8,6 +8,7 @@ reference of a line is the manifest translation for the language after ``>`` in 
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import json
 import sys
@@ -16,6 +17,7 @@ from typing import Any
 
 from sacrebleu.metrics import CHRF
 
+from .runs import target_lang
 from .stats import summary
 from .text import corpus_wer
 
@@ -29,21 +31,20 @@ def comet_available() -> bool:
     return importlib.util.find_spec("comet") is not None
 
 
-def comet_score(triples: list[dict[str, str]]) -> float:
-    """System-level COMET (mean segment score) for ``[{src, mt, ref}]``. Needs the 'comet' extra."""
+@functools.cache
+def _comet_model():
+    """Load the pinned checkpoint once per process."""
     from comet import load_from_checkpoint  # type: ignore[import-not-found]
     from huggingface_hub import hf_hub_download
 
     path = hf_hub_download(COMET_MODEL, "checkpoints/model.ckpt", revision=COMET_REVISION)
-    model = load_from_checkpoint(path)
-    out = model.predict(triples, batch_size=8, gpus=0, progress_bar=False)
+    return load_from_checkpoint(path)
+
+
+def comet_score(triples: list[dict[str, str]]) -> float:
+    """System-level COMET (mean segment score) for ``[{src, mt, ref}]``. Needs the 'comet' extra."""
+    out = _comet_model().predict(triples, batch_size=8, gpus=0, progress_bar=False)
     return float(out.system_score)
-
-
-def _target_language(run_line: str) -> str | None:
-    if ">" not in run_line:
-        return None
-    return run_line.rsplit(">", 1)[1].strip().split("-")[0] or None
 
 
 def assign(raw: dict) -> dict[str, list[dict]]:
@@ -98,6 +99,14 @@ def _cut_rate(cut_clips: int, clips: int, incomplete_turn: int = 0) -> float:
     return (cut_clips + incomplete_turn) / denominator if denominator else 0.0
 
 
+def _dropped(utt: dict) -> bool:
+    return "dropped" in utt["events"]
+
+
+def _heard(utt: dict) -> bool:
+    return bool(utt.get("detail", {}).get("sttFinal", {}).get("text", "").strip())
+
+
 def _joined(utts: list[dict], stage: str) -> str:
     texts = (u.get("detail", {}).get(stage, {}).get("text", "").strip() for u in utts)
     return " ".join(t for t in texts if t)
@@ -110,8 +119,9 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False) -> dict[str, An
     if unknown:
         raise ValueError(f"clips not in the manifest: {unknown[:5]}")
     assigned = assign(raw)
-    target = _target_language(raw.get("runLine", ""))
-    first_seq = min((u["seq"] for u in raw["utterances"]), default=None)
+    target = target_lang(raw.get("runLine", ""))
+    first_seq = min((u["seq"] for u in raw["utterances"] if not _dropped(u)), default=None)
+    unassigned = len(raw["utterances"]) - sum(len(v) for v in assigned.values())
 
     lat: dict[str, list[float]] = {s: [] for s in STAGES}
     cold: dict[str, list[float]] = {s: [] for s in STAGES}
@@ -126,14 +136,15 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False) -> dict[str, An
         merges += sum(_is_merge(u, next_clip) for u in utts)
         if not utts:
             missed += 1
-        if len(utts) > 1:
+        if sum(_heard(u) for u in utts) > 1:
             cut += 1
         wer_pairs.append((mclip["transcript"], _joined(utts, "sttFinal")))
         ref = mclip.get("translations", {}).get(target) if target else None
         if ref:
             pipeline.append({"src": mclip["transcript"], "mt": _joined(utts, "translated"), "ref": ref})
-        if utts:
-            last = utts[-1]
+        live = [u for u in utts if not _dropped(u)]
+        if live:
+            last = live[-1]
             bucket = cold if last["seq"] == first_seq else lat
             for stage, value in _latencies(last, clip["speechEndNs"]).items():
                 bucket[stage].append(value)
@@ -189,18 +200,25 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False) -> dict[str, An
         "chrf": {"pipeline": chrf_score(pipeline), "mtOnly": chrf_score(mt_triples)},
         "comet": comet_result,
         "fallbacks": fallbacks,
+        "unassigned": unassigned,
     }
 
 
-def _shared(raw: dict) -> dict[str, Any]:
-    return {"set": raw["set"], **{k: raw["meta"][k] for k in SHARED_META if k != "set"}}
+def _shared(raw: dict, path: Path) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key in SHARED_META:
+        source = raw if key == "set" else raw.get("meta", {})
+        if key not in source:
+            raise ValueError(f"{path}: raw.json is missing {'set' if key == 'set' else 'meta.' + key}")
+        out[key] = source[key]
+    return out
 
 
 def _run_meta(raws: list[tuple[Path, dict]]) -> dict[str, Any]:
     first_path, first = raws[0]
-    meta = _shared(first)
+    meta = _shared(first, first_path)
     for path, raw in raws[1:]:
-        other = _shared(raw)
+        other = _shared(raw, path)
         for key in SHARED_META:
             if other[key] != meta[key]:
                 raise ValueError(
@@ -228,6 +246,11 @@ def run(run_dir: Path | str, manifest: dict, comet: bool = False) -> dict[str, A
         (path.parent / "metrics.json").write_text(
             json.dumps({"meta": meta, "key": key, "aggregate": agg}, indent=2, sort_keys=True) + "\n"
         )
+        if agg["unassigned"]:
+            print(
+                f"WARNING: {key}: {agg['unassigned']} utterance(s) fall outside every clip window (unassigned)",
+                file=sys.stderr,
+            )
         if agg["fallbacks"]:
             print(
                 f"WARNING: {key}: {agg['fallbacks']} utterance(s) ran on an engine other than the expected "

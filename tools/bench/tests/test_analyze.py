@@ -138,12 +138,14 @@ def test_cold_reported_apart():
 
 def test_dropped_reasons_counted():
     utts = [
-        _utt(0, 1 * S, dropped="empty"),
-        _utt(1, 5 * S, dropped="empty"),
-        _utt(2, 6 * S, dropped="session-stop"),
+        _utt(0, 1 * S, dropped="stt-empty"),
+        _utt(1, 5 * S, dropped="stt-empty"),
+        _utt(2, 6 * S, dropped="tts-no-audio"),
+        _utt(3, 7 * S, dropped="empty-text"),
+        _utt(4, 7 * S + 1, dropped="idle-timeout"),
     ]
     agg = _agg(_raw(TWO, utts), M2)
-    assert agg["dropped"] == {"empty": 2, "session-stop": 1}
+    assert agg["dropped"] == {"stt-empty": 2, "tts-no-audio": 1, "empty-text": 1, "idle-timeout": 1}
 
 
 def test_chrf_on_sample():
@@ -239,4 +241,57 @@ def test_cli_analyze(tmp_path, capsys):
     _write_line(run, _raw(TWO, []))
     assert main(["analyze", str(run), "--manifest", str(m)]) == 0
     assert (run / "metrics.json").exists()
-    assert main(["analyze", str(run), "--manifest", str(m), "--comet"]) in (0, 1)
+
+
+def test_cli_comet_branches(tmp_path, monkeypatch, capsys):
+    m = tmp_path / "m.json"
+    m.write_text(json.dumps(M2))
+    run = tmp_path / "run"
+    _write_line(run, _raw(TWO, []))
+    monkeypatch.setattr(analyze, "comet_available", lambda: False)
+    assert main(["analyze", str(run), "--manifest", str(m), "--comet"]) == 1
+    assert "unbabel-comet" in capsys.readouterr().err
+    monkeypatch.setattr(analyze, "comet_available", lambda: True)
+    monkeypatch.setattr(analyze, "comet_score", lambda triples: 0.5)
+    assert main(["analyze", str(run), "--manifest", str(m), "--comet"]) == 0
+
+
+def test_trailing_dropped_seq_does_not_hijack():
+    utts = [
+        _utt(0, 1 * S, vad_end=3 * S + 100 * MS, stt=3 * S + 200 * MS, tr=3 * S + 300 * MS, tts=3 * S + 500 * MS, text="hola mundo"),
+        _utt(1, int(3.5 * S), vad_end=3 * S + 600 * MS, dropped="stt-empty"),
+    ]
+    agg = _agg(_raw([TWO[0]], utts), _manifest(("a", "hola mundo", "hello")))
+    assert agg["cutRate"] == 0.0
+    assert agg["latency"]["total"]["count"] + agg["latencyCold"]["total"]["count"] == 1
+    assert agg["latency"]["vad"]["count"] == 0 or agg["latency"]["vad"]["p50"] == pytest.approx(100.0)
+    only_dropped = _agg(_raw([TWO[0]], [utts[1]]), _manifest(("a", "hola", "hello")))
+    assert only_dropped["latency"]["total"]["count"] == 0 == only_dropped["latency"]["vad"]["count"]
+    assert only_dropped["latencyCold"]["vad"]["count"] == 0
+
+
+def test_unassigned_counted_and_warned(tmp_path, capsys):
+    raw = _raw(TWO, [_utt(0, -1 * S, dropped="stt-empty"), _utt(1, 1 * S, vad_end=3 * S, stt=3 * S, text="x")])
+    assert _agg(raw, M2)["unassigned"] == 1
+    _write_line(tmp_path, raw)
+    analyze.run(tmp_path, M2, comet=False)
+    assert "unassigned" in capsys.readouterr().err
+
+
+def test_missing_meta_key_is_value_error(tmp_path):
+    raw = _raw(TWO, [])
+    del raw["meta"]["machine"]
+    _write_line(tmp_path, raw)
+    with pytest.raises(ValueError, match="meta.machine"):
+        analyze.run(tmp_path, M2, comet=False)
+    raw = _raw(TWO, [])
+    del raw["set"]
+    _write_line(tmp_path, raw)
+    with pytest.raises(ValueError, match="set"):
+        analyze.run(tmp_path, M2, comet=False)
+
+
+def test_target_lang():
+    assert runs.target_lang("outgoing es-ES>en") == "en"
+    assert runs.target_lang("incoming en>es-419") == "es"
+    assert runs.target_lang("nonsense") is None
