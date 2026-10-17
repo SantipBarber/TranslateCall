@@ -5,6 +5,7 @@ import SwiftUI
 struct TranslateCallApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @StateObject private var container = AppContainer()
     @State private var menuBarController: MenuBarController?
 
@@ -22,6 +23,7 @@ struct TranslateCallApp: App {
                 // Only now: a host on screen before this point stops SwiftUI opening this window (A26).
                 container.translationHost.show()
                 MainWindowOpener.shared.openWindow = { [openWindow] in openWindow(id: MainWindowOpener.windowID) }
+                SettingsOpener.shared.openSettings = { [openSettings] in openSettings() }
                 guard menuBarController == nil else { return }
                 menuBarController = MenuBarController(viewModel: container.audioViewModel)
             }
@@ -33,6 +35,15 @@ struct TranslateCallApp: App {
                     openFeedbackURL()
                 }
             }
+        }
+        Settings {
+            SettingsView()
+                .environmentObject(container.audioViewModel)
+                .environmentObject(container.languagePairManager)
+                .environmentObject(container.setupManager)
+                .environmentObject(container.voiceProfileManager)
+                .environmentObject(container.audioViewModel.engineSelector)
+                .environmentObject(container.audioViewModel.ttsEngineSelector)
         }
     }
 

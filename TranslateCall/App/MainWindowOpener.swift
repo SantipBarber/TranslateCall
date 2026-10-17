@@ -6,10 +6,14 @@ protocol MainWindowCandidate: AnyObject {
     var canBecomeMain: Bool { get }
     var isVisible: Bool { get }
     var isMiniaturized: Bool { get }
+    /// SwiftUI's scene window identifier, e.g. "main-AppWindow-1" for the `WindowGroup(id: "main")`.
+    var sceneIdentifier: String? { get }
     func raise()
 }
 
 extension NSWindow: MainWindowCandidate {
+    var sceneIdentifier: String? { identifier?.rawValue }
+
     func raise() {
         if isMiniaturized { deminiaturize(nil) }
         makeKeyAndOrderFront(nil)
@@ -34,7 +38,9 @@ final class MainWindowOpener {
     @discardableResult
     func show(in windows: [any MainWindowCandidate], appIsHidden: Bool = false, unhide: () -> Void = {}) -> Outcome {
         if appIsHidden { unhide() }
-        if let window = windows.first(where: { $0.canBecomeMain && ($0.isVisible || $0.isMiniaturized) }) {
+        // Only the setup window counts: the Settings window can become main too (M9 UI core).
+        if let window = windows.first(where: { $0.canBecomeMain && ($0.isVisible || $0.isMiniaturized)
+            && $0.sceneIdentifier?.hasPrefix(Self.windowID + "-") == true }) {
             window.raise()
             return .raised
         }
