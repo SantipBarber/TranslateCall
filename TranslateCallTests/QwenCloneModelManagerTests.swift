@@ -74,7 +74,7 @@ struct QwenCloneModelManagerTests {
             modelRepo: "test-nonexistent/model-that-does-not-exist-\(UUID().uuidString)"
         )
         let manager = QwenCloneModelManager(config: config, modelLoader: { _ in MockQwenCloneInferrer() })
-        let cached = await manager.isModelCached()
+        let cached = manager.isModelCached()
         #expect(!cached)
     }
 

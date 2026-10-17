@@ -18,7 +18,9 @@ extension AudioCoordinator {
         let micStream = try await audioCapture.startCapture()
         logger.info("Outgoing: audio capture started")
         // Speakers mode mutes the mic here, before the VAD, while the remote translation plays (D-3).
-        let vadInput = micEchoGate?.gate(micStream) ?? micStream
+        // Pause (M9 UI core D-5) comes first, so pausing never touches the echo gate's own state.
+        let pausable = pauseGate?.gate(micStream, label: "outgoing-pause") ?? micStream
+        let vadInput = micEchoGate?.gate(pausable) ?? pausable
 
         // VAD (non-fatal)
         let vad = await outgoingVADFactory()
@@ -103,8 +105,9 @@ extension AudioCoordinator {
             let vad = await incomingVADFactory()
             try ensureCurrent(generation)
             incomingVAD = vad
-            try await vad.activate(stream: systemStream)
+            try await vad.activate(stream: pauseGate?.gate(systemStream, label: "incoming-pause") ?? systemStream)
             try ensureCurrent(generation)
+            observeIncomingVADState(vad)
 
             let targetLocale = Locale(identifier: languagePairManager.targetLanguage.minimalIdentifier)
             let stt = incomingSTTFactory(targetLocale)
@@ -187,6 +190,7 @@ extension AudioCoordinator {
         incomingTasks.forEach { $0.cancel() }
         incomingTasks.removeAll()
         isIncomingSpeaking = false
+        isIncomingSpeechActive = false
         reopenMicEchoGate()
         let (vad, stt, tts) = (incomingVAD, incomingSTT, incomingTTS)
         incomingVAD = nil
@@ -275,7 +279,11 @@ extension AudioCoordinator {
             return
         }
         // Never dropped while the other side speaks (F8.5.3 REQ-H-10): echo is handled by MicEchoGate.
-        guard !text.isEmpty else { return }
+        // Dropped while paused (M9 UI core REQ-UI-50).
+        guard !text.isEmpty, !isPaused else { return }
+        let entry = appendTranscript(.outgoing, text)
+        isOutgoingTranslating = true
+        defer { isOutgoingTranslating = false }
         // No stopSpeaking() first: sentences queue and are coalesced, never cut or dropped (F8.5.3 D-5).
         do {
             let translated = try await outgoingTranslationService.translate(
@@ -284,9 +292,12 @@ extension AudioCoordinator {
                 to: languagePairManager.targetLanguage
             )
             outgoingTranslation = translated
+            completeTranscript(entry, translation: translated)
+            guard !isPaused else { return }   // paused while translating: shown, not spoken
             let locale = Locale(identifier: languagePairManager.targetLanguage.minimalIdentifier)
             await outgoingTTS?.speak(text: translated, locale: locale)
         } catch {
+            skipTranscript(entry, error: error)
             handleTranslationFailure(error, outgoing: true)
         }
     }
@@ -294,7 +305,10 @@ extension AudioCoordinator {
     private func handleIncomingTranslation(of text: String) async {
         // Never dropped while either TTS speaks (F8.5.3 REQ-H-11): SCStream captures only the call app,
         // which does not play the user's own voice back. Remote sentences queue like outgoing ones.
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty, !isPaused else { return }
+        let entry = appendTranscript(.incoming, text)
+        isIncomingTranslating = true
+        defer { isIncomingTranslating = false }
         do {
             let translated = try await incomingTranslationService.translate(
                 text: text,
@@ -302,9 +316,12 @@ extension AudioCoordinator {
                 to: languagePairManager.sourceLanguage
             )
             incomingTranslation = translated
+            completeTranscript(entry, translation: translated)
+            guard !isPaused else { return }   // paused while translating: shown, not spoken
             let locale = Locale(identifier: languagePairManager.sourceLanguage.minimalIdentifier)
             await incomingTTS?.speak(text: translated, locale: locale)
         } catch {
+            skipTranscript(entry, error: error)
             handleTranslationFailure(error, outgoing: false)
         }
     }

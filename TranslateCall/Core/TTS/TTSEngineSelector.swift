@@ -40,13 +40,13 @@ final class TTSEngineSelector: ObservableObject {
     /// True when Edge TTS consent is needed for current locale.
     var needsEdgeTTSConsent: Bool {
         !hasSystemVoice(currentTargetLocale)
-            && !EdgeTTSConsentManager.consentGiven
+            && !edgeConsentGiven()
     }
 
     /// True when Edge TTS is being used for the current locale.
     var isUsingEdgeTTS: Bool {
         !hasSystemVoice(currentTargetLocale)
-            && EdgeTTSConsentManager.consentGiven
+            && edgeConsentGiven()
     }
 
     var usingFallback: Bool {
@@ -55,7 +55,7 @@ final class TTSEngineSelector: ObservableObject {
 
     // MARK: - UserDefaults
 
-    private let defaults: UserDefaults
+    let defaults: UserDefaults
     private static let engineKey = "tlk.tts.engine"
 
     // MARK: - Combine
@@ -67,6 +67,9 @@ final class TTSEngineSelector: ObservableObject {
     /// Whether a system (AVSpeech) voice exists for a locale. Injectable so tests don't depend
     /// on which voices the machine has installed.
     var hasSystemVoice: (Locale) -> Bool = { AVSpeechUtteranceSynthesizer.hasVoice(for: $0) }
+
+    /// Edge TTS consent (machine-wide); injectable so tests never depend on this Mac's answer.
+    var edgeConsentGiven: () -> Bool = { EdgeTTSConsentManager.consentGiven }
 
     /// The device output of one playback service (unit tests inject a `FakeOutput`).
     var outputFactory: (AudioDeviceID?) throws -> any AudioOutputting = { try TTSOutput(deviceID: $0) }
@@ -85,11 +88,19 @@ final class TTSEngineSelector: ObservableObject {
 
     // MARK: - Dependencies
 
-    private var profileStore: (any VoiceProfileStoring)?
+    /// Automatic choice inputs (M9 UI core §3.3); injectable for tests.
+    var catalog: ModelCatalog = .bundled
+    var cacheProbe: ModelCacheProbe = .live
+
+    private(set) var profileStore: (any VoiceProfileStoring)?
 
     // MARK: - Init
 
-    init(defaults: UserDefaults = .standard) {
+    /// `voiceCloneAutoLoad` replaces the launch-time load of REQ-VC-04 (manual mode only, D-6); nil = the real one.
+    init(
+        defaults: UserDefaults = .standard,
+        voiceCloneAutoLoad: (() async throws -> Void)? = nil
+    ) {
         self.defaults = defaults
         if let raw = defaults.string(forKey: Self.engineKey),
            let engine = TTSEngine(rawValue: raw) {
@@ -99,11 +110,16 @@ final class TTSEngineSelector: ObservableObject {
         observeModelManager()
         observeQwenCloneModelManager()
 
-        // REQ-VC-04: auto-load voice clone model on relaunch if previously enabled
-        if voiceCloningEnabled {
+        // REQ-VC-04: auto-load voice clone model on relaunch if previously enabled — manual mode only.
+        // In automatic mode (D-6) the preloader loads it ahead of Start, one MLX model at a time.
+        if voiceCloningEnabled, !ModelChoice.isAutomatic(in: defaults) {
             Task {
                 do {
-                    try await QwenCloneModelManager.shared.ensureReady()
+                    if let voiceCloneAutoLoad {
+                        try await voiceCloneAutoLoad()
+                    } else {
+                        try await QwenCloneModelManager.shared.ensureReady()
+                    }
                 } catch {
                     logger.info("Voice clone auto-load skipped: \(error.localizedDescription)")
                 }
@@ -116,6 +132,7 @@ final class TTSEngineSelector: ObservableObject {
     func setPreferredEngine(_ engine: TTSEngine) {
         preferredEngine = engine
         defaults.set(engine.rawValue, forKey: Self.engineKey)
+        setAutomatic(false)
     }
 
     /// Creates the outgoing TTS service for `locale` routed to `deviceID`.
@@ -204,6 +221,7 @@ final class TTSEngineSelector: ObservableObject {
     }
 
     private func outgoingPrimary(for locale: Locale) -> any UtteranceSynthesizer {
+        if isAutomatic { return automaticPrimary(for: locale, direction: .outgoing) }
         if preferredEngine == .edgeTTS, EdgeTTSVoiceCatalog.supports(locale) {
             return edgeFactory()
         }
@@ -221,6 +239,7 @@ final class TTSEngineSelector: ObservableObject {
     }
 
     private func incomingPrimary(for locale: Locale) -> any UtteranceSynthesizer {
+        if isAutomatic { return automaticPrimary(for: locale, direction: .incoming) }
         if preferredEngine == .edgeTTS, EdgeTTSVoiceCatalog.supports(locale) {
             return edgeFactory()
         }
@@ -229,9 +248,9 @@ final class TTSEngineSelector: ObservableObject {
 
     /// AVSpeech when a system voice exists, else Edge (consent required), else AVSpeech, which then
     /// skips each sentence with a visible "No voice" notice.
-    private func systemOrEdgePrimary(for locale: Locale) -> any UtteranceSynthesizer {
+    func systemOrEdgePrimary(for locale: Locale) -> any UtteranceSynthesizer {
         if hasSystemVoice(locale) { return avSpeechFactory() }
-        if EdgeTTSConsentManager.consentGiven, EdgeTTSVoiceCatalog.supports(locale) { return edgeFactory() }
+        if edgeConsentGiven(), EdgeTTSVoiceCatalog.supports(locale) { return edgeFactory() }
         return avSpeechFactory()
     }
 

@@ -5,25 +5,31 @@ import SwiftUI
 struct TranslateCallApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @StateObject private var container = AppContainer()
     @State private var menuBarController: MenuBarController?
 
     var body: some Scene {
         WindowGroup(id: MainWindowOpener.windowID) {
             // Translation bridges live in AppContainer's TranslationHostWindow, not here (F8.5.4 D-2).
-            ContentView()
+            MainSetupView()
             .environmentObject(container.audioViewModel)
             .environmentObject(container.languagePairManager)
             .environmentObject(container.setupManager)
             .environmentObject(container.voiceProfileManager)
             .environmentObject(container.audioViewModel.engineSelector)
             .environmentObject(container.audioViewModel.ttsEngineSelector)
+            .environmentObject(container.uiServices.callSession)
+            .environmentObject(container.uiServices.mainSetupModel)
             .onAppear {
                 // Only now: a host on screen before this point stops SwiftUI opening this window (A26).
                 container.translationHost.show()
                 MainWindowOpener.shared.openWindow = { [openWindow] in openWindow(id: MainWindowOpener.windowID) }
+                SettingsOpener.shared.openSettings = { [openSettings] in openSettings() }
                 guard menuBarController == nil else { return }
-                menuBarController = MenuBarController(viewModel: container.audioViewModel)
+                menuBarController = MenuBarController(
+                    viewModel: container.audioViewModel, session: container.uiServices.callSession,
+                    setup: container.uiServices.mainSetupModel, panel: container.uiServices.statusPanel)
             }
         }
         .windowResizability(.contentSize)
@@ -33,6 +39,39 @@ struct TranslateCallApp: App {
                     openFeedbackURL()
                 }
             }
+            CommandMenu("Call") {
+                CallCommandMenu(session: container.uiServices.callSession)
+            }
+        }
+        Settings {
+            SettingsView()
+                .environmentObject(container.audioViewModel)
+                .environmentObject(container.languagePairManager)
+                .environmentObject(container.setupManager)
+                .environmentObject(container.voiceProfileManager)
+                .environmentObject(container.audioViewModel.engineSelector)
+                .environmentObject(container.audioViewModel.ttsEngineSelector)
+                .environmentObject(container.uiServices.callSession)
+                .environmentObject(container.uiServices.mainSetupModel)
+        }
+    }
+
+    // MARK: - Call Commands
+
+    private struct CallCommandMenu: View {
+        @ObservedObject var session: CallSessionModel
+
+        var body: some View {
+            Button(session.isPaused ? "Resume" : "Pause") {
+                Task { await session.togglePause() }
+            }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .disabled(session.phase != .running)
+            Button("Skip My Next Sentence") {
+                session.skipNextSentence()
+            }
+            .keyboardShortcut("m", modifiers: [.command, .shift])
+            .disabled(session.phase != .running)
         }
     }
 

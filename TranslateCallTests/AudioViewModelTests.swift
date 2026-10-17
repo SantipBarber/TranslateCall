@@ -179,11 +179,22 @@ struct AudioViewModelTests {
         #expect(harness.viewModel.isSessionActive)
         harness.audioManager.stopCapture()
     }
+}
 
-    @Test("the coordinator's TTS notice reaches the view model")
-    func ttsNoticeIsBound() async {
+@Suite("AudioViewModel call-app selection (M9 UI core REQ-UI-80b)", .serialized) @MainActor
+struct AudioViewModelCallAppSelectionTests {
+
+    @Test("selecting an app by bundle ID mid-call re-targets a stopped incoming side")
+    func bundleSelectionRetries() async {
         let harness = ViewModelHarness()
-        harness.coordinator.showTTSNotice("Speech failed — sentence skipped")
-        #expect(await waitUntil { harness.viewModel.ttsNotice == "Speech failed — sentence skipped" })
+        await harness.mocks.mockSystemCapture.setThrowOnActivate(
+            SystemAudioCaptureError.targetNotFound(bundleID: "com.test.old"))
+        await harness.coordinator.start(captureTarget: .app(bundleID: "com.test.old"))
+        await harness.mocks.mockSystemCapture.setThrowOnActivate(nil)
+
+        harness.viewModel.setupManager.selectCaptureApp(bundleID: "com.test.new")
+
+        #expect(await waitUntil { harness.coordinator.incomingStatus == .active })
+        #expect(await harness.mocks.mockSystemCapture.activatedTargets.last == .app(bundleID: "com.test.new"))
     }
 }

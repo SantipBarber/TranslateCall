@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "stt": {
+    "en": ["parakeet", "whisper", "appleSpeech"],
+    "default": ["whisper", "appleSpeech"]
+  },
+  "ttsOutgoing": {
+    "en": ["voiceClone", "kokoro", "avSpeech"],
+    "default": ["voiceClone", "avSpeech"]
+  },
+  "ttsIncoming": {
+    "en": ["kokoro", "avSpeech"],
+    "default": ["avSpeech"]
+  }
+}
