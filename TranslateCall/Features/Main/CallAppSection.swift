@@ -66,7 +66,7 @@ struct CallAppRowView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            if !row.isRunning {
+            if !row.isRunning, !isSelected {   // R32: the chosen row shows only the checkmark
                 Button("Open", action: onOpen)
                     .buttonStyle(.bordered)
                     .controlSize(.small)

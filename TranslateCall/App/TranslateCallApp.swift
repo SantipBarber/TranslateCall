@@ -12,13 +12,15 @@ struct TranslateCallApp: App {
     var body: some Scene {
         WindowGroup(id: MainWindowOpener.windowID) {
             // Translation bridges live in AppContainer's TranslationHostWindow, not here (F8.5.4 D-2).
-            ContentView()
+            MainSetupView()
             .environmentObject(container.audioViewModel)
             .environmentObject(container.languagePairManager)
             .environmentObject(container.setupManager)
             .environmentObject(container.voiceProfileManager)
             .environmentObject(container.audioViewModel.engineSelector)
             .environmentObject(container.audioViewModel.ttsEngineSelector)
+            .environmentObject(container.uiServices.callSession)
+            .environmentObject(container.uiServices.mainSetupModel)
             .onAppear {
                 // Only now: a host on screen before this point stops SwiftUI opening this window (A26).
                 container.translationHost.show()
@@ -51,6 +53,8 @@ struct TranslateCallApp: App {
                 .environmentObject(container.voiceProfileManager)
                 .environmentObject(container.audioViewModel.engineSelector)
                 .environmentObject(container.audioViewModel.ttsEngineSelector)
+                .environmentObject(container.uiServices.callSession)
+                .environmentObject(container.uiServices.mainSetupModel)
         }
     }
 
