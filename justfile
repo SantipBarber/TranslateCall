@@ -49,32 +49,33 @@ test-bench-tools:
 
 # Download + normalise manifest clips into ~/Library/Caches/TranslateCallBench (override: TC_BENCH_CACHE). set: pr | full
 bench-fetch set="pr":
-    uv run --locked --project tools/bench tcbench fetch --set {{set}}
+    uv run --locked --project tools/bench tcbench fetch --set {{quote(set)}}
 
 # Regenerate bench/manifests/phase1.json (needs the optional 'vad' extra: silero-vad)
 bench-manifest:
     uv run --locked --extra vad --project tools/bench tcbench manifest
 
-# Estimate-then-run benchmark: fetch → build → real-time Swift tier → analyze → report → compare. set: pr | full;
+# Benchmark: fetch → build → real-time Swift tier → analyze → report → compare. set: pr | full;
+# (bench.sh reads the xcodebuild invocation from `xcb` above: one source.)
 # profile: all | basic | best; lines: comma-separated slugs, e.g. outgoing-es-419-en,incoming-en-es (empty = all)
 bench set="pr" profile="all" edge="0" lines="":
-    tools/scripts/bench.sh {{set}} {{profile}} {{edge}} "{{lines}}"
+    tools/scripts/bench.sh {{quote(set)}} {{quote(profile)}} {{quote(edge)}} {{quote(lines)}}
 
 # Import recordings of a variant for the benchmark (e.g. native speakers)
 bench-ingest dir variant native="false":
-    uv run --locked --project tools/bench tcbench ingest {{dir}} --variant {{variant}} --native {{native}}
+    uv run --locked --project tools/bench tcbench ingest {{quote(dir)}} --variant {{quote(variant)}} --native {{quote(native)}}
 
 # Compare a run (default: the latest) with bench/baseline.json
 bench-compare run="build/bench/runs/latest":
-    uv run --locked --project tools/bench tcbench compare {{run}}
+    uv run --locked --project tools/bench tcbench compare {{quote(run)}}
 
 # Rewrite report.html of a run (default: the latest)
 bench-report run="build/bench/runs/latest":
-    uv run --locked --project tools/bench tcbench report {{run}}
+    uv run --locked --project tools/bench tcbench report {{quote(run)}}
 
 # Promote a run to bench/baseline.json
 bench-baseline run reason:
-    uv run --locked --project tools/bench tcbench baseline {{run}} --reason "{{reason}}"
+    uv run --locked --project tools/bench tcbench baseline {{quote(run)}} --reason {{quote(reason)}}
 
 # Everything GitHub runs: lint + scan + tooling self-tests + bench tooling tests
 check: lint scan test-tooling test-bench-tools

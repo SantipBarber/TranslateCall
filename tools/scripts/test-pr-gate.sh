@@ -45,7 +45,7 @@ expect "failing step → failure" failure
 mkdir -p "$TMP/bin"
 printf '#!/usr/bin/env bash\necho "$*" >> %q\n' "$TMP/just-calls" > "$TMP/bin/just"; chmod +x "$TMP/bin/just"
 (unset TC_PR_STEPS; PATH="$TMP/bin:$PATH" TC_PR_COUNTS="10 0 5 0" tools/scripts/pr.sh >/dev/null 2>&1) || true
-expected=$'build\ncheck\ntest\ntest-integration\nbench pr all'
+expected=$'build\ncheck\ntest\ntest-integration\nbench pr basic'
 if [[ "$(cat "$TMP/just-calls" 2>/dev/null)" == "$expected" ]]; then echo "✓ default steps include the bench"
 else echo "✗ default steps: got '$(tr '\n' ';' < "$TMP/just-calls" 2>/dev/null)'"; fail=1; fi
 : > "$TMP/statuses"

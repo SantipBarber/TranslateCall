@@ -234,7 +234,7 @@ Phase 1 covers ES→EN and EN→ES, with Spain Spanish (`es-ES`) and Latin Ameri
 - `bench-report`;
 - `bench-baseline`.
 
-**REQ-BH-61**: `just pr` SHALL run the PR set for both profiles, after the integration tier, and fail on a quality ❌. The PR bench runs only on the Mac mini (F8.5.0 D-4); it SHALL fetch the PR set on first use.
+**REQ-BH-61**: `just pr` SHALL run the PR set for the Basic profile, after the integration tier, and fail on a quality ❌. Best local runs on demand via `just bench` and before each latency change (user decision 2026-10-17). The PR bench runs only on the Mac mini (F8.5.0 D-4); it SHALL fetch the PR set on first use.
 
 **REQ-BH-62**: Python tooling SHALL be run with `uv`, with versions locked (`pyproject.toml` + `uv.lock`). It SHALL have its own unit tests, run by `just check` or `just test`. It SHALL run on macOS and Linux.
 

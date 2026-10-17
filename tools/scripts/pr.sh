@@ -25,7 +25,7 @@ step="start"
 trap 'report_failure failure "failed at: $step"' ERR
 trap 'report_failure error "interrupted at: $step"; exit 130' INT TERM
 start=$SECONDS
-IFS=';' read -r -a steps <<<"${TC_PR_STEPS:-just build;just check;just test;just test-integration;just bench pr all}"
+IFS=';' read -r -a steps <<<"${TC_PR_STEPS:-just build;just check;just test;just test-integration;just bench pr basic}"
 for step in "${steps[@]}"; do
   echo "━━ $step ━━"
   $step

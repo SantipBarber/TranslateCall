@@ -149,6 +149,18 @@ def test_trend_uses_history(tmp_path, monkeypatch):
     assert "2026-01-01" in html
 
 
+def test_trend_ignores_latest_symlink_and_dirs_without_metrics(tmp_path, monkeypatch):
+    old, m = _build(tmp_path, monkeypatch, run_name="2026-01-01", total_ms=900)
+    cur, m = _build(tmp_path, monkeypatch, run_name="2026-02-01")
+    hist = tmp_path / "history"
+    (hist / "2026-01-01").mkdir(parents=True)
+    (hist / "2026-01-01" / "metrics.json").write_text((old / "metrics.json").read_text())
+    (hist / "2026-01-02-failed").mkdir()          # a failed run: no metrics.json
+    (hist / "latest").symlink_to("2026-01-01")      # would otherwise count the run twice
+    trend = report._trend(cur, hist, 10, json.loads((cur / "metrics.json").read_text())["aggregates"])
+    assert sorted({p["run"] for p in trend}) == ["2026-01-01", "2026-02-01"]
+
+
 def test_cli_report(tmp_path, monkeypatch, capsys):
     run_dir, manifest = _build(tmp_path, monkeypatch)
     mpath = tmp_path / "m.json"

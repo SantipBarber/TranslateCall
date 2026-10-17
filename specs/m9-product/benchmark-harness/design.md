@@ -193,6 +193,10 @@ The total is about 10 min, which is tight. **Measure-first gate (task 1 of the p
 - (b) cut to 6 clips per line;
 - (c) MT-only drops to 100 sentences.
 
+**Measured (2026-10-17, T14):** a Basic line takes about 2.25 min (137, 131 and 136 s for 3 lines); 3 lines took 7m18s end to end, including the build and analysis. The estimate in `tcbench.estimate` is calibrated on this (clip seconds x 2.0 + 15 s per line + 0.3 s per MT sentence + 60 s fixed). The full 4-line Basic run is therefore about 9 min, and adding Best would pass the 10 min limit.
+
+**Decision (user, 2026-10-17):** option (a). `just pr` runs the PR set for the Basic profile only (`just bench pr basic`, about 9 min). Best local is measured with `just bench` (pr or full) and before each latency change. `bench.sh` warns when a PR estimate exceeds 10 min.
+
 ## 4. Python tooling (`tools/bench/`)
 
 - `pyproject.toml` + `uv.lock`. Python 3.12. Package `tcbench`, CLI `tcbench <cmd>`.
