@@ -1,0 +1,8 @@
+{
+  "latencyP50RegressionPct": 10,
+  "latencyP90RegressionPct": 15,
+  "werIncreasePts": 2.0,
+  "chrfDropPts": 2.0,
+  "cutRateMaxPct": 5,
+  "cutRateIncreasePts": 2.0
+}
