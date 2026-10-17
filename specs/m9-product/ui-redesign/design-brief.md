@@ -94,3 +94,10 @@ The user reads a script shown on screen, so the sample covers the intonation the
 - Exact sizes, spacing, icons and copy, within macOS Human Interface Guidelines.
 - Visual treatment of the per-direction states and of the level meter (if kept).
 - How the language download step is shown inside the setup screen.
+
+## Text fitting rules for implementation (Claude's call, 2026-10-17)
+
+- Single-line labels (app names, status, chips, meter titles) truncate with an ellipsis (`.lineLimit(1)`, `.truncationMode(.tail)`) and never push siblings out of their row.
+- Last translated line in the compact status panel: at most 2 lines, then ellipsis.
+- Body copy (hints, notes, descriptions) wraps to the container width.
+- The prototype is audited for text overflowing its container; keep that audit at 0 when screens change.
