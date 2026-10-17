@@ -4,6 +4,8 @@ import SwiftUI
 /// Keeps both call-time translation bridges alive for the app's lifetime in an off-screen window,
 /// so translation does not depend on the main window being open (F8.5.4 D-2, REQ-TR-30/31).
 /// Borderless windows never become key or main; this one is also hidden from the Window menu.
+/// Created hidden: a visible window at launch makes SwiftUI skip the main window (A26), so the app
+/// calls `show()` once the main window is up.
 @MainActor
 final class TranslationHostWindow {
     let window: NSWindow
@@ -25,8 +27,13 @@ final class TranslationHostWindow {
             TranslationBridge(model: outgoing)
             TranslationBridge(model: incoming)
         })
-        window.orderBack(nil)
         self.window = window
+    }
+
+    /// Orders the host in (`.translationTask` only runs in a visible window). Safe to call repeatedly.
+    func show() {
+        guard !window.isVisible else { return }
+        window.orderBack(nil)
     }
 
     /// Tests only: the app keeps its host window until it quits.

@@ -48,6 +48,7 @@ func requireTranslationPack(from source: String, to target: String) async throws
 func hostTranslationBridge() -> (TranslationBridgeModel, TranslationHostWindow) {
     let model = TranslationBridgeModel()
     let host = TranslationHostWindow(outgoing: model, incoming: TranslationBridgeModel())
+    host.show()
     return (model, host)
 }
 
