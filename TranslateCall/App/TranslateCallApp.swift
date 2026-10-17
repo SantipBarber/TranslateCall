@@ -27,7 +27,9 @@ struct TranslateCallApp: App {
                 MainWindowOpener.shared.openWindow = { [openWindow] in openWindow(id: MainWindowOpener.windowID) }
                 SettingsOpener.shared.openSettings = { [openSettings] in openSettings() }
                 guard menuBarController == nil else { return }
-                menuBarController = MenuBarController(viewModel: container.audioViewModel)
+                menuBarController = MenuBarController(
+                    viewModel: container.audioViewModel, session: container.uiServices.callSession,
+                    setup: container.uiServices.mainSetupModel, panel: container.uiServices.statusPanel)
             }
         }
         .windowResizability(.contentSize)

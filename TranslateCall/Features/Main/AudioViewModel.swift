@@ -254,11 +254,7 @@ final class AudioViewModel: ObservableObject {
             await coordinator.stop()
         } else {
             // Check Edge TTS consent BEFORE starting
-            let targetLocale = Locale(
-                identifier: languagePairManager.targetLanguage.minimalIdentifier
-            )
-            if !AVSpeechUtteranceSynthesizer.hasVoice(for: targetLocale),
-               !EdgeTTSConsentManager.consentGiven {
+            if needsEdgeConsentBeforeStart {
                 // Show consent dialog and defer start
                 pendingStartAfterConsent = true
                 showEdgeTTSConsent = true

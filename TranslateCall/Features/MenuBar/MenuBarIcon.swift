@@ -15,3 +15,12 @@ nonisolated enum MenuBarDot: Equatable, Sendable {
     /// The base glyph; the dot is drawn over it.
     static let symbolName = "translate"
 }
+
+/// Whether the menu bar's Start must bring up the main window first (REQ-UI-36): something has to be
+/// shown (a missing pack, a card, the Edge TTS consent). A failure nobody can predict is covered by
+/// `CallSessionModel`, which brings the window up for an alert that stays (P27).
+nonisolated enum MenuBarStartPolicy {
+    static func needsMainWindow(readiness: Readiness, needsEdgeConsent: Bool) -> Bool {
+        !readiness.primaryEnabled || !readiness.cards.isEmpty || needsEdgeConsent
+    }
+}
