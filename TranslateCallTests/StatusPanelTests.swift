@@ -161,7 +161,7 @@ struct StatusPanelTests {
         other.bind(to: harness.session, defaults: off)
         await harness.coordinator.start(captureTarget: .app(bundleID: "com.test.call"))
         #expect(await waitUntil { harness.session.phase == .running })
-        try await Task.sleep(for: .milliseconds(100))
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in DispatchQueue.main.async { continuation.resume() } }
         #expect(!other.isVisible)
         await harness.session.stop()
     }
