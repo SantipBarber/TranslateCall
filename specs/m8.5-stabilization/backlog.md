@@ -86,3 +86,10 @@ Out of M8.5 (strategic, later): min macOS 26 / SpeechAnalyzer, WhisperKit → Ar
 |---|---------|-------|----------------|
 | T7 | Apple Translation costs ~250–450 ms per short sentence (model inference; 62 ms for one word), the same with a kept or a fresh session and with macOS 26 `TranslationSession(installedSource:target:)`. Further cuts need another engine or translating partial STT results. Owner: unassigned | `build/reports/latency.json` (`TranslationLatencyTests`) | recorded, ceiling 400 ms: `TranslationBridgeIntegrationTests.keptSessionLatency` |
 | T8 | Apple Translation framework errors are always wrapped as `.sessionError`, so a pack removed mid-call gives retries and notices instead of the REQ-TR-21 alert. Proposed fix: map `Translation.TranslationError` notInstalled / unsupportedLanguagePairing to the app's configuration errors, without retrying. Owner: unassigned | `TranslationBridge.swift` (~136) | — |
+
+## Found running the F8.5.4 manual checklist (2026-10-17)
+
+| # | Finding | Where | Guard in place |
+|---|---------|-------|----------------|
+| A26 | No main window and no menu-bar item at launch: `TranslationHostWindow` ordered itself in while `AppContainer` was built, so SwiftUI saw a visible window and skipped the `WindowGroup`'s initial window; the menu-bar item and `MainWindowOpener.openWindow` are set up in `ContentView.onAppear`, so nothing could open it afterwards | `TranslationHostWindow.swift`, `TranslateCallApp.swift` | fixed — host created hidden, shown on the main window's `onAppear`: `TranslationHostWindowTests.hiddenUntilShown`; manual M0 |
+| P-F854 | F8.5.4 manual checklist M1–M6 + M2b (merged without it, PR #7) | `specs/m8.5-stabilization/f8.5.4-translation/requirements.md` | done 2026-10-17 with the A26 fix: all pass. M1 note: the pause before translating is felt as delay — latency thread (VAD silence ≈ 0.7 s, see the latency research) |
