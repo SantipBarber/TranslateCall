@@ -9,12 +9,17 @@ struct ModelAvailability: Equatable {
     var whisperCached = false
     var kokoroCached = false
     var voiceCloneReady = false
+    var cloud = CloudSnapshot()
+
+    /// Parakeet, Whisper and Kokoro cached; no voice clone; no cloud.
+    static let allOnDisk = ModelAvailability(parakeetCached: true, whisperCached: true, kokoroCached: true)
 }
 
 // MARK: - ModelChoice
 
-/// Automatic engine choice (REQ-UI-21/22/24, design §3.2): the first catalog engine that supports
-/// the locale and is ready; otherwise Apple Speech / the system voice. A pure function.
+/// Engine resolution (M9 UI settings REQ-ST-02…04): the pair's choice when it is usable, otherwise the
+/// first catalog engine that serves the language and is ready, otherwise Apple Speech / the system voice.
+/// The voice clone wins outgoing whatever the choice. Pure functions.
 enum ModelChoice {
     /// Shared by both selectors: automatic (default `true`) or the engines picked by hand (REQ-UI-23).
     static let automaticKey = "tlk.models.automatic"
@@ -27,20 +32,53 @@ enum ModelChoice {
         defaults.set(automatic, forKey: automaticKey)
     }
 
-    /// Parakeet serves the outgoing direction only, as today (one shared ASR model).
-    static func stt(for locale: Locale, direction: TranscriptDirection,
+    // MARK: Resolution
+
+    static func stt(for locale: Locale, direction: TranscriptDirection, pairChoice: STTEngine? = nil,
                     catalog: ModelCatalog, availability: ModelAvailability) -> STTEngine {
-        catalog.sttEngines(for: locale).first { engine in
-            engine.supports(locale: locale) && isReady(engine, availability)
-                && !(engine == .parakeet && direction == .incoming)
+        if let pairChoice, isUsable(pairChoice, for: locale, direction: direction, availability: availability) {
+            return pairChoice
+        }
+        return catalog.sttEngines(for: locale).first {
+            isUsable($0, for: locale, direction: direction, availability: availability)
         } ?? .appleSpeech
     }
 
-    static func tts(for locale: Locale, direction: TranscriptDirection,
+    static func tts(for locale: Locale, direction: TranscriptDirection, pairChoice: TTSEngine? = nil,
                     catalog: ModelCatalog, availability: ModelAvailability) -> TTSEngine {
-        catalog.ttsEngines(for: locale, direction: direction).first { engine in
-            engine.supports(locale: locale) && isReady(engine, availability)
+        let listed = catalog.ttsEngines(for: locale, direction: direction)
+        if listed.contains(.voiceClone),
+           isUsable(.voiceClone, for: locale, direction: direction, availability: availability) {
+            return .voiceClone
+        }
+        if let pairChoice, isUsable(pairChoice, for: locale, direction: direction, availability: availability) {
+            return pairChoice
+        }
+        return listed.first {
+            isUsable($0, for: locale, direction: direction, availability: availability)
         } ?? .avSpeech
+    }
+
+    // MARK: Serving and readiness
+
+    /// Language and direction only; the disk is not consulted.
+    static func serves(_ engine: STTEngine, locale: Locale, direction: TranscriptDirection) -> Bool {
+        // Parakeet serves the outgoing direction only (one shared ASR model).
+        engine.supports(locale: locale) && !(engine == .parakeet && direction == .incoming)
+    }
+
+    static func serves(_ engine: TTSEngine, locale: Locale, direction: TranscriptDirection) -> Bool {
+        engine.supports(locale: locale) && !(engine == .voiceClone && direction == .incoming)
+    }
+
+    static func isUsable(_ engine: STTEngine, for locale: Locale, direction: TranscriptDirection,
+                         availability: ModelAvailability) -> Bool {
+        serves(engine, locale: locale, direction: direction) && isReady(engine, availability)
+    }
+
+    static func isUsable(_ engine: TTSEngine, for locale: Locale, direction: TranscriptDirection,
+                         availability: ModelAvailability) -> Bool {
+        serves(engine, locale: locale, direction: direction) && isReady(engine, availability)
     }
 
     private static func isReady(_ engine: STTEngine, _ availability: ModelAvailability) -> Bool {
@@ -57,7 +95,7 @@ enum ModelChoice {
         case .avSpeech: true
         case .kokoro: availability.kokoroCached && !availability.voiceCloneReady
         case .voiceClone: availability.voiceCloneReady
-        case .edgeTTS: false
+        case .edgeTTS: availability.cloud.permits(.edgeTTS)
         }
     }
 }
