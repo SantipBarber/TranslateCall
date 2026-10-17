@@ -184,3 +184,8 @@ docs/.doctrees/
 
 ## Local tooling (tools/scripts/setup.sh)
 tools/bin/
+
+## Bench tooling (tools/bench)
+tools/bench/.venv/
+.pytest_cache/
+__pycache__/

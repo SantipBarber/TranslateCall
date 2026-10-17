@@ -7,7 +7,7 @@ xcb := "xcodebuild -project TranslateCall.xcodeproj -scheme TranslateCall -desti
 default:
     @just --list
 
-# Install / verify tooling (opengrep, swiftlint, xcbeautify, Metal Toolchain)
+# Install / verify tooling (opengrep, uv, swiftlint, xcbeautify, Metal Toolchain)
 setup:
     tools/scripts/setup.sh
 
@@ -43,8 +43,12 @@ test-tooling:
     tools/scripts/test-pr-guards.sh
     tools/scripts/test-pr-gate.sh
 
-# Everything GitHub runs: lint + scan + tooling self-tests
-check: lint scan test-tooling
+# Python benchmark tooling tests (tools/bench; no network)
+test-bench-tools:
+    uv run --project tools/bench pytest -q
+
+# Everything GitHub runs: lint + scan + tooling self-tests + bench tooling tests
+check: lint scan test-tooling test-bench-tools
 
 # Run selected unit tests, e.g. `just test-only WordErrorRateTests FileAudioSourceTests`
 test-only +suites:

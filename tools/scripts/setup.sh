@@ -29,7 +29,20 @@ install_opengrep() {
   ok "opengrep $OPENGREP_VERSION installed"
 }
 
+# uv runs the Python benchmark tooling (tools/bench). Official installer at the pinned version, not brew.
+install_uv() {
+  export PATH="$HOME/.local/bin:$PATH"
+  if [[ "$(uv --version 2>/dev/null)" == "uv $UV_VERSION"* ]]; then
+    ok "uv $UV_VERSION"; return
+  fi
+  info "Installing uv $UV_VERSION…"
+  curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh >/dev/null
+  [[ "$(uv --version 2>/dev/null)" == "uv $UV_VERSION"* ]] || fail "uv $UV_VERSION not available after install"
+  ok "uv $UV_VERSION installed"
+}
+
 install_opengrep
+install_uv
 $CI_MODE && exit 0
 
 command -v brew >/dev/null || fail "Homebrew required: https://brew.sh"
@@ -47,6 +60,7 @@ ok "xcbeautify $XCBEAUTIFY_VERSION"
 xcode=$(xcodebuild -version); xcode=${xcode%%$'\n'*}
 [[ "$xcode" == "Xcode $XCODE_VERSION" ]] || fail "Xcode $XCODE_VERSION required (found: $xcode)"
 ok "Xcode $XCODE_VERSION"
+uv sync --project tools/bench --quiet && ok "tools/bench environment"
 # `xcrun -f metal` finds a stub even without the toolchain; only running it proves it is installed.
 if ! xcrun metal --version >/dev/null 2>&1; then
   info "Installing Metal Toolchain (needed by mlx-swift)…"

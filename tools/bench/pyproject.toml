@@ -1,0 +1,35 @@
+[project]
+name = "tcbench"
+version = "0.1.0"
+description = "TranslateCall M9 benchmark tooling: computes every metric from the Swift runner's raw.json"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "numpy==1.26.4",
+    "huggingface_hub==0.36.2",
+    "soundfile==0.14.0",
+    "soxr==1.1.0",
+    "sacrebleu==2.6.0",
+    "jinja2==3.1.6",
+]
+
+[project.optional-dependencies]
+# Heavy (torch); unbabel-comet needs numpy<2 and huggingface-hub<1, hence those pins.
+comet = ["unbabel-comet==2.2.7"]
+vad = ["silero-vad==6.2.3"]
+
+[project.scripts]
+tcbench = "tcbench.cli:main"
+
+[dependency-groups]
+dev = ["pytest==9.1.1"]
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tcbench"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

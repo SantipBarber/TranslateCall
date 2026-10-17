@@ -26,6 +26,16 @@ jobs:
         run: |
           git config --global user.email ci@example.invalid && git config --global user.name ci
           tools/scripts/test-pr-guards.sh && tools/scripts/test-pr-gate.sh
+      - name: Read pinned uv version
+        id: uv
+        run: |
+          source tools/versions.env
+          echo "version=${UV_VERSION}" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ steps.uv.outputs.version }}
+      - name: Bench tooling tests
+        run: uv run --project tools/bench pytest -q
       - name: SwiftLint
         run: |
           source tools/versions.env
