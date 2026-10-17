@@ -42,25 +42,24 @@ extension BenchTests {
         }
 
         private func run(_ fixtures: [AudioFixture], repeats: Int) async throws -> Run {
-            let log = ScheduleLog()
-            let session = try BenchPipelineFactory.makeBasic(.outgoingEsESToEn, output: log)
+            let options = BenchOptions()
+            let session = try await BenchPipelineFactory.make(.outgoingEsESToEn, options: options)
+            let log = session.output
             var result = Run()
             let started = ContinuousClock.now
-            await session.coordinator.start()
-            try requirePrerequisite(session.coordinator.isOutgoingActive, "bench session started")
-            try requirePrerequisite(session.vads.activeEngine == .silero, "Silero VAD")
-            await session.mic.player.playSilence(seconds: 2)   // translation warm-up (REQ-TR-05)
+            try await BenchPipelineFactory.start(session, options: options)
+            await session.player.playSilence(seconds: 2)   // translation warm-up (REQ-TR-05)
             result.sessionStart = started.duration(to: .now).milliseconds / 1000
             for fixture in Array(repeating: fixtures, count: repeats).flatMap({ $0 }) {
                 let samples = try FileAudioSource.decode16kMono(Fixtures.url(for: fixture))
                 print("BENCH-CLIP start \(fixture.id) \(Date())")
-                let feed = await session.mic.player.play(samples)
+                let feed = await session.player.play(samples)
                 print("BENCH-CLIP fed \(fixture.id) \(Date())")
                 let speechEnd = feed.instant(ofSample: Self.lastLoudSample(samples))
                 let heard = await waitUntil(timeout: .seconds(15)) { log.scheduleTimes.contains { $0 > speechEnd } }
                 try requirePrerequisite(heard, "TTS audio for \(fixture.id) within 15 s")
-                await session.mic.player.playSilence(seconds: 1.0)   // let synthesis finish, then the gap
-                await session.mic.player.playSilence(seconds: 0.5)
+                await session.player.playSilence(seconds: 1.0)   // let synthesis finish, then the gap
+                await session.player.playSilence(seconds: 0.5)
                 if let firstBuffer = log.scheduleTimes.first(where: { $0 > speechEnd }) {
                     result.totalsMs.append(speechEnd.duration(to: firstBuffer).milliseconds)
                 }

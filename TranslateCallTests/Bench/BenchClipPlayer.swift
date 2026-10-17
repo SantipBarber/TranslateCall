@@ -71,9 +71,15 @@ final class BenchClipPlayer: Sendable {
     }
 
     /// Plays `samples` (16 kHz mono) in real time; returns when the last chunk was delivered.
+    /// Plays one clip at a time on a started stream: a second call while one is pending, or a call
+    /// on a stopped player, would overwrite the earlier continuation or never return, so both fail loudly.
     func play(_ samples: [Float]) async -> ClipFeed {
         await withCheckedContinuation { done in
-            state.withLock { $0.pending = Pending(samples: samples, done: done) }
+            state.withLock { current in
+                precondition(current.continuation != nil, "BenchClipPlayer.play on a stopped player would never return")
+                precondition(current.pending == nil, "BenchClipPlayer.play while another clip is pending")
+                current.pending = Pending(samples: samples, done: done)
+            }
         }
     }
 
