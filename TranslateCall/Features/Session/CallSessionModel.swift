@@ -22,6 +22,8 @@ final class CallSessionModel: ObservableObject {
     @Published private(set) var notices: [String] = []
     /// A mid-call error shown as a notice instead of an alert (REQ-UI-36/82).
     @Published private(set) var panelNotice: String?
+    /// A sentence is being translated in either direction (the transcript's "Translating…" capsule).
+    @Published private(set) var isTranslating = false
 
     let coordinator: AudioCoordinator
     let viewModel: AudioViewModel
@@ -118,35 +120,49 @@ final class CallSessionModel: ObservableObject {
 
     // MARK: Derivation
 
+    /// Assigns only real changes: every coordinator tick lands here, and an unchanged `@Published`
+    /// assignment would still re-render every observing view.
     private func recompute() {
         let coordinator = coordinator
-        phase = Self.phase(launching: isLaunching, starting: coordinator.isStarting,
-                           active: coordinator.isOutgoingActive)
-        isPaused = coordinator.isPaused
-        incomingStatus = coordinator.incomingStatus
-        outgoing = .outgoing(paused: coordinator.isPaused, micPaused: coordinator.isMicPaused,
-                             speaking: coordinator.isOutgoingSpeaking, translating: coordinator.isOutgoingTranslating,
-                             speech: coordinator.isSpeechActive)
-        incoming = .incoming(status: coordinator.incomingStatus, paused: coordinator.isPaused,
-                             speaking: coordinator.isIncomingSpeaking, translating: coordinator.isIncomingTranslating,
-                             speech: coordinator.isIncomingSpeechActive)
-        title = .derive(isStarting: coordinator.isStarting, isPaused: coordinator.isPaused, incoming: incoming)
-        if transcript != coordinator.transcript { transcript = coordinator.transcript }
-        sessionStartedAt = coordinator.sessionStartedAt
+        set(\.phase, Self.phase(launching: isLaunching, starting: coordinator.isStarting,
+                                active: coordinator.isOutgoingActive))
+        set(\.isPaused, coordinator.isPaused)
+        set(\.incomingStatus, coordinator.incomingStatus)
+        set(\.outgoing, .outgoing(paused: coordinator.isPaused, micPaused: coordinator.isMicPaused,
+                                  speaking: coordinator.isOutgoingSpeaking,
+                                  translating: coordinator.isOutgoingTranslating, speech: coordinator.isSpeechActive))
+        set(\.incoming, .incoming(status: coordinator.incomingStatus, paused: coordinator.isPaused,
+                                  speaking: coordinator.isIncomingSpeaking,
+                                  translating: coordinator.isIncomingTranslating,
+                                  speech: coordinator.isIncomingSpeechActive))
+        set(\.title, .derive(isStarting: coordinator.isStarting, isPaused: coordinator.isPaused, incoming: incoming))
+        set(\.isTranslating, coordinator.isOutgoingTranslating || coordinator.isIncomingTranslating)
+        set(\.transcript, coordinator.transcript)
+        set(\.sessionStartedAt, coordinator.sessionStartedAt)
         if coordinator.ttsNotice != lastTTSNotice {   // only a new TTS line is newer than the panel notice
             lastTTSNotice = coordinator.ttsNotice
             newestTransient = lastTTSNotice ?? panelNotice
         }
         if phase == .idle { clearPanelNotice() }
         routeAlert()
-        notices = Self.composeNotices(listeningMode: viewModel.conversationSettings.listeningMode,
-                                      transient: newestTransient)
+        set(\.notices, Self.composeNotices(listeningMode: viewModel.conversationSettings.listeningMode,
+                                           transient: newestTransient))
+    }
+
+    private func set<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<CallSessionModel, Value>, _ value: Value) {
+        if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
     }
 
     nonisolated static func phase(launching: Bool, starting: Bool, active: Bool) -> SessionPhase {
         if launching { return .launching }
         if starting { return .starting }
         return active ? .running : .idle
+    }
+
+    /// The main window presents an `errorAlert` only with no session (REQ-UI-82, P14): while starting it
+    /// waits for the outcome, and mid-call `routeAlert` turns it into a notice on the next main-queue turn.
+    nonisolated static func mainWindowShowsAlert(isStarting: Bool, phase: SessionPhase) -> Bool {
+        !isStarting && phase == .idle
     }
 
     /// The one place an `errorAlert` is routed (REQ-UI-36/82, P14, P27):

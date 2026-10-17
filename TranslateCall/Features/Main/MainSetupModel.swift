@@ -10,6 +10,11 @@ final class MainSetupModel: ObservableObject {
     @Published private(set) var permissions: PermissionState
     @Published private(set) var pair: PairReadiness = .checking
     @Published private(set) var readiness: Readiness
+    /// The monitor's row for the persisted choice; nil = none.
+    @Published private(set) var selectedRow: CallAppRow?
+    /// The pair as the panel and the popover show it (they observe this model, not the manager).
+    @Published private(set) var sourceLanguage: Locale.Language
+    @Published private(set) var targetLanguage: Locale.Language
 
     let monitor: CallAppMonitor
     let setupManager: SetupManager
@@ -31,6 +36,8 @@ final class MainSetupModel: ObservableObject {
         readPermissions = permissions
         let current = permissions()
         self.permissions = current
+        sourceLanguage = languagePairManager.sourceLanguage
+        targetLanguage = languagePairManager.targetLanguage
         readiness = Readiness.derive(permissions: current, blackHolePresent: setupManager.isBlackHolePresent,
                                      pair: .checking, app: nil, phase: session.phase)
         let changes: [ObservableObjectPublisher] = [
@@ -43,12 +50,6 @@ final class MainSetupModel: ObservableObject {
                 .store(in: &cancellables)
         }
         recompute()
-    }
-
-    /// The monitor's row for the persisted choice; nil = none.
-    var selectedRow: CallAppRow? {
-        guard let id = setupManager.selectedCaptureBundleID else { return nil }
-        return monitor.rows.first { $0.bundleID == id }
     }
 
     // MARK: Actions
@@ -89,10 +90,14 @@ final class MainSetupModel: ObservableObject {
 
     // MARK: Derivation
 
+    /// Publishes only real changes (each source's `objectWillChange` lands here).
     private func recompute() {
+        let row = setupManager.selectedCaptureBundleID.flatMap { id in monitor.rows.first { $0.bundleID == id } }
+        if row != selectedRow { selectedRow = row }
+        if languagePairManager.sourceLanguage != sourceLanguage { sourceLanguage = languagePairManager.sourceLanguage }
+        if languagePairManager.targetLanguage != targetLanguage { targetLanguage = languagePairManager.targetLanguage }
         let derived = Readiness.derive(permissions: permissions, blackHolePresent: setupManager.isBlackHolePresent,
                                        pair: pair, app: selectedRow, phase: session.phase)
         if derived != readiness { readiness = derived }
-        objectWillChange.send()
     }
 }

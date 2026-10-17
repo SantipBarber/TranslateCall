@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Testing
 @testable import TranslateCall
@@ -101,4 +102,21 @@ struct MainSetupModelTests {
         #expect(harness.model.readiness.cards.first == .microphoneOff)
         #expect(!harness.model.readiness.primaryEnabled)
     }
+
+    @Test("a session change that changes nothing here publishes nothing; the pair the views read is published")
+    func publishesOnlyChanges() async {
+        let harness = SetupHarness()
+        await mainQueueHop()
+        let changes = CallCounter()
+        let subscription = harness.model.objectWillChange.sink { changes.increment() }
+        harness.model.session.objectWillChange.send()
+        await mainQueueHop()
+        #expect(changes.value == 0)
+
+        await harness.languages.setTargetLanguage(Locale.Language(identifier: "es"))
+        #expect(await waitUntil { harness.model.targetLanguage == Locale.Language(identifier: "es") })
+        #expect(changes.value > 0)
+        subscription.cancel()
+    }
 }
+

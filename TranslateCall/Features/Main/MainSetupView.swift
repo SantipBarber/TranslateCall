@@ -146,9 +146,13 @@ struct MainSetupView: View {
         )
     }
 
-    /// P14: a start-time failure is shown by the session, not by this alert, while `isStarting`.
+    /// Only with no session (P14, REQ-UI-82): a start-time failure waits for the outcome, and a mid-call
+    /// error becomes a panel notice (`CallSessionModel.routeAlert`), never a modal here.
     private var errorAlert: Binding<AlertItem?> {
-        Binding(get: { viewModel.isStarting ? nil : viewModel.errorAlert },
+        Binding(get: {
+                    CallSessionModel.mainWindowShowsAlert(isStarting: viewModel.isStarting, phase: session.phase)
+                        ? viewModel.errorAlert : nil
+                },
                 set: { viewModel.errorAlert = $0 })
     }
 

@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Testing
 @testable import TranslateCall
@@ -244,4 +245,26 @@ struct CallSessionModelTests {
         #expect(provider.latestLatency(for: .outgoing) == nil)
         #expect(Duration.milliseconds(900).latencyLabel == "0.9 s")
     }
+
+    @Test("the main window shows an error alert only with no session: never mid-call (REQ-UI-82, P14)")
+    func mainWindowAlertOnlyWhenIdle() {
+        #expect(CallSessionModel.mainWindowShowsAlert(isStarting: false, phase: .idle))
+        #expect(!CallSessionModel.mainWindowShowsAlert(isStarting: true, phase: .idle))
+        #expect(!CallSessionModel.mainWindowShowsAlert(isStarting: false, phase: .running))
+        #expect(!CallSessionModel.mainWindowShowsAlert(isStarting: false, phase: .starting))
+        #expect(!CallSessionModel.mainWindowShowsAlert(isStarting: false, phase: .launching))
+    }
+
+    @Test("a coordinator change that changes nothing visible publishes nothing (no fan-out)")
+    func noFanOutWithoutChange() async {
+        let harness = SessionHarness()
+        await mainQueueHop()
+        let changes = CallCounter()
+        let subscription = harness.session.objectWillChange.sink { changes.increment() }
+        harness.coordinator.objectWillChange.send()
+        await mainQueueHop()
+        #expect(changes.value == 0)
+        subscription.cancel()
+    }
 }
+

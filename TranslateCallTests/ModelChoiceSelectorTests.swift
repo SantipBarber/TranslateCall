@@ -162,10 +162,3 @@ struct ModelChoiceSelectorTests {
     }
 }
 
-/// Lets tasks already queued on the main actor run before asserting that something did not happen.
-@MainActor
-private func mainQueueHop() async {
-    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-        DispatchQueue.main.async { continuation.resume() }
-    }
-}

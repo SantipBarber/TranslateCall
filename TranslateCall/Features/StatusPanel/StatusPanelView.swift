@@ -130,8 +130,7 @@ struct StatusPanelView: View {
     @AppStorage(UISettingsKeys.showLatency) private var showLatency = true
 
     var body: some View {
-        let languages = model.languagePairManager
-        let (source, target) = (languages.sourceLanguage, languages.targetLanguage)
+        let (source, target) = (model.sourceLanguage, model.targetLanguage)
         let appName = model.selectedRow?.appName ?? String(localized: "No call app")
         StatusPanelContent(
             dot: MenuBarDot.derive(phase: session.phase, title: session.title),
@@ -140,7 +139,7 @@ struct StatusPanelView: View {
             outgoing: row(.outgoing, from: source, to: target, appName: appName),
             incoming: row(.incoming, from: target, to: source, appName: appName),
             notices: session.notices, transcript: session.transcript,
-            isTranslating: session.coordinator.isOutgoingTranslating || session.coordinator.isIncomingTranslating,
+            isTranslating: session.isTranslating,
             sessionActive: TranscriptRules.isSessionActive(session.phase), showsLatency: showLatency,
             onTogglePause: { Task { await session.togglePause() } },
             onStop: { Task { await session.stop() } },

@@ -166,6 +166,24 @@ struct StatusPanelTests {
         await harness.session.stop()
     }
 
+    @Test("turning Show the status panel off mid-call hides the panel; on again shows it (REQ-UI-40)")
+    func settingFollowedMidCall() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "test-\(UUID().uuidString)"))
+        UISettingsKeys.registerDefaults(in: defaults)
+        let harness = SessionHarness()
+        let controller = makeController()
+        defer { controller.panel.close() }
+        controller.bind(to: harness.session, defaults: defaults)
+        await harness.coordinator.start(captureTarget: .app(bundleID: "com.test.call"))
+        #expect(await waitUntil { controller.isVisible })
+        defaults.set(false, forKey: UISettingsKeys.showStatusPanel)
+        #expect(await waitUntil { !controller.isVisible })
+        defaults.set(true, forKey: UISettingsKeys.showStatusPanel)
+        #expect(await waitUntil { controller.isVisible })
+        await harness.session.stop()
+        #expect(await waitUntil { !controller.isVisible })
+    }
+
     @Test("quotes follow the language: «» Spanish, „“ German, “” English")
     func quotes() {
         #expect(PanelQuote.wrap("Hola", languageCode: "es") == "«Hola»")

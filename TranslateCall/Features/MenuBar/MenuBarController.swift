@@ -135,12 +135,12 @@ final class MenuBarController: NSObject {
     // MARK: - State observation
 
     private func observeState() {
-        cancellable = session.$phase
-            .combineLatest(session.$title)
+        cancellable = session.$phase.removeDuplicates()
+            .combineLatest(session.$title.removeDuplicates())
+            .map { phase, title in MenuBarDot.derive(phase: phase, title: title) }
+            .removeDuplicates()
             .receive(on: RunLoop.main)
-            .sink { [weak self] phase, title in
-                self?.updateIcon(dot: MenuBarDot.derive(phase: phase, title: title))
-            }
+            .sink { [weak self] dot in self?.updateIcon(dot: dot) }
     }
 
     private func updateIcon(dot: MenuBarDot) {
