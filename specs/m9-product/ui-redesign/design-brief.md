@@ -86,7 +86,7 @@ The user reads a script shown on screen, so the sample covers the intonation the
 - **Menu bar** stays: TranslateCall is usable from the menu bar alone.
 - **What the app picker drives:** the ScreenCaptureKit source for incoming audio (as today) and the per-app text of the "set BlackHole as your microphone" instructions in first-run setup. One generic setup flow with per-app copy, not a separate flow per app. A browser-based call (Meet) captures the whole browser, as today. "Outgoing only" (no capture app) stays available under "Other app…".
 - **"Use my voice" availability:** Qwen3-TTS covers the priority languages (ES/EN/DE). For a target language it can't voice, the toggle is shown disabled with a one-line reason. The clone flow includes the model download step when the model isn't on disk yet.
-- **Prototype scope:** static high-fidelity frames in pen.dev, light mode first; dark-mode variants only for the main window and the status panel. Future states (partial transcripts, latency indicator) get reserved space in the status panel, not full designs.
+- **Prototype scope:** static high-fidelity frames in pen.dev, light and dark variants of every screen (dark placed next to its light twin; the video-call context mock is dark only). Future states (partial transcripts, latency indicator) get reserved space in the status panel, not full designs.
 - **Status panel over full-screen call apps:** shown (auxiliary panel). The app keeps its Dock icon while the main window is open. After Start, the main window hides and the status panel appears.
 
 ## Left to the builder (the prototype)
