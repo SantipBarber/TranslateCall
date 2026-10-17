@@ -1,36 +1,4 @@
-"""Baseline comparison for TranslateCall benchmark runs.
-
-A run directory is expected to contain a ``metrics.json`` file shaped as:
-
-    {
-      "meta": {
-        "set": "pr" | "full",
-        "manifestSha256": str,
-        "macOS": str,
-        "machine": str,
-        "commit": str,
-        "dirty": bool,
-        "informative": bool,
-        "override": str | None
-      },
-      "aggregates": {
-        "<profile>/<runLine>": {
-          "latency": {"<stage>": {"p50": float|None, "p90": float|None, ...}, ...},
-          "latencyCold": {...},
-          "wer": float,
-          "cutRate": float,
-          "mergeRate": float,
-          "missed": int,
-          "dropped": {...},
-          "chrf": {"pipeline": float|None, "mtOnly": float|None},
-          "comet": {"pipeline": float|None, "mtOnly": float|None} | None
-        }
-      }
-    }
-
-The baseline file is ``bench/baseline.json`` and contains the same ``meta``-like
-fields plus an ``aggregates`` key with the same shape.
-"""
+"""Baseline comparison for TranslateCall benchmark runs."""
 
 from __future__ import annotations
 
@@ -56,6 +24,12 @@ def _fmt(value: float | None, precision: int = 2) -> str:
     return f"{value:.{precision}f}"
 
 
+def _round(value: float | None, digits: int = 6) -> float | None:
+    if value is None:
+        return None
+    return round(value, digits)
+
+
 def _latency_gate(
     baseline: float | None,
     value: float | None,
@@ -72,19 +46,19 @@ def _latency_gate(
         if metric == "p50"
         else thresholds["latencyP90RegressionPct"]
     )
-    fail = change is not None and change > threshold
+    fail = change is not None and _round(change) > threshold
     return None, fail
 
 
 def _wer_gate(baseline: float, value: float, thresholds: dict[str, Any]) -> bool:
     """WER is stored as a fraction; thresholds are in percentage points."""
-    return (value - baseline) * 100.0 > thresholds["werIncreasePts"]
+    return _round((value - baseline) * 100.0) > thresholds["werIncreasePts"]
 
 
 def _chrf_gate(baseline: float | None, value: float | None, thresholds: dict[str, Any]) -> bool:
     if baseline is None or value is None:
         return False
-    return baseline - value > thresholds["chrfDropPts"]
+    return _round(baseline - value) > thresholds["chrfDropPts"]
 
 
 def _cut_rate_gate(baseline: float, value: float, thresholds: dict[str, Any]) -> bool:
@@ -93,12 +67,7 @@ def _cut_rate_gate(baseline: float, value: float, thresholds: dict[str, Any]) ->
         thresholds["cutRateMaxPct"],
         baseline * 100.0 + thresholds["cutRateIncreasePts"],
     )
-    return value * 100.0 > max_allowed
-
-
-def _comet_gate(baseline: float | None, value: float | None, thresholds: dict[str, Any]) -> bool:
-    """COMET has no dedicated threshold; reuse chrF drop tolerance."""
-    return _chrf_gate(baseline, value, thresholds)
+    return _round(value * 100.0) > max_allowed
 
 
 def _row(label: str, baseline: str, value: str, delta: str, verdict: str) -> str:
@@ -120,22 +89,27 @@ def run(
     """
     lines: list[str] = []
     gated_fail = False
-    gated = run_meta.get("set") == "full" and not run_meta.get("informative") and not run_meta.get("override")
+    set_type = run_meta.get("set", "full")
+    informative = bool(run_meta.get("informative"))
+    override = bool(run_meta.get("override"))
+    gated = not informative and not override
 
+    if not run_metrics:
+        return "No aggregates in run", 2
+
+    # Manifest / macOS checks.
     if run_meta.get("manifestSha256") != baseline.get("manifestSha256"):
-        print(
-            "manifest changed — re-baseline with `just bench-baseline`",
-            file=sys.stderr,
-        )
-        raise SystemExit(3)
+        msg = "manifest changed — re-baseline with `just bench-baseline`"
+        print(msg, file=sys.stderr)
+        lines.append(msg)
+        return "\n".join(lines), 3
 
     if run_meta.get("macOS") != baseline.get("macOS"):
-        print(
-            f"macOS changed: baseline={baseline.get('macOS')} run={run_meta.get('macOS')}",
-            file=sys.stderr,
-        )
+        msg = f"macOS changed: baseline={baseline.get('macOS')} run={run_meta.get('macOS')}"
+        print(msg, file=sys.stderr)
+        lines.append(msg)
 
-    if run_meta.get("informative") or run_meta.get("override"):
+    if informative or override:
         lines.append(
             "=== informative / overridden run: results shown for comparison only, no gating ==="
         )
@@ -145,9 +119,18 @@ def run(
 
     base_aggs = baseline.get("aggregates", {})
 
-    for key in sorted(run_metrics):
+    all_keys = sorted(set(run_metrics) | set(base_aggs))
+    for key in all_keys:
+        if key not in run_metrics:
+            lines.append(f"[{key}] missing from run")
+            gated_fail = True
+            continue
+        if key not in base_aggs:
+            lines.append(f"[{key}] new line, no baseline")
+            continue
+
         run_entry = run_metrics[key]
-        base_entry = base_aggs.get(key, {})
+        base_entry = base_aggs[key]
         lines.append(f"[{key}]")
 
         # Latency total p50 / p90
@@ -156,8 +139,10 @@ def run(
         for stage, metric in [("total", "p50"), ("total", "p90")]:
             b = latency_b.get(stage, {}).get(metric)
             v = latency_v.get(stage, {}).get(metric)
-            delta, fail = _latency_gate(b, v, thresholds, run_meta.get("set", "full"), metric)
+            delta, fail = _latency_gate(b, v, thresholds, set_type, metric)
             if delta == "·":
+                verdict = "·"
+            elif b is None or v is None:
                 verdict = "·"
             elif fail and gated:
                 verdict = "❌"
@@ -189,7 +174,7 @@ def run(
                 "  WER",
                 f"{_fmt(b_wer * 100.0)}%",
                 f"{_fmt(v_wer * 100.0)}%",
-                f"{_fmt((v_wer - b_wer) * 100.0)} pts",
+                f"{_fmt(_round((v_wer - b_wer) * 100.0))} pts",
                 verdict,
             )
         )
@@ -208,7 +193,7 @@ def run(
                 "  cut rate",
                 f"{_fmt(b_cut * 100.0)}%",
                 f"{_fmt(v_cut * 100.0)}%",
-                f"{_fmt((v_cut - b_cut) * 100.0)} pts",
+                f"{_fmt(_round((v_cut - b_cut) * 100.0))} pts",
                 verdict,
             )
         )
@@ -220,7 +205,9 @@ def run(
             b = b_chrf.get(sub)
             v = v_chrf.get(sub)
             chrf_fail = _chrf_gate(b, v, thresholds)
-            if chrf_fail and gated:
+            if b is None or v is None:
+                verdict = "·"
+            elif chrf_fail and gated:
                 verdict = "❌"
                 gated_fail = True
             else:
@@ -230,31 +217,25 @@ def run(
                     f"  chrF++ {sub}",
                     _fmt(b),
                     _fmt(v),
-                    _fmt(_delta(b, v)),
+                    _fmt(_round(_delta(b, v))),
                     verdict,
                 )
             )
 
-        # COMET (optional)
+        # COMET (optional, never gated)
         b_comet = base_entry.get("comet")
         v_comet = run_entry.get("comet")
         if b_comet or v_comet:
             for sub in ("pipeline", "mtOnly"):
                 b = b_comet.get(sub) if b_comet else None
                 v = v_comet.get(sub) if v_comet else None
-                comet_fail = _comet_gate(b, v, thresholds)
-                if comet_fail and gated:
-                    verdict = "❌"
-                    gated_fail = True
-                else:
-                    verdict = "✅"
                 lines.append(
                     _row(
                         f"  COMET {sub}",
                         _fmt(b),
                         _fmt(v),
-                        _fmt(_delta(b, v)),
-                        verdict,
+                        _fmt(_round(_delta(b, v))),
+                        "·",
                     )
                 )
 

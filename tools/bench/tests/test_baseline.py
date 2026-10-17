@@ -8,11 +8,11 @@ import pytest
 from tcbench import baseline
 
 
-def _make_run_dir(tmp_path: Path, dirty=False, informative=False, override=None):
+def _make_run_dir(tmp_path: Path, dirty=False, informative=False, override=None, set_type="full"):
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     meta = {
-        "set": "full",
+        "set": set_type,
         "manifestSha256": "abc123",
         "macOS": "15.0",
         "machine": "test-machine",
@@ -26,11 +26,25 @@ def _make_run_dir(tmp_path: Path, dirty=False, informative=False, override=None)
     return run_dir
 
 
-def test_baseline_refuses_dirty(tmp_path):
+def test_baseline_refuses_repo_dirty(tmp_path):
+    run_dir = _make_run_dir(tmp_path)
+    with pytest.raises(baseline.BaselineRefusal) as exc:
+        baseline.run(run_dir, "reason", repo_dirty=True)
+    assert "uncommitted" in str(exc.value).lower()
+
+
+def test_baseline_refuses_run_dirty(tmp_path):
     run_dir = _make_run_dir(tmp_path, dirty=True)
     with pytest.raises(baseline.BaselineRefusal) as exc:
         baseline.run(run_dir, "reason", repo_dirty=False)
     assert "dirty" in str(exc.value).lower()
+
+
+def test_baseline_refuses_non_full_run(tmp_path):
+    run_dir = _make_run_dir(tmp_path, set_type="pr")
+    with pytest.raises(baseline.BaselineRefusal) as exc:
+        baseline.run(run_dir, "reason", repo_dirty=False)
+    assert "baseline needs a full run" in str(exc.value).lower()
 
 
 def test_baseline_refuses_informative(tmp_path):

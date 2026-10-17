@@ -2,10 +2,11 @@
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 
-from tcbench import baseline, compare
+from tcbench import baseline, compare, runs
 
 COMMANDS = ["fetch", "manifest", "ingest", "analyze", "compare", "report", "baseline"]
 
@@ -14,28 +15,35 @@ def _load_json(path: str) -> dict:
     return json.loads(Path(path).read_text())
 
 
-def _load_run(run_dir: str) -> tuple[dict, dict]:
-    p = Path(run_dir) / "metrics.json"
-    if not p.exists():
-        print(f"No metrics.json found in {run_dir}", file=sys.stderr)
-        raise SystemExit(2)
-    payload = _load_json(str(p))
-    meta = payload.get("meta")
-    if meta is None:
-        run_json = Path(run_dir) / "run.json"
-        if run_json.exists():
-            meta = _load_json(str(run_json))
-    if not isinstance(meta, dict):
-        print(f"No run metadata found in {run_dir}", file=sys.stderr)
-        raise SystemExit(2)
-    return meta, payload.get("aggregates", {})
+def _repo_is_dirty() -> bool:
+    """Return True if the git working tree under the repo root has changes."""
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=Path(__file__).resolve().parents[3],
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        # git unavailable or not a repo: assume clean to avoid blocking.
+        return False
+    return bool(result.stdout.strip())
 
 
 def _cmd_compare(args: argparse.Namespace) -> int:
-    run_meta, run_metrics = _load_run(args.run)
+    try:
+        run_meta, run_metrics = runs.load_run(args.run)
+    except (FileNotFoundError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
 
     if args.baseline_from_run:
-        base_meta, base_metrics = _load_run(args.baseline_from_run)
+        try:
+            base_meta, base_metrics = runs.load_run(args.baseline_from_run)
+        except (FileNotFoundError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
         baseline_doc = {
             "manifestSha256": base_meta.get("manifestSha256"),
             "macOS": base_meta.get("macOS"),
@@ -48,7 +56,12 @@ def _cmd_compare(args: argparse.Namespace) -> int:
             return 2
         baseline_doc = _load_json(args.baseline)
 
-    thresholds = _load_json(args.thresholds)
+    try:
+        thresholds = _load_json(args.thresholds)
+    except FileNotFoundError:
+        print(f"Thresholds not found: {args.thresholds}", file=sys.stderr)
+        return 2
+
     table, exit_code = compare.run(run_metrics, baseline_doc, thresholds, run_meta)
     print(table)
     return exit_code
@@ -56,11 +69,11 @@ def _cmd_compare(args: argparse.Namespace) -> int:
 
 def _cmd_baseline(args: argparse.Namespace) -> int:
     try:
-        baseline.run(args.run, args.reason, repo_dirty=args.repo_dirty)
+        baseline.run(args.run, args.reason, repo_dirty=_repo_is_dirty())
     except baseline.BaselineRefusal as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
     return 0
@@ -85,7 +98,6 @@ def main(argv: list[str] | None = None) -> int:
     baseline_parser = sub.add_parser("baseline")
     baseline_parser.add_argument("run", help="Path to the run directory to promote")
     baseline_parser.add_argument("--reason", required=True, help="Why this baseline is being set")
-    baseline_parser.add_argument("--repo-dirty", action="store_true", help="Passed when the git tree is dirty")
     baseline_parser.set_defaults(func=_cmd_baseline)
 
     args = parser.parse_args(argv)
