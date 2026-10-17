@@ -29,8 +29,10 @@ struct STTEngineSelectorTests {
         appleSpeechFactory: @escaping (Locale) -> any SpeechRecognizerService = { MockSpeechRecognizerService(locale: $0) },
         parakeetFactory: @escaping (Locale) -> any SpeechRecognizerService = { MockSpeechRecognizerService(locale: $0) }
     ) -> STTEngineSelector {
-        STTEngineSelector(
-            defaults: defaults ?? freshDefaults(),
+        let defaults = defaults ?? freshDefaults()
+        defaults.set(false, forKey: ModelChoice.automaticKey)   // these tests cover manual mode (M9 UI core)
+        return STTEngineSelector(
+            defaults: defaults,
             appleSpeechFactory: appleSpeechFactory,
             parakeetFactory: parakeetFactory
         )

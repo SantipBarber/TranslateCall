@@ -138,6 +138,7 @@ struct TTSEngineSelectorEdgeTTSTests {
         defaults: UserDefaults? = nil
     ) -> TTSEngineSelector {
         let defs = defaults ?? freshDefaults()
+        defs.set(false, forKey: ModelChoice.automaticKey)   // these tests cover manual mode (M9 UI core)
         let selector = TTSEngineSelector(defaults: defs)
         selector.outputFactory = { _ in FakeOutput() }
         selector.avSpeechFactory = { FakeSynthesizer(engine: .avSpeech) }

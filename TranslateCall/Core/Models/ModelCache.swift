@@ -73,6 +73,13 @@ nonisolated enum ModelCache {
         allExist(whisperRequired, in: whisperDirectory(for: config.modelSize))
     }
 
+    /// Ready to load without the network: the model and its tokenizer are both on disk (R26; WhisperKit
+    /// would otherwise fetch the tokenizer, which D-6 forbids).
+    static func isWhisperReady(_ config: WhisperConfiguration = .default, home: URL = homeDirectory) -> Bool {
+        allExist(whisperRequired, in: whisperDirectory(for: config.modelSize, home: home))
+            && hasWhisperTokenizer(for: config.modelSize, home: home)
+    }
+
     static func isKokoroCached() -> Bool {
         allExist(kokoroRequired, in: kokoroDirectory())
     }
@@ -89,7 +96,7 @@ nonisolated struct ModelCacheProbe: Sendable {
 
     static let live = ModelCacheProbe(
         parakeet: { ModelCache.isParakeetCached() },
-        whisper: { ModelCache.isWhisperCached() },
+        whisper: { ModelCache.isWhisperReady() },
         kokoro: { ModelCache.isKokoroCached() },
         voiceClone: { QwenCloneModelManager.shared.isModelCached() }
     )

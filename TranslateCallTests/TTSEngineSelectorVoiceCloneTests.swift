@@ -12,6 +12,7 @@ struct TTSEngineSelectorVoiceCloneTests {
 
     private func makeSelector() -> TTSEngineSelector {
         let defaults = UserDefaults(suiteName: "TTSEngineSelectorVoiceCloneTests.\(UUID())")!
+        defaults.set(false, forKey: ModelChoice.automaticKey)   // these tests cover manual mode (M9 UI core)
         let selector = TTSEngineSelector(defaults: defaults)
 
         // Fake synthesizers and output: no audio hardware, no model

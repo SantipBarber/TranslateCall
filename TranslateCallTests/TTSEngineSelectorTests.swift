@@ -24,7 +24,9 @@ struct TTSEngineSelectorTests {
     }
 
     func makeSelector(defaults: UserDefaults? = nil, systemVoice: @escaping (Locale) -> Bool = { _ in true }) -> TTSEngineSelector {
-        let selector = TTSEngineSelector(defaults: defaults ?? freshDefaults())
+        let defaults = defaults ?? freshDefaults()
+        defaults.set(false, forKey: ModelChoice.automaticKey)   // these tests cover manual mode (M9 UI core)
+        let selector = TTSEngineSelector(defaults: defaults)
         selector.hasSystemVoice = systemVoice
         selector.outputFactory = { _ in FakeOutput() }
         selector.avSpeechFactory = { FakeSynthesizer(engine: .avSpeech) }

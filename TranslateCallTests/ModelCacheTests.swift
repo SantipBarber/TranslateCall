@@ -44,6 +44,19 @@ struct ModelCacheTests {
         #expect(ModelCache.hasWhisperTokenizer(for: .base, home: home.url))
     }
 
+    @Test("Whisper is ready only with the model AND its tokenizer (R26; what the live probe uses)")
+    func whisperReadyNeedsTokenizer() throws {
+        let home = TempHome()
+        let config = WhisperConfiguration.default
+        try home.make(ModelCache.whisperRequired, in: ModelCache.whisperDirectory(for: config.modelSize, home: home.url))
+        #expect(!ModelCache.isWhisperReady(config, home: home.url), "model without tokenizer")
+        try home.make(["tokenizer.json"],
+                      in: home.url.appendingPathComponent("Documents/huggingface/models")
+                          .appendingPathComponent(config.modelSize.whisperKitName
+                              .replacingOccurrences(of: "openai_", with: "openai/")))
+        #expect(ModelCache.isWhisperReady(config, home: home.url))
+    }
+
     @Test("Kokoro: both variants are required")
     func kokoroFolder() throws {
         let home = TempHome()

@@ -61,15 +61,19 @@ final class STTEngineSelector: ObservableObject {
 
     // MARK: - Private
 
-    private let defaults: UserDefaults
+    /// Automatic choice inputs (M9 UI core §3.3); injectable for tests.
+    var catalog: ModelCatalog = .bundled
+    var cacheProbe: ModelCacheProbe = .live
+
+    let defaults: UserDefaults
     private static let defaultsKey = "tlk.stt.engine"
 
     /// Creates an `AppleSpeechService` for the given locale.
-    private let appleSpeechFactory: (Locale) -> any SpeechRecognizerService
+    let appleSpeechFactory: (Locale) -> any SpeechRecognizerService
     /// Creates a `ParakeetSpeechService` for the given locale.
-    private let parakeetFactory: (Locale) -> any SpeechRecognizerService
+    let parakeetFactory: (Locale) -> any SpeechRecognizerService
     /// Creates a `WhisperSpeechService` for the given locale.
-    private let whisperFactory: (Locale) -> any SpeechRecognizerService
+    let whisperFactory: (Locale) -> any SpeechRecognizerService
 
     /// Observes `ParakeetModelManager.stateStream` to update `parakeetAvailable`.
     private var stateObservationTask: Task<Void, Never>?
@@ -145,6 +149,7 @@ final class STTEngineSelector: ObservableObject {
     /// Otherwise falls back to Apple Speech. Updates `currentSourceLocale` as a side effect.
     func makeOutgoingService(for locale: Locale) -> any SpeechRecognizerService {
         currentSourceLocale = locale
+        if isAutomatic { return automaticService(for: locale, direction: .outgoing) }
         // Whisper: 99+ languages, both directions
         if preferredEngine == .whisper, whisperAvailable,
            STTEngine.whisper.supports(locale: locale) {
@@ -163,6 +168,7 @@ final class STTEngineSelector: ObservableObject {
     ///
     /// Unlike Parakeet (English-only outgoing), Whisper can serve incoming too.
     func makeIncomingService(for locale: Locale) -> any SpeechRecognizerService {
+        if isAutomatic { return automaticService(for: locale, direction: .incoming) }
         if preferredEngine == .whisper, whisperAvailable,
            STTEngine.whisper.supports(locale: locale) {
             selectorLogger.debug("Incoming: using Whisper for \(locale.identifier)")
@@ -179,6 +185,7 @@ final class STTEngineSelector: ObservableObject {
     func setPreferredEngine(_ engine: STTEngine) {
         preferredEngine = engine
         defaults.set(engine.rawValue, forKey: STTEngineSelector.defaultsKey)
+        setAutomatic(false)
         selectorLogger.info("STT engine preference set to: \(engine.rawValue)")
 
         if engine == .parakeet, !parakeetAvailable {
