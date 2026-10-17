@@ -16,6 +16,10 @@ struct BenchEnvironment: Sendable {
     let manifest: URL
     let commit: String
     let dirty: Bool
+    /// Run-line slugs selected by `TC_BENCH_LINES`; nil runs every line.
+    let lines: Set<String>?
+
+    func selects(_ line: BenchRunLine) -> Bool { lines?.contains(line.slug) ?? true }
 
     /// The repository root (this file is `TranslateCallTests/Bench/BenchRunner.swift`). The test host's
     /// working directory is not the repo, so relative paths in the variables resolve against this.
@@ -48,6 +52,16 @@ struct BenchEnvironment: Sendable {
             guard let value = E(rawValue: raw) else { throw BenchSetupError(description: "\(key) is unknown: \(raw)") }
             return value
         }
+        var lines: Set<String>?
+        if let raw = env["TC_BENCH_LINES"] {
+            let slugs = raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            let unknown = slugs.filter { slug in !BenchRunLine.all.contains { $0.slug == slug } }
+            guard unknown.isEmpty else {
+                throw BenchSetupError(description: "TC_BENCH_LINES has unknown run lines: \(unknown.joined(separator: ", "))"
+                    + " (known: \(BenchRunLine.all.map(\.slug).joined(separator: ", ")))")
+            }
+            lines = slugs.isEmpty ? nil : Set(slugs)
+        }
         let home = FileManager.default.homeDirectoryForCurrentUser
         return BenchEnvironment(
             set: set,
@@ -59,7 +73,8 @@ struct BenchEnvironment: Sendable {
             out: path(out),
             manifest: path(env["TC_BENCH_MANIFEST"] ?? "bench/manifests/phase1.json"),
             commit: env["TC_COMMIT"] ?? "unknown",
-            dirty: ["1", "true"].contains(env["TC_DIRTY"] ?? "0")
+            dirty: ["1", "true"].contains(env["TC_DIRTY"] ?? "0"),
+            lines: lines
         )
     }
 

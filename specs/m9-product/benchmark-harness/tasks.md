@@ -918,3 +918,6 @@ git commit -m "test(bench): run lines × profiles writing raw.json v1 (M9 REQ-BH
 ## Found while executing
 
 _(Record deviations, flakes and measurements here, as in F8.5.4.)_
+
+- T14 (2026-10-17): `just bench pr basic 0 outgoing-es-419-en,outgoing-en-es,incoming-en-es`, first attempt: the test host exited unexpectedly ~47 s into `outgoing_es419_en_basic` (xcodebuild "Restarting after unexpected exit"; no crash report in DiagnosticReports). xcodebuild relaunched it, the remaining tests passed and the script failed with exit 65 on the lost test, so the run had no es-419 raw.json. Rerun recorded in the T14 report.
+- T14: `just` takes recipe parameters positionally (`just bench pr basic 0 <lines>`); `just bench set=pr ...` passes the literal `set=pr`. The `pr.sh` step is therefore `just bench pr all`.

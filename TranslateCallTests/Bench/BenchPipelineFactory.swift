@@ -25,6 +25,8 @@ struct BenchRunLine: Sendable, CustomStringConvertible {
     static let outgoingEs419ToEn = BenchRunLine(userLanguage: "es-419", otherLanguage: "en", incoming: false, variant: "es-419")
     static let outgoingEnToEs = BenchRunLine(userLanguage: "en", otherLanguage: "es", incoming: false, variant: "en")
     static let incomingEnToEs = BenchRunLine(userLanguage: "es", otherLanguage: "en", incoming: true, variant: "en")
+
+    static let all: [BenchRunLine] = [.outgoingEsESToEn, .outgoingEs419ToEn, .outgoingEnToEs, .incomingEnToEs]
 }
 
 struct BenchSetupError: Error, CustomStringConvertible {

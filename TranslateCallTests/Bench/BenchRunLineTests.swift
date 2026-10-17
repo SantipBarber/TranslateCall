@@ -9,9 +9,9 @@ extension BenchTests {
     struct BenchRunLineTests {
         /// Enabled when the profile is selected. A broken environment keeps the test enabled so it fails
         /// with the reason instead of passing by skipping.
-        nonisolated static func selects(_ profile: BenchProfile) -> Bool {
+        nonisolated static func selects(_ profile: BenchProfile, _ line: BenchRunLine) -> Bool {
             guard let env = try? BenchEnvironment.current() else { return true }
-            return env.profiles.contains(profile)
+            return env.profiles.contains(profile) && env.selects(line)
         }
 
         private func run(_ line: BenchRunLine, _ profile: BenchProfile) async throws {
@@ -33,25 +33,25 @@ extension BenchTests {
             #expect(FileManager.default.fileExists(atPath: url.path))
         }
 
-        @Test(.enabled(if: BenchRunLineTests.selects(.basic)))
+        @Test(.enabled(if: BenchRunLineTests.selects(.basic, .outgoingEsESToEn)))
         func outgoing_esES_en_basic() async throws { try await run(.outgoingEsESToEn, .basic) }
 
-        @Test(.enabled(if: BenchRunLineTests.selects(.best)))
+        @Test(.enabled(if: BenchRunLineTests.selects(.best, .outgoingEsESToEn)))
         func outgoing_esES_en_best() async throws { try await run(.outgoingEsESToEn, .best) }
 
-        @Test(.enabled(if: BenchRunLineTests.selects(.basic)))
+        @Test(.enabled(if: BenchRunLineTests.selects(.basic, .outgoingEs419ToEn)))
         func outgoing_es419_en_basic() async throws { try await run(.outgoingEs419ToEn, .basic) }
 
-        @Test(.enabled(if: BenchRunLineTests.selects(.best)))
+        @Test(.enabled(if: BenchRunLineTests.selects(.best, .outgoingEs419ToEn)))
         func outgoing_es419_en_best() async throws { try await run(.outgoingEs419ToEn, .best) }
 
-        @Test(.enabled(if: BenchRunLineTests.selects(.basic)))
+        @Test(.enabled(if: BenchRunLineTests.selects(.basic, .outgoingEnToEs)))
         func outgoing_en_es_basic() async throws { try await run(.outgoingEnToEs, .basic) }
 
-        @Test(.enabled(if: BenchRunLineTests.selects(.best)))
+        @Test(.enabled(if: BenchRunLineTests.selects(.best, .outgoingEnToEs)))
         func outgoing_en_es_best() async throws { try await run(.outgoingEnToEs, .best) }
 
-        @Test(.enabled(if: BenchRunLineTests.selects(.basic)))
+        @Test(.enabled(if: BenchRunLineTests.selects(.basic, .incomingEnToEs)))
         func incoming_en_es_basic() async throws { try await run(.incomingEnToEs, .basic) }
     }
 }

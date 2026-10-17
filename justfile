@@ -21,9 +21,9 @@ build:
 test:
     rm -rf build/logs/unit.xcresult
     mkdir -p build/logs
-    {{xcb}} test -testPlan Unit -skip-testing:TranslateCallTests/IntegrationTests -resultBundlePath build/logs/unit.xcresult 2>&1 | tee build/logs/test-unit.log | xcbeautify
+    {{xcb}} test -testPlan Unit -skip-testing:TranslateCallTests/IntegrationTests -skip-testing:TranslateCallTests/BenchTests -resultBundlePath build/logs/unit.xcresult 2>&1 | tee build/logs/test-unit.log | xcbeautify
 
-# Integration tier (real frameworks + audio fixtures); writes build/reports/latency.json
+# Integration tier (real frameworks + audio fixtures)
 test-integration:
     rm -rf build/logs/integration.xcresult
     mkdir -p build/logs build/reports
@@ -55,6 +55,27 @@ bench-fetch set="pr":
 bench-manifest:
     uv run --locked --extra vad --project tools/bench tcbench manifest
 
+# Estimate-then-run benchmark: fetch → build → real-time Swift tier → analyze → report → compare. set: pr | full;
+# profile: all | basic | best; lines: comma-separated slugs, e.g. outgoing-es-419-en,incoming-en-es (empty = all)
+bench set="pr" profile="all" edge="0" lines="":
+    tools/scripts/bench.sh {{set}} {{profile}} {{edge}} "{{lines}}"
+
+# Import recordings of a variant for the benchmark (e.g. native speakers)
+bench-ingest dir variant native="false":
+    uv run --locked --project tools/bench tcbench ingest {{dir}} --variant {{variant}} --native {{native}}
+
+# Compare a run (default: the latest) with bench/baseline.json
+bench-compare run="build/bench/runs/latest":
+    uv run --locked --project tools/bench tcbench compare {{run}}
+
+# Rewrite report.html of a run (default: the latest)
+bench-report run="build/bench/runs/latest":
+    uv run --locked --project tools/bench tcbench report {{run}}
+
+# Promote a run to bench/baseline.json
+bench-baseline run reason:
+    uv run --locked --project tools/bench tcbench baseline {{run}} --reason "{{reason}}"
+
 # Everything GitHub runs: lint + scan + tooling self-tests + bench tooling tests
 check: lint scan test-tooling test-bench-tools
 
@@ -66,6 +87,6 @@ test-only +suites:
 fixtures:
     tools/scripts/fixtures.sh
 
-# Full PR gate: build → check → test → test-integration → status on SHA → push → PR
+# Full PR gate: build → check → test → test-integration → bench → status on SHA → push → PR
 pr:
     tools/scripts/pr.sh

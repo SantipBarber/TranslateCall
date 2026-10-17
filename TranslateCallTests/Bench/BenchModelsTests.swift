@@ -147,6 +147,23 @@ struct BenchModelsTests {
         }
     }
 
+    @Test func environmentLinesFilter() throws {
+        let all = try BenchEnvironment.parse(["TC_BENCH_OUT": "/o"])
+        #expect(BenchRunLine.all.allSatisfy { all.selects($0) })
+        let empty = try BenchEnvironment.parse(["TC_BENCH_OUT": "/o", "TC_BENCH_LINES": ""])
+        #expect(BenchRunLine.all.allSatisfy { empty.selects($0) })
+        let some = try BenchEnvironment.parse([
+            "TC_BENCH_OUT": "/o", "TC_BENCH_LINES": "outgoing-es-419-en, incoming-en-es",
+        ])
+        #expect(some.selects(.outgoingEs419ToEn))
+        #expect(some.selects(.incomingEnToEs))
+        #expect(!some.selects(.outgoingEsESToEn))
+        #expect(!some.selects(.outgoingEnToEs))
+        #expect(throws: BenchSetupError.self) {
+            try BenchEnvironment.parse(["TC_BENCH_OUT": "/o", "TC_BENCH_LINES": "outgoing-xx-en"])
+        }
+    }
+
     // MARK: - AudioCollector
 
     private static func buffer(frames: Int) -> AVAudioPCMBuffer {
