@@ -188,7 +188,7 @@ The MT-only text set (REQ-BH-08) runs inside the same session, before the clip l
 | MT-only 2 × 100 sentences in PR, 2 × 200 in full (P5) | — | ~0.3 | ~1 min (PR) |
 | Session warm-ups, 7 × ~3 s | — | — | ~0.4 min |
 
-The total is about 10 min, which is tight. **Measure-first gate (task 1 of the plan):** measure the real PR duration and the run-to-run variance (NFR-BH-01) before building the analysis side. Planning options were (a) PR runs only Basic, (b) 6 clips per line, (c) MT-only 100 sentences. Resolved: (c) applied in planning (P5) and (a) chosen by the user after T14 (see Decision below).
+The total is about 10 min, which is tight. **Measure-first gate (task 1 of the plan):** measure the real PR duration and the run-to-run variance (NFR-BH-01) before building the analysis side, keeping the PR job under 10 minutes. Planning options were (a) PR runs Basic only, (b) 6 clips per line, (c) MT-only 100 sentences. Resolved: (c) applied in planning (P5) and (a) chosen by the user after T14 (see Decision below).
 
 **Measured (2026-10-17, T14):** a Basic line takes about 2.25 min (137, 131 and 136 s for 3 lines); 3 lines took 7m18s end to end, including the build and analysis. The estimate in `tcbench.estimate` is calibrated on this (clip seconds x 2.0 + 15 s per line + 0.3 s per MT sentence + 60 s fixed). The full 4-line Basic run is therefore about 9 min, and adding Best would pass the 10 min limit.
 
@@ -330,7 +330,7 @@ It is local by default; Claude may publish it as a private page when the user as
 
 | New | Changed |
 |---|---|
-| `TranslateCall/Core/Trace/{TraceEvent,TraceSink,PipelineTracer,Tracing*}.swift` | none in `AudioCoordinator` (P1: builders wrap the factories with `PipelineTracer`) |
+| `TranslateCall/Core/Trace/{TraceEvent,TraceSink,PipelineTracer,Tracing*}.swift` | none (P1: `AudioCoordinator` unchanged; `BenchPipelineFactory` opens a `PipelineTracer` per direction and merges into one per call; `TracingSpeechSynthesizer` also keeps the first chunk, so no separate `TracingAudioOutput` is needed; see §2.3) |
 | `TranslateCallTests/Bench/{BenchTests,BenchPipelineFactory,BenchAudioSource,BenchSystemAudioCapture,BenchRunWriter}.swift` | `justfile`, `tools/scripts/pr.sh`, `tools/scripts/setup.sh`, `tools/versions.env` |
 | `TranslateCallTests/TestPlans/Bench.xctestplan` | Integration tests listed in §7, `LatencyReport.swift` (deleted) |
 | `tools/bench/` (pyproject, uv.lock, `tcbench/`, `tests/`) | `.gitignore` (`tools/bench/.venv`) |
