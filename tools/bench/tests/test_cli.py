@@ -5,7 +5,7 @@ import pytest
 from tcbench.cli import _repo_is_dirty, main
 
 
-@pytest.mark.parametrize("cmd", ["ingest", "analyze", "report"])
+@pytest.mark.parametrize("cmd", ["ingest", "report"])
 def test_stub_exits_2(cmd, capsys):
     with pytest.raises(SystemExit) as e:
         main([cmd])

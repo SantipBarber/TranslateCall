@@ -8,7 +8,7 @@ from pathlib import Path
 
 from tcbench import baseline, compare, runs
 
-STUBS = ("ingest", "analyze", "report")
+STUBS = ("ingest", "report")
 REPO = Path(__file__).resolve().parents[3]
 DEFAULT_MANIFEST = REPO / "bench" / "manifests" / "phase1.json"
 
@@ -88,6 +88,33 @@ def _repo_is_dirty(repo_dir: Path | str | None = None) -> bool:
     return bool(result.stdout.strip())
 
 
+def _cmd_analyze(args: argparse.Namespace) -> int:
+    from . import analyze
+
+    if args.comet and not analyze.comet_available():
+        print(
+            "tcbench analyze --comet needs unbabel-comet (optional extra 'comet').\n"
+            "Run: uv run --locked --extra comet --project tools/bench tcbench analyze <run> --comet",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        manifest = _load_json(args.manifest)
+        result = analyze.run(Path(args.run), manifest, comet=args.comet)
+    except (FileNotFoundError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    for key, agg in sorted(result["aggregates"].items()):
+        total = agg["latency"]["total"]
+        print(
+            f"{key}: total p50 {total['p50']} ms p90 {total['p90']} ms, wer {agg['wer']:.3f}, "
+            f"cut {agg['cutRate']:.3f}, missed {agg['missed']}, chrF++ {agg['chrf']['pipeline']}, "
+            f"fallbacks {agg['fallbacks']}"
+        )
+    print(f"wrote {Path(args.run) / 'metrics.json'}")
+    return 0
+
+
 def _cmd_compare(args: argparse.Namespace) -> int:
     try:
         run_meta, run_metrics = runs.load_run(args.run)
@@ -151,6 +178,12 @@ def main(argv: list[str] | None = None) -> int:
     m.set_defaults(func=_cmd_manifest)
     for name in STUBS:
         sub.add_parser(name)
+
+    a = sub.add_parser("analyze", help="compute metrics.json from the raw.json files of a run directory")
+    a.add_argument("run", help="Path to the run directory")
+    a.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
+    a.add_argument("--comet", action="store_true", help="also compute COMET (needs the 'comet' extra)")
+    a.set_defaults(func=_cmd_analyze)
 
     compare_parser = sub.add_parser("compare")
     compare_parser.add_argument("run", help="Path to a run directory containing metrics.json")
