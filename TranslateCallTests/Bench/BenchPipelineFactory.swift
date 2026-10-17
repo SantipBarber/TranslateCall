@@ -1,4 +1,5 @@
 import AVFoundation
+import FluidAudio
 import Foundation
 import Synchronization
 @testable import TranslateCall
@@ -38,7 +39,36 @@ enum BenchProfile: String, CaseIterable, Sendable {
     case best
 }
 
+/// Whether a model is already on disk. A bench run never downloads a model (NFR-BH-03): it asks
+/// first and fails with "download it in the app first (M5)" instead of triggering a load.
+struct BenchModelPresence: Sendable {
+    var parakeet: @Sendable () async -> Bool
+    var whisper: @Sendable () async -> Bool
+    var kokoro: @Sendable () async -> Bool
+    var voiceClone: @Sendable () async -> Bool
+
+    static let onDisk = BenchModelPresence(
+        parakeet: {
+            let version = await MainActor.run { ParakeetConfiguration.default.modelVersion }
+            return AsrModels.modelsExist(at: AsrModels.defaultCacheDirectory(for: version), version: version)
+        },
+        whisper: {
+            let folder = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Documents/huggingface/models/argmaxinc/whisperkit-coreml")
+                .appendingPathComponent(WhisperConfiguration.default.modelSize.whisperKitName)
+            return FileManager.default.fileExists(atPath: folder.path)
+        },
+        kokoro: {
+            let folder = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".cache/fluidaudio/Models/kokoro")
+            return FileManager.default.fileExists(atPath: folder.path)
+        },
+        voiceClone: { await QwenCloneModelManager.shared.isModelCached() }
+    )
+}
+
 struct BenchOptions: Sendable {
+    var presence = BenchModelPresence.onDisk
     var profile = BenchProfile.basic
     /// Edge TTS instead of the profile's TTS.
     var edge = false
@@ -71,6 +101,18 @@ final class BenchOutput: AudioOutputting, Sendable {
     func shutdown() { inner.shutdown() }
 }
 
+/// The primary synthesizer engine each direction's TTS service was actually built with, so `start`
+/// can refuse a run that silently measures another voice than the one asked for.
+final class BuiltEngines: Sendable {
+    private let engines = Mutex<[TraceDirection: TTSEngine]>([:])
+
+    subscript(direction: TraceDirection) -> TTSEngine? { engines.withLock { $0[direction] } }
+
+    func record(_ engine: TTSEngine, for direction: TraceDirection) {
+        engines.withLock { $0[direction] = engine }
+    }
+}
+
 /// A production `AudioCoordinator` built the way `AppContainer` builds it, with clip-fed mic and
 /// system capture, traced stages, a fake output and throwaway `UserDefaults` (M9 design §3.3).
 @MainActor
@@ -88,13 +130,14 @@ final class BenchSession {
     let tracer: PipelineTracer
     let output: BenchOutput
     let origin: ContinuousClock.Instant
+    let builtEngines: BuiltEngines
     private let otherTracer: PipelineTracer
     private let suiteName: String
 
     init(line: BenchRunLine, coordinator: AudioCoordinator, mic: BenchAudioSource, system: BenchSystemAudioCapture,
          vads: VADProvider, stt: STTEngineSelector, tts: TTSEngineSelector, host: TranslationHostWindow,
          sink: CollectingTraceSink, tracer: PipelineTracer, otherTracer: PipelineTracer,
-         output: BenchOutput, origin: ContinuousClock.Instant, suiteName: String) {
+         output: BenchOutput, origin: ContinuousClock.Instant, builtEngines: BuiltEngines, suiteName: String) {
         self.line = line
         self.coordinator = coordinator
         self.mic = mic
@@ -108,6 +151,7 @@ final class BenchSession {
         self.otherTracer = otherTracer
         self.output = output
         self.origin = origin
+        self.builtEngines = builtEngines
         self.suiteName = suiteName
     }
 
@@ -150,7 +194,7 @@ enum BenchPipelineFactory {
         let stt = STTEngineSelector(defaults: defaults)
         let tts = TTSEngineSelector(defaults: defaults)
         do {
-            try await configureEngines(stt: stt, tts: tts, options: options)
+            try await configureEngines(stt: stt, tts: tts, line: line, options: options)
         } catch {
             host.close()
             defaults.removePersistentDomain(forName: suiteName)
@@ -163,6 +207,7 @@ enum BenchPipelineFactory {
         let outTracer = PipelineTracer(direction: .outgoing, sink: sink, trailingSilence: trailing)
         let inTracer = PipelineTracer(direction: .incoming, sink: sink, trailingSilence: trailing)
         let output = BenchOutput()
+        let built = BuiltEngines()
         let vads = vadProvider
         let mic = BenchAudioSource()
         let system = BenchSystemAudioCapture()
@@ -176,10 +221,10 @@ enum BenchPipelineFactory {
             outgoingTranslationService: outTracer.tracing(translation.makeOutgoingService()),
             incomingTranslationService: inTracer.tracing(translation.makeIncomingService()),
             outgoingTTSFactory: { locale, device in
-                try traced(tts, outTracer, output: output) { try tts.makeOutgoingService(for: locale, deviceID: device) }
+                try traced(tts, outTracer, output: output, built: built) { try tts.makeOutgoingService(for: locale, deviceID: device) }
             },
             incomingTTSFactory: { locale, device in
-                try traced(tts, inTracer, output: output) { try tts.makeIncomingService(for: locale, deviceID: device) }
+                try traced(tts, inTracer, output: output, built: built) { try tts.makeIncomingService(for: locale, deviceID: device) }
             },
             languagePairManager: pair,
             isTranslationPairInstalled: AppleTranslationService.isInstalled
@@ -187,7 +232,7 @@ enum BenchPipelineFactory {
         return BenchSession(
             line: line, coordinator: coordinator, mic: mic, system: system, vads: vads, stt: stt, tts: tts,
             host: host, sink: sink, tracer: line.incoming ? inTracer : outTracer,
-            otherTracer: line.incoming ? outTracer : inTracer, output: output, origin: .now, suiteName: suiteName
+            otherTracer: line.incoming ? outTracer : inTracer, output: output, origin: .now, builtEngines: built, suiteName: suiteName
         )
     }
 
@@ -204,18 +249,73 @@ enum BenchPipelineFactory {
                                     "incoming pipeline active (status \(session.coordinator.incomingStatus))")
         }
         try requirePrerequisite(session.vads.activeEngine == .silero, "Silero VAD")
-        try requirePrerequisite(!session.stt.usingFallback,
-                                "the requested STT engine (\(session.stt.preferredEngine.rawValue)) without falling back to Apple Speech")
-        if options.profile == .best, !options.edge, options.overrideTTS == nil, !line.incoming {
+        try requireSTT(session, options: options)
+        try requireTTS(session, options: options)
+    }
+
+    // MARK: - Checks
+
+    /// The STT engine a profile means on `line` (REQ-BH-31). Parakeet is English and outgoing only,
+    /// so Best on any other line is Apple Speech.
+    static func sttEngine(for line: BenchRunLine, options: BenchOptions) -> STTEngine {
+        if let override = options.overrideSTT { return override }
+        let parakeetFits = options.profile == .best && !line.incoming
+            && Locale(identifier: line.userLanguage).isEnglish
+        return parakeetFits ? .parakeet : .appleSpeech
+    }
+
+    /// The language the measured direction recognizes: the user's outgoing, the other side's incoming.
+    private static func recognizedLocale(_ line: BenchRunLine) -> Locale {
+        Locale(identifier: line.incoming ? line.otherLanguage : line.userLanguage)
+    }
+
+    /// The selector runs the engine this line asked for on the measured direction, not a fallback.
+    private static func requireSTT(_ session: BenchSession, options: BenchOptions) throws {
+        let line = session.line
+        let engine = sttEngine(for: line, options: options)
+        let locale = recognizedLocale(line)
+        let usable: Bool
+        switch engine {
+        case .appleSpeech: usable = true
+        case .parakeet: usable = session.stt.parakeetAvailable && !line.incoming && locale.isEnglish
+        case .whisper: usable = session.stt.whisperAvailable && engine.supports(locale: locale)
+        }
+        try requirePrerequisite(session.stt.preferredEngine == engine && usable,
+                                "STT engine \(engine.rawValue) usable on \(line) (\(locale.identifier)) without falling back to Apple Speech")
+    }
+
+    /// Each direction's TTS was built with the engine asked for (no silent AVSpeech).
+    private static func requireTTS(_ session: BenchSession, options: BenchOptions) throws {
+        let clone = options.profile == .best && !options.edge && options.overrideTTS == nil
+        let outgoing: TTSEngine = options.edge ? .edgeTTS : options.overrideTTS ?? (clone ? .voiceClone : .avSpeech)
+        let incoming: TTSEngine = options.edge ? .edgeTTS : .avSpeech
+        // The incoming TTS exists only on an incoming line; the outgoing one always does.
+        var expectations = [(TraceDirection.outgoing, outgoing)]
+        if session.line.incoming { expectations.append((.incoming, incoming)) }
+        for (direction, expected) in expectations {
+            let built = session.builtEngines[direction]
+            try requirePrerequisite(built == expected,
+                                    "\(direction) TTS built with \(expected.rawValue), got \(built?.rawValue ?? "none")")
+        }
+        if clone {
             try requirePrerequisite(session.tts.voiceCloningActive, "voice cloning active (profile, model and toggle)")
         }
     }
 
     // MARK: - Engines
 
-    private static func configureEngines(stt: STTEngineSelector, tts: TTSEngineSelector, options: BenchOptions) async throws {
-        let best = options.profile == .best
-        let engine = options.overrideSTT ?? (best ? .parakeet : .appleSpeech)
+    private static func configureEngines(
+        stt: STTEngineSelector, tts: TTSEngineSelector, line: BenchRunLine, options: BenchOptions
+    ) async throws {
+        let engine = sttEngine(for: line, options: options)
+        // Never before the model is known to be on disk: selecting Parakeet or Whisper would start a download.
+        if engine == .parakeet {
+            try requirePrerequisite(await options.presence.parakeet(),
+                                    "Parakeet model — download it in the app first (M5)")
+        } else if engine == .whisper {
+            try requirePrerequisite(await options.presence.whisper(),
+                                    "Whisper model — download it in the app first (M5)")
+        }
         stt.setPreferredEngine(engine)
         if engine == .parakeet {
             let ready = await waitUntil(timeout: .seconds(120)) { stt.parakeetAvailable }
@@ -228,11 +328,22 @@ enum BenchPipelineFactory {
         if options.edge {
             tts.setPreferredEngine(.edgeTTS)
         } else if let override = options.overrideTTS {
-            tts.setPreferredEngine(override)
-        } else if best {
+            if override == .kokoro {
+                try requirePrerequisite(await options.presence.kokoro(),
+                                        "Kokoro model — download it in the app first (M5)")
+                tts.setPreferredEngine(override)
+                _ = try await KokoroModelManager.shared.ensureReady()
+                let ready = await waitUntil(timeout: .seconds(120)) { tts.kokoroAvailable }
+                try requirePrerequisite(ready, "Kokoro model (download it in the app: TTS → Kokoro)")
+            } else {
+                tts.setPreferredEngine(override)
+            }
+        } else if options.profile == .best {
             let raw = UserDefaults.standard.string(forKey: activeProfileKey)
             try requirePrerequisite(raw.flatMap(UUID.init(uuidString:)) != nil, "an active voice-clone profile (M5)")
             guard let raw, let id = UUID(uuidString: raw) else { return }
+            try requirePrerequisite(await options.presence.voiceClone(),
+                                    "Qwen3-TTS voice-clone model — download it in the app first (M5)")
             tts.activeVoiceProfileId = id
             tts.setProfileStore(VoiceProfileStore())
             tts.voiceCloningEnabled = true   // the selector's own (throwaway) suite
@@ -245,7 +356,7 @@ enum BenchPipelineFactory {
     /// Builds one direction's TTS service with every synthesizer and the output device traced, then
     /// puts the selector's factories back (P4). The service itself is traced too.
     private static func traced(
-        _ tts: TTSEngineSelector, _ tracer: PipelineTracer, output: BenchOutput,
+        _ tts: TTSEngineSelector, _ tracer: PipelineTracer, output: BenchOutput, built: BuiltEngines,
         build: () throws -> TTSPlaybackService
     ) throws -> any SynthesisService {
         let (savedOutput, savedAV, savedKokoro, savedClone, savedEdge) =
@@ -254,11 +365,19 @@ enum BenchPipelineFactory {
             (tts.outputFactory, tts.avSpeechFactory, tts.kokoroFactory, tts.voiceCloneFactory, tts.edgeFactory) =
                 (savedOutput, savedAV, savedKokoro, savedClone, savedEdge)
         }
+        // The first synthesizer a build asks for is the primary (the fallback is built after it).
+        let primary = Mutex<TTSEngine?>(nil)
+        func wrap(_ synthesizer: any UtteranceSynthesizer) -> any UtteranceSynthesizer {
+            primary.withLock { $0 = $0 ?? synthesizer.engine }
+            return tracer.tracing(synthesizer)
+        }
         tts.outputFactory = { _ in tracer.tracing(output) }
-        tts.avSpeechFactory = { tracer.tracing(savedAV()) }
-        tts.kokoroFactory = { tracer.tracing(savedKokoro($0)) }
-        tts.voiceCloneFactory = { id, store in tracer.tracing(savedClone(id, store)) }
-        tts.edgeFactory = { tracer.tracing(savedEdge()) }
-        return TracingSynthesisService(wrapping: try build(), tracer: tracer)
+        tts.avSpeechFactory = { wrap(savedAV()) }
+        tts.kokoroFactory = { wrap(savedKokoro($0)) }
+        tts.voiceCloneFactory = { id, store in wrap(savedClone(id, store)) }
+        tts.edgeFactory = { wrap(savedEdge()) }
+        let service = TracingSynthesisService(wrapping: try build(), tracer: tracer)
+        if let engine = primary.withLock({ $0 }) { built.record(engine, for: tracer.direction) }
+        return service
     }
 }

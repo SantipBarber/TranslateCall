@@ -76,5 +76,38 @@ extension IntegrationTests {
             await session.tearDown()
             #expect(refused?.description.contains("Silero VAD") == true)
         }
+
+        @Test func bestUsesParakeetOnlyOnEnglishOutgoingLines() {
+            let best = BenchOptions(profile: .best)
+            let engines = [BenchRunLine.outgoingEsESToEn, .outgoingEs419ToEn, .outgoingEnToEs, .incomingEnToEs]
+                .map { BenchPipelineFactory.sttEngine(for: $0, options: best) }
+            #expect(engines == [.appleSpeech, .appleSpeech, .parakeet, .appleSpeech])
+            #expect(BenchPipelineFactory.sttEngine(for: .outgoingEsESToEn, options: BenchOptions()) == .appleSpeech)
+            var whisper = BenchOptions()
+            whisper.overrideSTT = .whisper
+            #expect(BenchPipelineFactory.sttEngine(for: .incomingEnToEs, options: whisper) == .whisper)
+        }
+
+        @Test(arguments: [
+            ("Parakeet", BenchRunLine.outgoingEnToEs, BenchOptions(profile: .best)),
+            ("Whisper", BenchRunLine.incomingEnToEs, BenchOptions(overrideSTT: .whisper)),
+            ("Kokoro", BenchRunLine.outgoingEsESToEn, BenchOptions(overrideTTS: .kokoro))
+        ])
+        func absentModelRefusesWithoutLoading(model: String, line: BenchRunLine, options: BenchOptions) async {
+            var options = options
+            let none: @Sendable () async -> Bool = { false }
+            options.presence = BenchModelPresence(parakeet: none, whisper: none, kokoro: none, voiceClone: none)
+            var refused: MissingPrerequisite?
+            await withKnownIssue {
+                do {
+                    _ = try await BenchPipelineFactory.make(line, options: options)
+                } catch {
+                    refused = error as? MissingPrerequisite
+                }
+            } matching: { issue in
+                "\(issue)".contains("\(model) model")
+            }
+            #expect(refused?.description.contains("download it in the app first (M5)") == true)
+        }
     }
 }
