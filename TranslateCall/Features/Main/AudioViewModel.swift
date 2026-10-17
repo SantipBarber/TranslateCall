@@ -201,9 +201,9 @@ final class AudioViewModel: ObservableObject {
     }
 
     private func bindSetupManager() {
-        // @Published fires in willSet, before selectCaptureApp persists the bundle ID that
-        // `captureTarget` reads: hop to the next main-queue turn first.
-        setupManager.$selectedCaptureApp
+        // Every selection (running or not) publishes the bundle ID after persisting it; the hop to
+        // the next main-queue turn keeps `captureTarget` reads after the publisher's willSet.
+        setupManager.$selectedCaptureBundleID
             .dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.captureAppChanged() }

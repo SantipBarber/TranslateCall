@@ -19,6 +19,9 @@ final class SetupManager: ObservableObject {
 
     @Published private(set) var isSetupCompleted: Bool
     @Published private(set) var selectedCaptureApp: SCRunningApplication?
+    /// The persisted call app (`tlk.captureApp.bundleID`); nil = "None — translate only my voice".
+    /// Set by both setters; works for an app that is not running (M9 UI core REQ-UI-80b).
+    @Published private(set) var selectedCaptureBundleID: String?
 
     // MARK: - Runtime state
 
@@ -41,6 +44,8 @@ final class SetupManager: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         isSetupCompleted = defaults.bool(forKey: Self.setupCompletedKey)
+        let saved = defaults.string(forKey: Self.captureAppBundleKey) ?? ""
+        selectedCaptureBundleID = saved.isEmpty ? nil : saved
         isBlackHolePresent = AudioDevice.deviceID(forNameContaining: "BlackHole") != nil
     }
 
@@ -114,7 +119,18 @@ final class SetupManager: ObservableObject {
     /// Selects and persists the capture app (nil = "None / outgoing only").
     func selectCaptureApp(_ app: SCRunningApplication?) {
         selectedCaptureApp = app
-        defaults.set(app?.bundleIdentifier ?? "", forKey: Self.captureAppBundleKey)
+        selectCaptureApp(bundleID: app?.bundleIdentifier)
+    }
+
+    /// Selects and persists the capture app by bundle ID, running or not (nil = "None").
+    /// Persists before publishing, so observers of `selectedCaptureBundleID` read the new target.
+    func selectCaptureApp(bundleID: String?) {
+        let id = bundleID?.isEmpty == false ? bundleID : nil
+        defaults.set(id ?? "", forKey: Self.captureAppBundleKey)
+        if selectedCaptureApp?.bundleIdentifier != id {
+            selectedCaptureApp = availableCaptureApps.first { $0.bundleIdentifier == id }
+        }
+        selectedCaptureBundleID = id
     }
 
     /// Incoming capture target from the persisted selection (F8.5.1 REQ-C-22). Independent of
