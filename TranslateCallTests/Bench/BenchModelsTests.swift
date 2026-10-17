@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Testing
 @testable import TranslateCall
@@ -144,5 +145,55 @@ struct BenchModelsTests {
         #expect(throws: BenchSetupError.self) {
             try BenchEnvironment.parse(["TC_BENCH_OUT": "/o", "TC_BENCH_OVERRIDE_STT": "nope"])
         }
+    }
+
+    // MARK: - AudioCollector
+
+    private static func buffer(frames: Int) -> AVAudioPCMBuffer {
+        let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 22_050, channels: 1,
+                                   interleaved: false)!
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames))!
+        buffer.frameLength = AVAudioFrameCount(frames)
+        return buffer
+    }
+
+    private static func first(_ seq: Int, at time: ContinuousClock.Instant) -> TraceEvent {
+        TraceEvent(direction: .outgoing, seq: seq, stage: .ttsFirstBuffer, time: time, detail: [:])
+    }
+
+    @Test func audioCollectorSplitsBuffersAtTheFirstBufferStamps() {
+        let t0 = ContinuousClock.now
+        func at(_ ms: Int) -> ContinuousClock.Instant { t0.advanced(by: .milliseconds(ms)) }
+        // Real order: the device stamps a buffer, then the tracer stamps ttsFirstBuffer a moment later.
+        // Seq 0: 3 buffers (100/200/300 frames), its ttsEnd precedes the last buffer (synthesis split).
+        // Seq 1: ttsFirstBuffer and ttsEnd share one stamp (synthesis finished first); 2 buffers.
+        let buffers = [(at(10), Self.buffer(frames: 100)), (at(20), Self.buffer(frames: 200)),
+                       (at(30), Self.buffer(frames: 300)), (at(100), Self.buffer(frames: 400)),
+                       (at(110), Self.buffer(frames: 500))]
+        let events = [
+            Self.first(0, at: at(11)),
+            TraceEvent(direction: .outgoing, seq: 0, stage: .ttsEnd, time: at(25), detail: [:]),
+            Self.first(1, at: at(101)),
+            TraceEvent(direction: .outgoing, seq: 1, stage: .ttsEnd, time: at(101), detail: [:]),
+        ]
+        var collector = AudioCollector()
+        collector.add(buffers, events: events)
+        #expect(collector.frameCount(seq: 0) == 600)
+        #expect(collector.frameCount(seq: 1) == 900)
+        #expect(collector.audioPath(seq: 0) == "audio/0.wav")
+        #expect(collector.audioPath(seq: 1) == "audio/1.wav")
+        #expect(collector.audioPath(seq: 2) == nil)
+    }
+
+    @Test func audioCollectorSharesAMergedAttemptsAudio() {
+        let t0 = ContinuousClock.now
+        let buffers = [(t0.advanced(by: .milliseconds(5)), Self.buffer(frames: 100)),
+                       (t0.advanced(by: .milliseconds(15)), Self.buffer(frames: 150))]
+        let stamp = t0.advanced(by: .milliseconds(6))
+        var collector = AudioCollector()
+        collector.add(buffers, events: [Self.first(3, at: stamp), Self.first(4, at: stamp)])
+        #expect(collector.frameCount(seq: 3) == 250)
+        #expect(collector.audioPath(seq: 4) == "audio/3.wav")
+        #expect(collector.frameCount(seq: 4) == 250)
     }
 }

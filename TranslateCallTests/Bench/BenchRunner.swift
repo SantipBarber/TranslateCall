@@ -84,6 +84,11 @@ enum BenchRunner {
     static func run(_ line: BenchRunLine, profile: BenchProfile, env: BenchEnvironment) async throws -> URL? {
         // Best has no incoming engine of its own: those are the Basic ones (design §3.6).
         if profile == .best && line.incoming { return nil }
+        // REQ-BH-50: a result is never overwritten (nor mixed with stale audio from an older run).
+        let target = rawDirectory(env, profile, line)
+        guard !FileManager.default.fileExists(atPath: target.appending(path: "raw.json").path) else {
+            throw BenchSetupError(description: "\(target.path)/raw.json already exists — pick a fresh TC_BENCH_OUT")
+        }
         let manifestData = try Data(contentsOf: env.manifest)
         let manifest = try JSONDecoder().decode(BenchManifest.self, from: manifestData)
         let options = env.options(for: profile)
@@ -142,7 +147,7 @@ enum BenchRunner {
             meta: meta,
             clips: clips,
             utterances: RawRun.Utterance.from(events, origin: session.origin) {
-                audio.hasAudio(seq: $0) ? "audio/\($0).wav" : nil
+                audio.audioPath(seq: $0)
             },
             mtOnly: mtResults
         )
@@ -274,6 +279,9 @@ enum BenchRunner {
 
     private static func write(_ run: RawRun, audio: AudioCollector, to directory: URL) throws -> URL {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        guard !FileManager.default.fileExists(atPath: directory.appending(path: "raw.json").path) else {
+            throw BenchSetupError(description: "\(directory.path)/raw.json already exists")
+        }
         try audio.write(to: directory.appending(path: "audio"))
         var bytes = try BenchJSON.encoder().encode(run)
         bytes.append(0x0A)
@@ -300,8 +308,13 @@ enum BenchRunner {
 }
 
 /// TTS output of the run, per utterance (P10): `BenchOutput.drain()` is shared by both directions and
-/// untagged, but only the measured direction plays, so a buffer belongs to the utterance(s) whose
-/// `ttsFirstBuffer`…`ttsEnd` window holds its schedule instant. Samples are kept as 16-bit PCM.
+/// untagged, but only the measured direction plays, so every drained buffer belongs to this line.
+///
+/// `TracingAudioOutput` schedules a buffer on the device (the instant `BenchOutput` stamps) and only
+/// then stamps `ttsFirstBuffer`, so an attempt's first buffer is the last one at or before that stamp,
+/// and it owns every buffer up to the next attempt's first. `ttsEnd` is ignored: synthesis can finish
+/// before playback does. Seqs merged into one attempt share its `ttsFirstBuffer` stamp; the WAV is
+/// written under the first seq and the others' `audio` points at the same file.
 struct AudioCollector {
     private struct Track {
         var rate: Double
@@ -309,27 +322,38 @@ struct AudioCollector {
     }
 
     private var tracks: [Int: Track] = [:]
+    /// Seq → the seq whose file holds its audio.
+    private var owner: [Int: Int] = [:]
 
-    func hasAudio(seq: Int) -> Bool { tracks[seq] != nil }
+    func audioPath(seq: Int) -> String? { owner[seq].map { "audio/\($0).wav" } }
+
+    /// 16-bit frames held for the file `seq` points at (tests).
+    func frameCount(seq: Int) -> Int? { owner[seq].flatMap { tracks[$0]?.samples.count } }
 
     mutating func add(_ buffers: [(ContinuousClock.Instant, AVAudioPCMBuffer)], events: [TraceEvent]) {
-        let windows: [(seq: Int, start: ContinuousClock.Instant, end: ContinuousClock.Instant)] =
-            Set(events.filter { $0.stage == .ttsFirstBuffer }.map(\.seq)).sorted().compactMap { seq in
-                guard let start = events.first(where: { $0.seq == seq && $0.stage == .ttsFirstBuffer })?.time,
-                      let end = events.first(where: { $0.seq == seq && $0.stage == .ttsEnd })?.time else { return nil }
-                return (seq, start, end)
+        let ordered = buffers.sorted { $0.0 < $1.0 }
+        let starts = Dictionary(grouping: events.filter { $0.stage == .ttsFirstBuffer }, by: \.time)
+        for stamp in starts.keys.sorted() {
+            let seqs = (starts[stamp] ?? []).map(\.seq).sorted()
+            guard let seq = seqs.first,
+                  let first = ordered.lastIndex(where: { $0.0 <= stamp }) ?? ordered.firstIndex(where: { $0.0 > stamp })
+            else { continue }
+            // Up to the next attempt's first buffer (the next stamp, resolved the same way).
+            let nextStamp = starts.keys.sorted().first { $0 > stamp }
+            let end = nextStamp.flatMap { next in
+                ordered.lastIndex(where: { $0.0 <= next }) ?? ordered.firstIndex(where: { $0.0 > next })
+            } ?? ordered.count
+            guard end > first else { continue }
+            for buffer in ordered[first..<end].map(\.1) {
+                var track = tracks[seq] ?? Track(rate: buffer.format.sampleRate, samples: [])
+                track.samples += Self.pcm16(buffer)
+                tracks[seq] = track
             }
-        for (instant, buffer) in buffers {
-            let pcm = Self.pcm16(buffer)
-            for window in windows where instant >= window.start && instant <= window.end {
-                var track = tracks[window.seq] ?? Track(rate: buffer.format.sampleRate, samples: [])
-                track.samples += pcm
-                tracks[window.seq] = track
-            }
+            seqs.forEach { owner[$0] = seq }
         }
     }
 
-    /// Writes `<seq>.wav` for each utterance that has audio.
+    /// Writes `<seq>.wav` for each file owner.
     func write(to directory: URL) throws {
         guard !tracks.isEmpty else { return }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
