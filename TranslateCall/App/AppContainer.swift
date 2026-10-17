@@ -25,6 +25,8 @@ final class AppContainer: ObservableObject {
     let voiceProfileManager: VoiceProfileManager
     let conversationSettings: ConversationSettings
     let vadProvider: VADProvider
+    /// M9 UI core: in-call state for the panel and popover, the call-app list, model preload.
+    let uiServices: UIServices
 
     /// True inside the unit/integration test host: no model is warmed there (models stay out of unit tests).
     nonisolated static var isTestHost: Bool {
@@ -59,11 +61,8 @@ final class AppContainer: ObservableObject {
             languagePairManager: lpm, isTranslationPairInstalled: AppleTranslationService.isInstalled   // REQ-TR-06
         )
 
-        let voiceProfiles = VoiceProfileManager(
-            store: VoiceProfileStore(),
-            recorder: VoiceProfileRecorder(),
-            isSessionActive: { audioManager.isCapturing }
-        )
+        let voiceProfiles = VoiceProfileManager(store: VoiceProfileStore(), recorder: VoiceProfileRecorder(),
+                                                isSessionActive: { audioManager.isCapturing })
         outgoingBridgeModel = outBridge
         incomingBridgeModel = inBridge
         translationSelector = translationSel
@@ -84,5 +83,21 @@ final class AppContainer: ObservableObject {
             conversationSettings: settings,
             vadProvider: vads
         )
+        uiServices = UIServices(coordinator: coordinator, viewModel: audioViewModel, stt: selector, tts: ttsSelector)
+    }
+}
+
+// MARK: - UIServices
+
+/// The M9 UI core services, built after the view model.
+@MainActor
+struct UIServices {
+    let modelPreloader: ModelPreloader
+
+    /// The preloader never runs in the test host (REQ-UI-21a).
+    init(coordinator: AudioCoordinator, viewModel: AudioViewModel, stt: STTEngineSelector, tts: TTSEngineSelector) {
+        modelPreloader = ModelPreloader(stt: stt, tts: tts, languagePairManager: viewModel.languagePairManager,
+                                        isSessionActive: { coordinator.isOutgoingActive || coordinator.isStarting })
+        if !AppContainer.isTestHost { modelPreloader.start() }
     }
 }

@@ -131,6 +131,13 @@ actor QwenCloneModelManager {
         ModelCache.hasMLXWeights(in: ModelCache.mlxAudioDirectory(repo: config.modelRepo, home: home))
     }
 
+    /// Loads the model only when it is on disk; throws `ModelCacheError.notCached` otherwise and never
+    /// downloads (M9 UI core D-6): mlx-audio uses a folder that passes `isModelCached` as it is.
+    func loadCached(home: URL = ModelCache.homeDirectory) async throws {
+        guard isModelCached(home: home) else { throw ModelCacheError.notCached }
+        try await ensureReady()
+    }
+
     // MARK: - Private
 
     private func startSetup() async throws {
