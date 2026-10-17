@@ -125,13 +125,10 @@ actor QwenCloneModelManager {
         if case .idle = state { inferrer = nil }   // a reload during the wait keeps its new client
     }
 
-    /// Checks whether the HuggingFace model cache directory exists.
-    func isModelCached() -> Bool {
-        let repoPath = config.modelRepo.replacingOccurrences(of: "/", with: "--")
-        let cacheDir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".cache/huggingface/hub")
-            .appendingPathComponent("models--\(repoPath)")
-        return FileManager.default.fileExists(atPath: cacheDir.path)
+    /// The model is downloaded: mlx-audio's working copy holds `config.json` and non-empty weights
+    /// (M9 UI core D-6). The `models--…` hub folder alone does not prove that.
+    nonisolated func isModelCached(home: URL = ModelCache.homeDirectory) -> Bool {
+        ModelCache.hasMLXWeights(in: ModelCache.mlxAudioDirectory(repo: config.modelRepo, home: home))
     }
 
     // MARK: - Private
