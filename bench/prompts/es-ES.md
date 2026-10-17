@@ -3,7 +3,7 @@
 - Graba en una habitación tranquila.
 - Usa el micrófono integrado del Mac o unos auriculares.
 - Deja aproximadamente un segundo de silencio antes y después de cada frase.
-- Lee a ritmo natural; haz una pausa (unos medio a un segundo) donde aparezca el símbolo `‖`.
+- Lee a ritmo natural; haz una pausa (de medio a un segundo) donde aparezca el símbolo `‖`.
 - Guarda cada grabación con el nombre del identificador, por ejemplo `es-ES-07.m4a`.
 - Puedes usar cualquier grabadora (QuickTime, Notas de voz, etc.).
 
@@ -26,26 +26,26 @@
 | es-ES-15 | long | Si confirmáis la asistencia para la videollamada del jueves, podemos enviar la agenda definitiva hoy mismo y así todos podremos preparar las preguntas con antelación. | If you confirm attendance for Thursday's video call, we can send the final agenda today so everyone can prepare questions in advance. |
 | es-ES-16 | long | El nuevo proyecto va a durar unos seis meses, con entregas parciales cada quince días y revisiones conjuntas los viernes por la tarde. | The new project will last about six months, with partial deliveries every two weeks and joint reviews on Friday afternoons. |
 | es-ES-17 | hesitation | Lo que quería decir ‖ es que el presupuesto no da para tanto. | What I meant to say is that the budget won't stretch that far. |
-| es-ES-18 | hesitation | Creo que ‖ si revisamos el ordenador de Pedro ‖ vamos a encontrar el archivo. | I think if we check Pedro's computer we'll find the file. |
+| es-ES-18 | hesitation | Creo que ‖ eh ‖ si revisamos el ordenador de Pedro ‖ vamos a encontrar el archivo. | I think if we check Pedro's computer we'll find the file. |
 | es-ES-19 | hesitation | A ver ‖ ¿tú crees que podemos quedar mañana con el cliente? | Let's see, do you think we can meet with the client tomorrow? |
 | es-ES-20 | hesitation | El viernes ‖ o mejor el lunes ‖ quedamos para cerrar el acuerdo. | Friday, or better yet Monday, we'll meet to close the agreement. |
-| es-ES-21 | hesitation | Entonces ‖ si he entendido bien ‖ el plazo es el diez de diciembre. | So, if I've understood correctly, the deadline is December tenth. |
-| es-ES-22 | hesitation | Es decir ‖ necesitamos que enviéis el borrador ‖ antes de la reunión. | That is, we need you to send the draft before the meeting. |
-| es-ES-23 | hesitation | Mira ‖ el móvil no me deja entrar a la videollamada ‖ ahora sí. | Look, my phone won't let me join the video call... now it works. |
+| es-ES-21 | hesitation | Entonces ‖ a ver, si lo he entendido bien ‖ el plazo es el diez de diciembre. | So, let's see, if I've understood correctly, the deadline is December tenth. |
+| es-ES-22 | hesitation | Es decir ‖ necesitamos que enviéis el, ‖ el borrador antes de la reunión. | That is, we need you to send the draft before the meeting. |
+| es-ES-23 | hesitation | Mira ‖ el móvil no me deja entrar en la videollamada ‖ ahora sí. | Look, my phone won't let me join the video call... now it works. |
 | es-ES-24 | hesitation | Bueno ‖ pues ‖ queda apuntado para el martes a las diez. | Well then, it's noted down for Tuesday at ten. |
 | es-ES-25 | turn-end | Con eso ya estaría todo, gracias por vuestro tiempo. | That should be everything, thank you for your time. |
 | es-ES-26 | turn-end | Me lo apunto y os confirmo el lunes, ¿vale? | I'll write it down and confirm with you on Monday, okay? |
-| es-ES-27 | turn-end | No tengo nada más que añadir, paso palabra. | I have nothing else to add, over to you. |
+| es-ES-27 | turn-end | No tengo nada más que añadir, te paso la palabra. | I have nothing else to add, over to you. |
 | es-ES-28 | turn-end | Perfecto, nos vemos en la siguiente reunión. | Perfect, see you in the next meeting. |
-| es-ES-29 | turn-end | Quedamos así entonces, un saludo. | That's settled then, regards. |
+| es-ES-29 | turn-end | Quedamos así entonces, un saludo. | Let's leave it there then, regards. |
 | es-ES-30 | turn-end | Eso es todo por mi parte, hasta luego. | That's all from me, goodbye. |
 | es-ES-31 | turn-pause | El presupuesto parece correcto ‖ salvo el apartado de viajes. | The budget looks correct except for the travel section. |
-| es-ES-32 | turn-pause | La reunión con el cliente ‖ se ha adelantado a las nueve. | The meeting with the client has been moved up to nine. |
+| es-ES-32 | turn-pause | La reunión con el cliente se ha adelantado ‖ a primera hora, a las nueve. | The meeting with the client has been moved up to first thing, at nine. |
 | es-ES-33 | turn-pause | Voy a compartir pantalla ‖ para que veáis el informe. | I'm going to share my screen so you can see the report. |
-| es-ES-34 | turn-pause | Hablamos con María ‖ y ella se encarga de avisar al resto. | We spoke with María and she'll take care of notifying the rest. |
+| es-ES-34 | turn-pause | Hemos hablado con María ‖ y ella se encarga de avisar al resto. | We spoke with María and she'll take care of notifying the rest. |
 | es-ES-35 | turn-pause | Si no tenéis más preguntas ‖ pasamos al siguiente punto. | If you don't have any more questions, we'll move on to the next item. |
 | es-ES-36 | turn-pause | He cogido el ordenador ‖ pero no encuentro el archivo. | I picked up the computer but I can't find the file. |
 | es-ES-37 | multi-sentence | He revisado el correo. El cliente confirma la fecha. Quedamos el martes a las once. | I've checked my email. The client confirms the date. We'll meet on Tuesday at eleven. |
 | es-ES-38 | multi-sentence | Vale. Preparad la presentación y conectaos diez minutos antes. No quiero retrasos. | Okay. Prepare the presentation and join ten minutes early. I don't want delays. |
 | es-ES-39 | multi-sentence | El presupuesto sube un cinco por ciento. Avisa al equipo. Nosotros seguimos con el plan. | The budget goes up by five percent. Let the team know. We'll stick with the plan. |
-| es-ES-40 | multi-sentence | Cogí el móvil para llamarte. Estaba en silencio. ¿Me has dicho las tres? | I picked up my phone to call you. It was on silent. Did you say three o'clock? |
+| es-ES-40 | multi-sentence | He cogido el móvil para llamarte. Estaba en silencio. ¿Me habías dicho las tres? | I grabbed my phone to call you. It was on silent. Had you said three o'clock? |
