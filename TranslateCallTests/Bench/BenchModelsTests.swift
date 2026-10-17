@@ -19,6 +19,10 @@ struct BenchModelsTests {
         #expect(manifest.schema == 1)
         #expect(manifest.clips(variant: "es-ES", set: "pr").count == 1)
         #expect(manifest.clips(variant: "es-419", set: "pr").count == 1)
+        #expect(manifest.clips(variant: "es-ES", set: "full").count == 1)
+        #expect(manifest.clips(variant: "en", set: "full").count == 1)
+        #expect(manifest.clips(variant: "en", set: "pr").isEmpty)
+        #expect(manifest.mtOnly(from: "es", to: "en", set: "full").count == 1)
         #expect(manifest.mtOnly(from: "en", to: "es", set: "pr").count == 1)
     }
 

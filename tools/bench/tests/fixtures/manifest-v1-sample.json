@@ -13,7 +13,7 @@
       "speechStartMs": 220.0,
       "speechEndMs": 3150.0,
       "tags": ["greeting", "question"],
-      "tiers": ["pr", "nightly"],
+      "tiers": ["pr", "full"],
       "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
       "licence": "CC0-1.0",
       "audio": "common_voice/es-ES/cv-es-es-0001.wav"
@@ -30,7 +30,7 @@
       "speechStartMs": 180.0,
       "speechEndMs": 2900.0,
       "tags": ["regionalism"],
-      "tiers": ["pr", "nightly"],
+      "tiers": ["pr", "full"],
       "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
       "licence": "CC0-1.0",
       "audio": "common_voice/es-419/cv-es-419-0001.wav"
@@ -47,7 +47,7 @@
       "speechStartMs": 250.0,
       "speechEndMs": 2800.0,
       "tags": ["scheduling", "question"],
-      "tiers": ["nightly"],
+      "tiers": ["full"],
       "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
       "licence": "CC0-1.0",
       "audio": "common_voice/en/cv-en-0001.wav"
@@ -60,7 +60,7 @@
       "tgtLang": "es",
       "src": "The invoice will be sent tomorrow morning.",
       "ref": "La factura se enviará mañana por la mañana.",
-      "tiers": ["pr", "nightly"]
+      "tiers": ["pr", "full"]
     },
     {
       "id": "mt-es-en-0001",
@@ -68,7 +68,7 @@
       "tgtLang": "en",
       "src": "Necesitamos revisar el presupuesto antes del viernes.",
       "ref": "We need to review the budget before Friday.",
-      "tiers": ["nightly"]
+      "tiers": ["full"]
     }
   ]
 }
