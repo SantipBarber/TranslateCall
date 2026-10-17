@@ -94,13 +94,16 @@ final class AppContainer: ObservableObject {
 struct UIServices {
     let modelPreloader: ModelPreloader
     let callAppMonitor: CallAppMonitor
+    let callSession: CallSessionModel
 
     /// The preloader never runs in the test host (REQ-UI-21a).
     init(coordinator: AudioCoordinator, viewModel: AudioViewModel, stt: STTEngineSelector, tts: TTSEngineSelector) {
+        UISettingsKeys.registerDefaults()
         modelPreloader = ModelPreloader(stt: stt, tts: tts, languagePairManager: viewModel.languagePairManager,
                                         isSessionActive: { coordinator.isOutgoingActive || coordinator.isStarting })
         if !AppContainer.isTestHost { modelPreloader.start() }
         callAppMonitor = CallAppMonitor(workspace: LiveWorkspace(),
                                         selectedBundleID: viewModel.setupManager.selectedCaptureBundleID)
+        callSession = CallSessionModel(coordinator: coordinator, viewModel: viewModel)
     }
 }
