@@ -23,7 +23,7 @@ descends_from_me() {
   local pid=$1
   while [[ "$pid" -gt 1 ]]; do
     [[ "$pid" == "$$" ]] && return 0
-    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ') || return 1
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ' || true)
     [[ -n "$pid" ]] || return 1
   done
   return 1
@@ -107,12 +107,12 @@ TEST_RUNNER_TC_COMMIT=$commit TEST_RUNNER_TC_DIRTY=$dirty TEST_RUNNER_TC_XCODE=$
 echo "━━ analyse ━━"
 phase=analyze
 if [[ "$set_name" == full ]]; then
-  uv run --locked --extra comet --project tools/bench tcbench analyze "$out" --comet
+  uv run --locked --extra comet --project tools/bench tcbench analyze "$out" --manifest "$manifest" --comet
 else
-  tcbench analyze "$out"
+  tcbench analyze "$out" --manifest "$manifest"
 fi
 phase=report
-tcbench report "$out"
+tcbench report "$out" --manifest "$manifest"
 ln -sfn "$run_id" build/bench/runs/latest
 
 echo "━━ verdict ━━"
