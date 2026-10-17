@@ -40,6 +40,14 @@ User's words (2026-10-17): "uso sencillo… algo como lo que hace Teams, pero pa
 
 Privacy is one of the product's core ideas. Everything runs on the device. Automatic model selection only picks on-device engines. A cloud engine (e.g. Edge TTS) is used only when the user explicitly chooses it, with consent at that moment. The UI should make "on-device" visible as a reassurance (e.g. a small "On-device" mark on the setup screen and status panel), and show clearly when a cloud engine is active.
 
+## Advanced model choice per language pair (decided by the user, 2026-10-17)
+
+From the setup screen, an "Advanced…" entry next to the language pair opens a sheet that lists, for each stage (speech recognition, translation, voice), the models tested for that pair. The recommended one is preselected. The user can pick another, including a cloud model; cloud models are clearly marked and ask for consent when chosen.
+
+## Voice clone recording (decided by the user, 2026-10-17)
+
+The user reads a script shown on screen, so the sample covers the intonation the model needs. The UI must mark the pauses the user has to respect and guide the reading speed. Claude's proposals on top: one sentence at a time (teleprompter), the script mixes statements, questions, exclamations and lists; live checks for background noise, volume and pace; re-record a single sentence; a final preview of the cloned voice speaking the other language. The exact script also serves as the reference transcript for Qwen3-TTS.
+
 ## Constraints
 
 - macOS 15+, SwiftUI + AppKit, no app sandbox (BlackHole routing).
