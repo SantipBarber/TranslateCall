@@ -63,7 +63,7 @@ bench set="pr" profile="all" edge="0" lines="":
 
 # Import recordings of a variant for the benchmark (e.g. native speakers)
 bench-ingest dir variant native="false":
-    uv run --locked --project tools/bench tcbench ingest {{quote(dir)}} --variant {{quote(variant)}} --native {{quote(native)}}
+    uv run --locked --extra vad --project tools/bench tcbench ingest {{quote(dir)}} --variant {{quote(variant)}} --native {{quote(native)}}
 
 # Compare a run (default: the latest) with bench/baseline.json
 bench-compare run="build/bench/runs/latest":

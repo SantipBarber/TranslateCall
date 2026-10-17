@@ -69,7 +69,7 @@ Establish a professional, reproducible development workflow for TranslateCall be
 
 **REQ-W-23**: Integration tests whose prerequisite is missing (model not downloaded, language pack not installed) SHALL fail with an explicit message naming the prerequisite and the `just setup` hint. They SHALL NOT be reported as passed.
 
-**REQ-W-24**: The integration tier SHALL write per-stage latency (VAD, STT, translation, TTS first-audio, total) for each fixture to `build/reports/latency.json`.
+**REQ-W-24**: The integration tier SHALL write per-stage latency (VAD, STT, translation, TTS first-audio, total) for each fixture to `build/reports/latency.json`. Superseded by the M9 benchmark harness (`specs/m9-product/benchmark-harness/`).
 
 ### FR-8.5.0.4 — Audio fixtures
 

@@ -172,6 +172,8 @@ Tests run inside the app host (`TEST_HOST` is already the app), so the hidden `T
 
 ### 5.4 Latency report
 
+> Superseded by the M9 benchmark harness (`specs/m9-product/benchmark-harness/`).
+
 `LatencyReport` is an actor collecting `(fixture, stage, ms)` and writing `build/reports/latency.json` at the end of the integration run:
 
 ```json

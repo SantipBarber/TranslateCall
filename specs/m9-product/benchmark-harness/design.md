@@ -75,7 +75,7 @@ struct NoopTraceSink: TraceSink { func record(_ event: TraceEvent) {} }
 
 ### 2.3 Wiring
 
-- `AudioCoordinator` gains one optional parameter, `traceSink: (any TraceSink)? = nil`. When it is non-nil, the coordinator wraps the products of its VAD, STT and TTS factories and its translation services with the decorators. Production (`AppContainer`) passes `nil`, so app behaviour is byte-for-byte the same (NFR-BH-04).
+- the builder wraps the coordinator's factories with `PipelineTracer`'s wrappers (`tasks.md` P1); `AudioCoordinator` is unchanged.
 - A later task, out of scope here, may pass a bounded ring-buffer sink for the in-app latency indicator in the UI thread. The UI thread (2026-10-17) asked for a per-direction latency, "end of speech → first audio", shown as one number such as "0.9 s".
   - In production there is no ground-truth speech end. So the `vadEnd` event carries `segmentAudioMs` and `trailingSilenceMs`, which come from the VAD configuration's `minSilence`. A sink can estimate `speechEnd ≈ vadEnd − trailingSilenceMs`.
   - The other status-panel fields (state, last line, notices, incoming lost) already come from the coordinator's published state and events. They are not part of the trace.
@@ -151,7 +151,7 @@ stop session; flush sink; write raw.json
 ```
 
 - `waitIdle` returns when every trace seq opened since `feed.start` has reached `ttsFirstBuffer`+`ttsEnd` or `dropped`, and no `vadEnd` has been seen for (pause + 0.5 s).
-- Each seq is assigned to the clip whose feed window holds its `speechStart`. A seq that spans two windows counts as a merge (REQ-BH-37).
+- Seq-to-clip assignment lives in `tcbench analyze` (P2).
 - A clip that produced no seq is recorded as `missed`.
 
 ### 3.5 `raw.json` (schema v1)

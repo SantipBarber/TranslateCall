@@ -17,8 +17,8 @@ extension IntegrationTests {
             let stt = AppleSpeechService(locale: fixture.locale, config: config)
             let run = try await firstTranscript(of: fixture, using: stt)
             let wer = WordErrorRate.compute(reference: fixture.text, hypothesis: run.result.text)
-            await LatencyReport.shared.record(fixture: fixture.id, stage: .vad, ms: run.vadMs)
-            await LatencyReport.shared.record(fixture: fixture.id, stage: .stt, ms: run.sttMs)
+            print("LATENCY \(fixture.id) vad \(run.vadMs) ms")
+            print("LATENCY \(fixture.id) stt \(run.sttMs) ms")
             #expect(wer <= fixture.maxWer, "WER \(wer) > \(fixture.maxWer): got “\(run.result.text)”")
         }
 
@@ -28,8 +28,8 @@ extension IntegrationTests {
             let stt = WhisperSpeechService(locale: fixture.locale, config: config)
             let run = try await firstTranscript(of: fixture, using: stt, timeout: .seconds(180))
             let wer = WordErrorRate.compute(reference: fixture.text, hypothesis: run.result.text)
-            await LatencyReport.shared.record(fixture: fixture.id, stage: .vad, ms: run.vadMs)
-            await LatencyReport.shared.record(fixture: fixture.id, stage: .stt, ms: run.sttMs)
+            print("LATENCY \(fixture.id) vad \(run.vadMs) ms")
+            print("LATENCY \(fixture.id) stt \(run.sttMs) ms")
             // Measured 2026-10-03: uk-thanks WER 0.5 with Whisper `base` ("мені"→"ми не", "чути"→"шути").
             withKnownIssue("F8.5.1: Whisper base accuracy on Ukrainian — evaluate `small`", isIntermittent: true) {
                 #expect(wer <= fixture.maxWer, "WER \(wer) > \(fixture.maxWer): got “\(run.result.text)”")

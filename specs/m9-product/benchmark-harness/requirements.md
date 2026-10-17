@@ -1,6 +1,6 @@
 # M9 — Benchmark & Eval Harness — Requirements
 
-> Status: DRAFT (2026-10-17). Source: `design-brief.md` (approved by the user 2026-10-17).
+> Status: APPROVED (2026-10-17). Source: `design-brief.md` (approved by the user 2026-10-17).
 > Thread: M9 latency, project 1 of 2. Project 2 (latency cuts) depends on this harness.
 > Backlog links: `specs/m8.5-stabilization/backlog.md` T4, T7 (latency), A14 (no end-to-end harness); F8.5.0 REQ-W-24 (`latency.json`) is superseded here.
 
@@ -82,7 +82,7 @@ Phase 1 covers ES→EN and EN→ES, with Spain Spanish (`es-ES`) and Latin Ameri
 
   Membership is the `tiers` field.
 
-**REQ-BH-08**: An MT-only text set SHALL exist: about 200 NTREX/FLEURS sentences per direction, translated directly through Apple Translation with no audio. It runs in both tiers and gives a stable chrF++ signal in a minute or two.
+**REQ-BH-08**: An MT-only text set SHALL exist: 100 sentences per direction in the PR tier and 200 in the full tier, translated directly through Apple Translation with no audio. It runs in both tiers and gives a stable chrF++ signal in a minute or two.
 ### FR-BH-2 — Production trace
 
 **REQ-BH-10**: The production pipeline SHALL carry a **per-utterance trace** through each direction. It SHALL be implemented as tracing decorators around the injected VAD, STT, translation and TTS-output stages. The trace is correlated by order within a direction, since stages are FIFO per direction. It is not done by threading an id through the stage protocols. When TTS merges queued sentences, the trace SHALL record that the utterances were merged. It SHALL record monotonic timestamps for:

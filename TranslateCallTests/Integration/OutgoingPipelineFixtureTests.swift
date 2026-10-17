@@ -37,11 +37,11 @@ extension IntegrationTests {
 
             let total = run.vadMs + run.sttMs + translateMs + ttsMs
             let id = "\(fixture.id)→en"
-            let stages: [(LatencyStage, Double)] = [(.vad, run.vadMs), (.stt, run.sttMs), (.translate, translateMs),
-                                                    (.ttsFirstAudio, ttsMs), (.total, total)]
-            for (stage, ms) in stages {
-                await LatencyReport.shared.record(fixture: id, stage: stage, ms: ms)
-            }
+            print("LATENCY \(id) vad \(run.vadMs) ms")
+            print("LATENCY \(id) stt \(run.sttMs) ms")
+            print("LATENCY \(id) translate \(translateMs) ms")
+            print("LATENCY \(id) tts_first_audio \(ttsMs) ms")
+            print("LATENCY \(id) total \(total) ms")
             #expect(!text.isEmpty)
             // Latency is recorded, not enforced, in F8.5.0 (spec: Out of Scope).
         }
