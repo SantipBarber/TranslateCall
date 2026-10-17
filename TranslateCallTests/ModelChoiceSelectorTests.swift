@@ -129,4 +129,43 @@ struct ModelChoiceSelectorTests {
         tts.cacheProbe = .none
         #expect(!tts.availability.voiceCloneReady)
     }
+
+    // MARK: - D-6: no download-capable load at launch in automatic mode
+
+    @Test("automatic mode: a Whisper choice left from manual mode is not loaded at launch (D-6)")
+    func automaticDoesNotAutoLoadWhisper() async {
+        let defaults = freshDefaults()
+        defaults.set("whisper", forKey: "tlk.stt.engine")
+        let loads = CallCounter()
+        _ = STTEngineSelector(defaults: defaults, whisperAutoLoad: { loads.increment() })
+        await mainQueueHop()
+        #expect(loads.value == 0)
+
+        ModelChoice.setAutomatic(false, in: defaults)   // control: manual keeps today's auto-load
+        let manual = STTEngineSelector(defaults: defaults, whisperAutoLoad: { loads.increment() })
+        #expect(await waitUntil { loads.value == 1 })
+        #expect(await waitUntil { manual.whisperAvailable })
+    }
+
+    @Test("automatic mode: \"Use my voice\" does not load the voice clone model at launch (D-6)")
+    func automaticDoesNotAutoLoadVoiceClone() async {
+        let defaults = freshDefaults()
+        defaults.set(true, forKey: QwenCloneConfiguration.voiceCloningEnabledKey)
+        let loads = CallCounter()
+        _ = TTSEngineSelector(defaults: defaults, voiceCloneAutoLoad: { loads.increment() })
+        await mainQueueHop()
+        #expect(loads.value == 0)
+
+        ModelChoice.setAutomatic(false, in: defaults)   // control: manual keeps REQ-VC-04
+        _ = TTSEngineSelector(defaults: defaults, voiceCloneAutoLoad: { loads.increment() })
+        #expect(await waitUntil { loads.value == 1 })
+    }
+}
+
+/// Lets tasks already queued on the main actor run before asserting that something did not happen.
+@MainActor
+private func mainQueueHop() async {
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        DispatchQueue.main.async { continuation.resume() }
+    }
 }

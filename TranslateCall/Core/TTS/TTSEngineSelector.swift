@@ -96,7 +96,11 @@ final class TTSEngineSelector: ObservableObject {
 
     // MARK: - Init
 
-    init(defaults: UserDefaults = .standard) {
+    /// `voiceCloneAutoLoad` replaces the launch-time load of REQ-VC-04 (manual mode only, D-6); nil = the real one.
+    init(
+        defaults: UserDefaults = .standard,
+        voiceCloneAutoLoad: (() async throws -> Void)? = nil
+    ) {
         self.defaults = defaults
         if let raw = defaults.string(forKey: Self.engineKey),
            let engine = TTSEngine(rawValue: raw) {
@@ -106,11 +110,16 @@ final class TTSEngineSelector: ObservableObject {
         observeModelManager()
         observeQwenCloneModelManager()
 
-        // REQ-VC-04: auto-load voice clone model on relaunch if previously enabled
-        if voiceCloningEnabled {
+        // REQ-VC-04: auto-load voice clone model on relaunch if previously enabled — manual mode only.
+        // In automatic mode (D-6) the preloader loads it ahead of Start, one MLX model at a time.
+        if voiceCloningEnabled, !ModelChoice.isAutomatic(in: defaults) {
             Task {
                 do {
-                    try await QwenCloneModelManager.shared.ensureReady()
+                    if let voiceCloneAutoLoad {
+                        try await voiceCloneAutoLoad()
+                    } else {
+                        try await QwenCloneModelManager.shared.ensureReady()
+                    }
                 } catch {
                     logger.info("Voice clone auto-load skipped: \(error.localizedDescription)")
                 }

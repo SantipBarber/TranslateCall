@@ -80,11 +80,13 @@ final class STTEngineSelector: ObservableObject {
 
     // MARK: - Init
 
+    /// `whisperAutoLoad` replaces the launch-time Whisper load (manual mode only, D-6); nil = the real one.
     init(
         defaults: UserDefaults = .standard,
         appleSpeechFactory: @escaping (Locale) -> any SpeechRecognizerService = { AppleSpeechService(locale: $0) },
         parakeetFactory: @escaping (Locale) -> any SpeechRecognizerService = { ParakeetSpeechService(locale: $0) },
-        whisperFactory: @escaping (Locale) -> any SpeechRecognizerService = { WhisperSpeechService(locale: $0) }
+        whisperFactory: @escaping (Locale) -> any SpeechRecognizerService = { WhisperSpeechService(locale: $0) },
+        whisperAutoLoad: (() async throws -> Void)? = nil
     ) {
         self.defaults = defaults
         self.appleSpeechFactory = appleSpeechFactory
@@ -115,12 +117,17 @@ final class STTEngineSelector: ObservableObject {
             }
         }
 
-        // Auto-load Whisper model on relaunch if previously selected
-        if preferredEngine == .whisper {
+        // Auto-load Whisper model on relaunch if previously selected — manual mode only: automatic mode
+        // never downloads at launch (D-6); the preloader loads what is on disk ahead of Start.
+        if preferredEngine == .whisper, !ModelChoice.isAutomatic(in: defaults) {
             isWhisperDownloading = true
             Task { @MainActor [weak self] in
                 do {
-                    try await WhisperModelManager.shared.loadIfNeeded()
+                    if let whisperAutoLoad {
+                        try await whisperAutoLoad()
+                    } else {
+                        try await WhisperModelManager.shared.loadIfNeeded()
+                    }
                     self?.whisperAvailable = true
                     self?.isWhisperDownloading = false
                 } catch {
