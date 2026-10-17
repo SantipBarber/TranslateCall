@@ -114,3 +114,58 @@ def test_fetch_pr_warns_for_run_line_variants_without_pr_clips(world, capsys):
     err = capsys.readouterr().err
     assert "0 PR clips for run-line variant es-419" in err and "variant en" in err
     assert "variant es-ES" not in err
+
+
+def _own_clip(id_, original_id, cache, sha):
+    return {
+        "id": id_,
+        "variant": "en",
+        "gainDb": 0.0,
+        "source": {"dataset": "own", "revision": sha, "originalId": original_id},
+        "tiers": ["pr", "full"],
+        "sha256": sha,
+        "audio": f"own/en/{id_}.wav",
+    }
+
+
+def test_own_clip_is_up_to_date_when_cached(world, capsys):
+    m, cache, p, _ = world
+    own_id = "own-en-en-01"
+    own_audio = cache / "own" / "en" / f"{own_id}.wav"
+    audio.write_wav16(own_audio, np.zeros(8000, np.float32))
+    sha = audio.sha256(own_audio)
+    manifest = {"schema": 1, "clips": [_own_clip(own_id, "en-01.wav", cache, sha)], "mtOnly": []}
+    m.write_text(json.dumps(manifest))
+    fetch.run(m, cache, "full", providers={"stub": p})
+    assert p.calls == []
+    assert "up to date" in capsys.readouterr().out
+
+
+def test_own_clip_missing_fails(world, capsys):
+    m, cache, p, _ = world
+    own_id = "own-en-en-01"
+    manifest = json.loads(m.read_text())
+    manifest["clips"].append(_own_clip(own_id, "en-01.wav", cache, "c" * 64))
+    m.write_text(json.dumps(manifest))
+    with pytest.raises(SystemExit) as e:
+        fetch.run(m, cache, "full", providers={"stub": p})
+    assert e.value.code == 1
+    err = capsys.readouterr().err
+    assert own_id in err
+    assert "re-run just bench-ingest" in err
+
+
+def test_own_clip_sha_mismatch_fails(world, capsys):
+    m, cache, p, _ = world
+    own_id = "own-en-en-01"
+    own_audio = cache / "own" / "en" / f"{own_id}.wav"
+    audio.write_wav16(own_audio, np.zeros(8000, np.float32))
+    manifest = json.loads(m.read_text())
+    manifest["clips"].append(_own_clip(own_id, "en-01.wav", cache, "0" * 64))
+    m.write_text(json.dumps(manifest))
+    with pytest.raises(SystemExit) as e:
+        fetch.run(m, cache, "full", providers={"stub": p})
+    assert e.value.code == 1
+    err = capsys.readouterr().err
+    assert own_id in err
+    assert "re-run just bench-ingest" in err

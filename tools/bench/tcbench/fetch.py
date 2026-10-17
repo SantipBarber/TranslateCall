@@ -39,6 +39,8 @@ def run(manifest_path, cache_dir, set_name: str = "pr", limit: int | None = None
                 print(f"WARNING: the manifest has 0 PR clips for run-line variant {v}", file=sys.stderr)
 
     for ds in sorted({c["source"]["dataset"] for c in clips}):
+        if ds == "own":
+            continue
         entry = licences.get(ds)
         if entry is None or entry["licence"] not in ALLOWED_LICENCES:
             _fail(f"source {ds!r} is not in the licence allow-list (bench/licences.json); refusing to fetch it")
@@ -46,6 +48,12 @@ def run(manifest_path, cache_dir, set_name: str = "pr", limit: int | None = None
     todo = []
     for c in clips:
         target = cache_dir / c["audio"]
+        if c["source"]["dataset"] == "own":
+            if not target.exists():
+                _fail(f"own recording {c['id']} missing from the cache — re-run just bench-ingest <dir> <variant>")
+            if audio_mod.sha256(target) != c["sha256"]:
+                _fail(f"own recording {c['id']} sha256 mismatch in the cache — re-run just bench-ingest <dir> <variant>")
+            continue
         if target.exists():
             if audio_mod.sha256(target) != c["sha256"]:
                 _fail(f"clip {c['id']} ({c['source']['dataset']}): cached file {target} does not match sha256 in the manifest; delete it to refetch")

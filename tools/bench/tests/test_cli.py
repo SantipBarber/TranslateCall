@@ -1,16 +1,40 @@
 import subprocess
+import sys
 
 import pytest
 
 from tcbench.cli import _repo_is_dirty, main
 
 
-@pytest.mark.parametrize("cmd", ["ingest"])
-def test_stub_exits_2(cmd, capsys):
+def test_ingest_cli_runs(monkeypatch, tmp_path, capsys):
+    monkeypatch.setitem(sys.modules, "silero_vad", type(sys)("silero_vad"))
+    called = {}
+
+    def fake_run(folder, sheet, variant, native, manifest_path, cache_dir=None):
+        called.update(
+            folder=folder,
+            sheet=sheet,
+            variant=variant,
+            native=native,
+            manifest=manifest_path,
+            cache_dir=cache_dir,
+        )
+        return []
+
+    monkeypatch.setattr("tcbench.ingest.run", fake_run)
+    code = main(["ingest", str(tmp_path), "--variant", "en", "--native", "true"])
+    assert code == 0
+    assert called["variant"] == "en"
+    assert called["native"] is True
+
+
+def test_all_commands_in_help(capsys):
     with pytest.raises(SystemExit) as e:
-        main([cmd])
-    assert e.value.code == 2
-    assert "not implemented" in capsys.readouterr().err
+        main(["--help"])
+    assert e.value.code == 0
+    err = capsys.readouterr().out
+    for cmd in ("fetch", "manifest", "ingest", "analyze", "report", "compare", "baseline"):
+        assert cmd in err
 
 
 def test_compare_cli_missing_run_dir(capsys):
