@@ -86,10 +86,3 @@ Out of M8.5 (strategic, later): min macOS 26 / SpeechAnalyzer, WhisperKit → Ar
 |---|---------|-------|----------------|
 | T7 | Apple Translation costs ~250–450 ms per short sentence (model inference; 62 ms for one word), the same with a kept or a fresh session and with macOS 26 `TranslationSession(installedSource:target:)`. Further cuts need another engine or translating partial STT results. Owner: unassigned | `build/reports/latency.json` (`TranslationLatencyTests`) | recorded, ceiling 400 ms: `TranslationBridgeIntegrationTests.keptSessionLatency` |
 | T8 | Apple Translation framework errors are always wrapped as `.sessionError`, so a pack removed mid-call gives retries and notices instead of the REQ-TR-21 alert. Proposed fix: map `Translation.TranslationError` notInstalled / unsupportedLanguagePairing to the app's configuration errors, without retrying. Owner: unassigned | `TranslationBridge.swift` (~136) | — |
-
-## Pending manual checklist (2026-10-17)
-
-| # | Finding | Where | Guard in place |
-|---|---------|-------|----------------|
-| P-F854 | F8.5.4 was merged (PR #7, f72378a) without the manual checklist M1–M6 + M2b. Run it before the M9 UI work touches windows or audio; fix forward if a check fails. | `specs/m8.5-stabilization/f8.5.4-translation/requirements.md` (Manual checks) | pending, user run started 2026-10-17 |
-| A26 | **Blocker, found running the F8.5.4 checklist (2026-10-17):** no main window and no menu-bar item at launch. `TranslationHostWindow` orders itself in (`orderBack`) while `AppContainer` is built, so SwiftUI sees a visible window and skips opening the `WindowGroup`'s initial window. The menu-bar item and `MainWindowOpener.openWindow` are both set up in `ContentView.onAppear`, so nothing can open the window afterwards (Dock click and menu bar both rely on them). Verified: with `orderBack` commented out, the 480×792 main window appears. Owner: fix branch before the checklist | `TranslationHostWindow.swift` (`orderBack`), `TranslateCallApp.swift` (`onAppear`), `MainWindowOpener.swift` | — |
