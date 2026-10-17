@@ -94,9 +94,10 @@ final class ModelPreloader {
         return wanted
     }
 
-    /// Loads what the pair needs and unloads what it no longer needs; a no-op during a session.
+    /// Loads what the pair needs and unloads what it no longer needs; a no-op during a session and in
+    /// manual mode, where the user's picks own the models and `loaded` is left as it is (R27).
     func preload() async {
-        guard !isSessionActive() else { return }
+        guard stt.isAutomatic, !isSessionActive() else { return }
         let wanted = wantedModels()
         for model in loaded.subtracting(wanted) { await loaders.unload(model) }
         for model in wanted.subtracting(loaded) { await loaders.load(model) }

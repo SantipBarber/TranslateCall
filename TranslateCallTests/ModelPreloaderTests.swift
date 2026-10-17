@@ -101,6 +101,20 @@ struct ModelPreloaderTests {
         await busy.preload()
         #expect(harness.log.entries.isEmpty)
     }
+
+    @Test("switching to manual keeps what automatic mode loaded: no unloads on a later preload (R27)")
+    func manualKeepsLoadedModels() async {
+        let harness = Harness(source: "en", target: "es", probe: cachedAll)
+        let preloader = harness.preloader()
+        await preloader.preload()
+        #expect(preloader.loaded == [.parakeet, .whisper])
+
+        harness.stt.setAutomatic(false)
+        await harness.pair.setSourceLanguage(Locale.Language(identifier: "de"))
+        await preloader.preload()
+        #expect(!harness.log.entries.contains { $0.hasPrefix("unload") })
+        #expect(preloader.loaded == [.parakeet, .whisper])
+    }
 }
 
 // MARK: - Load-only paths (P20: the preloader never triggers a download)
