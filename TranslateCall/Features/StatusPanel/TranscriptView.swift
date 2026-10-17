@@ -36,6 +36,12 @@ nonisolated enum TranscriptRules {
         contentHeight - (offsetY + viewportHeight) <= nearBottomThreshold
     }
 
+    /// Whether new entries keep scrolling: the user's scroll position decides, but the geometry seen
+    /// during our own animated scroll-to-end does not (mid-animation it is not yet "near the bottom").
+    static func followsBottom(current: Bool, nearBottom: Bool, programmaticScroll: Bool) -> Bool {
+        programmaticScroll ? current : nearBottom
+    }
+
     /// "Them · 12:02 · 0.8 s"; the latency only when known and wanted.
     static func footer(for entry: TranscriptEntry, showsLatency: Bool = true) -> String {
         let speaker = entry.direction == .incoming ? String(localized: "Them") : String(localized: "You")
@@ -58,6 +64,8 @@ struct TranscriptView: View {
     let sessionActive: Bool
     var showsLatency = true
     @State private var followsBottom = true
+    /// True while `scrollToEnd`'s animation runs: its geometry must not turn `followsBottom` off.
+    @State private var isAutoScrolling = false
 
     private static let bottomID = "transcript-bottom"
 
@@ -72,7 +80,10 @@ struct TranscriptView: View {
                 TranscriptRules.isNearBottom(contentHeight: geometry.contentSize.height,
                                              offsetY: geometry.contentOffset.y + geometry.contentInsets.top,
                                              viewportHeight: geometry.containerSize.height)
-            } action: { _, nearBottom in followsBottom = nearBottom }
+            } action: { _, nearBottom in
+                followsBottom = TranscriptRules.followsBottom(current: followsBottom, nearBottom: nearBottom,
+                                                              programmaticScroll: isAutoScrolling)
+            }
             .onAppear { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
             .onChange(of: entries.last?.id) { scrollToEnd(proxy) }
             .onChange(of: entries.last?.translation) { scrollToEnd(proxy) }
@@ -97,7 +108,12 @@ struct TranscriptView: View {
 
     private func scrollToEnd(_ proxy: ScrollViewProxy) {
         guard followsBottom else { return }
-        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+        isAutoScrolling = true
+        withAnimation(.easeOut(duration: 0.2)) {
+            proxy.scrollTo(Self.bottomID, anchor: .bottom)
+        } completion: {
+            isAutoScrolling = false
+        }
     }
 }
 

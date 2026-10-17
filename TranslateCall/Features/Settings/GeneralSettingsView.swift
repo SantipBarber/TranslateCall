@@ -166,7 +166,7 @@ struct GeneralSettingsContent: View {
         Section("General") {
             Toggle("Open at login", isOn: Binding(get: { login.isEnabled }, set: { login.set($0) }))
             if let error = login.errorMessage {
-                Text(error).font(.caption).foregroundStyle(.red)
+                Text(error).font(.caption).foregroundStyle(Theme.Status.red)
             }
             LabeledContent {
                 Button("Manage…", action: onManageLanguages).buttonStyle(.link)

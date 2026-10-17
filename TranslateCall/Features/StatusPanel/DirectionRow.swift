@@ -87,9 +87,11 @@ struct DirectionRow: View {
             }
         }
         .accessibilityElement(children: .combine)
+        // The explicit label replaces the combined texts: the line (or the last sentence) is the value.
         .accessibilityLabel(DirectionCopy.accessibilityLabel(
             direction: direction, from: Self.name(of: source), to: Self.name(of: target),
-            state: DirectionCopy.chip(state, direction: direction, appName: appName)))
+            state: showsChip ? DirectionCopy.chip(state, direction: direction, appName: appName) : nil))
+        .accessibilityValue(line ?? quote ?? "")
     }
 
     private var header: some View {

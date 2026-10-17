@@ -41,6 +41,13 @@ struct TranscriptRulesTests {
         #expect(TranscriptRules.isNearBottom(contentHeight: 100, offsetY: 0, viewportHeight: 338))
     }
 
+    @Test("follow-bottom ignores the geometry of its own scroll animation; the user's scroll decides otherwise")
+    func followsBottomIgnoresProgrammaticScroll() {
+        #expect(TranscriptRules.followsBottom(current: true, nearBottom: false, programmaticScroll: true))
+        #expect(!TranscriptRules.followsBottom(current: true, nearBottom: false, programmaticScroll: false))
+        #expect(TranscriptRules.followsBottom(current: false, nearBottom: true, programmaticScroll: false))
+    }
+
     @Test("footer: speaker, time, and the latency only when known and wanted")
     func footer() {
         var incoming = entry(.incoming)

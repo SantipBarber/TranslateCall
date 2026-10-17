@@ -40,6 +40,9 @@ struct UICopyTests {
     func accessibility() {
         #expect(DirectionCopy.accessibilityLabel(direction: .outgoing, from: "Spanish", to: "German", state: "Speaking")
                 == "You, Spanish to German, speaking")
+        // Incoming off (no call app): no chip, so no state word; the row's line is its value.
+        #expect(DirectionCopy.accessibilityLabel(direction: .incoming, from: "German", to: "Spanish", state: nil)
+                == "Them, German to Spanish")
     }
 
     @Test("pickers list Español, English, Deutsch first, then the rest by name (REQ-UI-06)")

@@ -44,10 +44,12 @@ nonisolated enum DirectionCopy {
         return false
     }
 
-    /// VoiceOver: "You, Spanish to German, speaking" (NFR-UI-04).
+    /// VoiceOver: "You, Spanish to German, speaking" (NFR-UI-04). A nil `state` (a row without a chip,
+    /// e.g. incoming with no call app) leaves the state out: the row's line is read as its value.
     static func accessibilityLabel(direction: TranscriptDirection, from source: String, to target: String,
-                                   state: String) -> String {
+                                   state: String?) -> String {
         let who = direction == .outgoing ? String(localized: "You") : String(localized: "Them")
+        guard let state else { return String(localized: "\(who), \(source) to \(target)") }
         return String(localized: "\(who), \(source) to \(target), \(state.lowercased())")
     }
 }
