@@ -6,7 +6,7 @@ struct SettingsView: View {
 
     var body: some View {
         TabView(selection: $tab) {
-            Text("General")
+            GeneralSettingsView()
                 .tabItem { Label("General", systemImage: "gearshape") }
                 .tag(SettingsTab.general.rawValue)
             Text("Advanced (legacy)")
