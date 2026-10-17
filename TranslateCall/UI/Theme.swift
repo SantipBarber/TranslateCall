@@ -34,6 +34,7 @@ enum Theme {
         static let red = Color.red
         static let purple = Color.purple
         static let info = Color.blue
+        static let neutral = Color.gray
     }
 
     static func soft(_ color: Color) -> Color {

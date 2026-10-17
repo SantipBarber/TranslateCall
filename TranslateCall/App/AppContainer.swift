@@ -95,6 +95,7 @@ struct UIServices {
     let modelPreloader: ModelPreloader
     let callAppMonitor: CallAppMonitor
     let callSession: CallSessionModel
+    let mainSetupModel: MainSetupModel
 
     /// The preloader never runs in the test host (REQ-UI-21a).
     init(coordinator: AudioCoordinator, viewModel: AudioViewModel, stt: STTEngineSelector, tts: TTSEngineSelector) {
@@ -105,5 +106,7 @@ struct UIServices {
         callAppMonitor = CallAppMonitor(workspace: LiveWorkspace(),
                                         selectedBundleID: viewModel.setupManager.selectedCaptureBundleID)
         callSession = CallSessionModel(coordinator: coordinator, viewModel: viewModel)
+        mainSetupModel = MainSetupModel(monitor: callAppMonitor, setupManager: viewModel.setupManager,
+                                        languagePairManager: viewModel.languagePairManager, session: callSession)
     }
 }
