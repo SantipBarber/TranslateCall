@@ -198,6 +198,8 @@ enum BenchPipelineFactory {
         // LanguagePairManager's keys (private there): the pair this session translates.
         defaults.set(line.userLanguage, forKey: "tlk.source.language")
         defaults.set(line.otherLanguage, forKey: "tlk.target.language")
+        // Engines are pinned per profile: the selectors must never pick their own (M9 UI core automatic mode).
+        ModelChoice.setAutomatic(false, in: defaults)
         let pair = LanguagePairManager(defaults: defaults, languageLoader: { [] })
         let (outBridge, inBridge) = (TranslationBridgeModel(), TranslationBridgeModel())
         let host = TranslationHostWindow(outgoing: outBridge, incoming: inBridge)
