@@ -89,14 +89,19 @@ extension IntegrationTests {
         }
 
         @Test(arguments: [
+            ("Silero VAD", BenchRunLine.outgoingEsESToEn, BenchOptions()),
             ("Parakeet", BenchRunLine.outgoingEnToEs, BenchOptions(profile: .best)),
             ("Whisper", BenchRunLine.incomingEnToEs, BenchOptions(overrideSTT: .whisper)),
             ("Kokoro", BenchRunLine.outgoingEsESToEn, BenchOptions(overrideTTS: .kokoro))
         ])
         func absentModelRefusesWithoutLoading(model: String, line: BenchRunLine, options: BenchOptions) async {
             var options = options
-            let none: @Sendable () async -> Bool = { false }
-            options.presence = BenchModelPresence(parakeet: none, whisper: none, kokoro: none, voiceClone: none)
+            // Every model "present" except the one under test.
+            let (present, absent): (@Sendable () async -> Bool, @Sendable () async -> Bool) = ({ true }, { false })
+            options.presence = BenchModelPresence(
+                silero: model == "Silero VAD" ? absent : present, parakeet: model == "Parakeet" ? absent : present,
+                whisper: model == "Whisper" ? absent : present, kokoro: model == "Kokoro" ? absent : present,
+                voiceClone: present)
             var refused: MissingPrerequisite?
             await withKnownIssue {
                 do {

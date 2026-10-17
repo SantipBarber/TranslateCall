@@ -42,12 +42,20 @@ enum BenchProfile: String, CaseIterable, Sendable {
 /// Whether a model is already on disk. A bench run never downloads a model (NFR-BH-03): it asks
 /// first and fails with "download it in the app first (M5)" instead of triggering a load.
 struct BenchModelPresence: Sendable {
+    var silero: @Sendable () async -> Bool
     var parakeet: @Sendable () async -> Bool
     var whisper: @Sendable () async -> Bool
     var kokoro: @Sendable () async -> Bool
     var voiceClone: @Sendable () async -> Bool
 
     static let onDisk = BenchModelPresence(
+        silero: {
+            let folder = AsrModels.defaultCacheDirectory(for: .v3).deletingLastPathComponent()
+                .appendingPathComponent("silero-vad-coreml")
+            return ModelNames.VAD.requiredModels.allSatisfy {
+                FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
+            }
+        },
         parakeet: {
             let version = await MainActor.run { ParakeetConfiguration.default.modelVersion }
             return AsrModels.modelsExist(at: AsrModels.defaultCacheDirectory(for: version), version: version)
@@ -61,7 +69,9 @@ struct BenchModelPresence: Sendable {
         kokoro: {
             let folder = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".cache/fluidaudio/Models/kokoro")
-            return FileManager.default.fileExists(atPath: folder.path)
+            return ModelNames.TTS.Variant.allCases.contains {
+                FileManager.default.fileExists(atPath: folder.appendingPathComponent($0.fileName).path)
+            }
         },
         voiceClone: { await QwenCloneModelManager.shared.isModelCached() }
     )
@@ -307,6 +317,8 @@ enum BenchPipelineFactory {
     private static func configureEngines(
         stt: STTEngineSelector, tts: TTSEngineSelector, line: BenchRunLine, options: BenchOptions
     ) async throws {
+        // The VAD loads at start and would download Silero if it were missing.
+        try requirePrerequisite(await options.presence.silero(), "Silero VAD model — download it in the app first (M5)")
         let engine = sttEngine(for: line, options: options)
         // Never before the model is known to be on disk: selecting Parakeet or Whisper would start a download.
         if engine == .parakeet {
