@@ -41,6 +41,22 @@ struct UICopyTests {
         #expect(DirectionCopy.accessibilityLabel(direction: .outgoing, from: "Spanish", to: "German", state: "Speaking")
                 == "You, Spanish to German, speaking")
     }
+
+    @Test("pickers list Español, English, Deutsch first, then the rest by name (REQ-UI-06)")
+    func languageOrdering() {
+        let supported = ["uk", "de", "fr", "en", "es", "ja"].map { Locale.Language(identifier: $0) }
+        let names = ["uk": "Ukrainian", "de": "German", "fr": "French", "en": "English", "es": "Spanish", "ja": "Japanese"]
+        let result = LanguageOrdering.ordered(supported) { names[$0.languageCode?.identifier ?? ""] ?? "" }
+        #expect(result.priority.map(\.minimalIdentifier) == ["es", "en", "de"])
+        #expect(result.others.map(\.minimalIdentifier) == ["fr", "ja", "uk"])
+    }
+
+    @Test("no priority language supported → an empty first group")
+    func noPriority() {
+        let result = LanguageOrdering.ordered([Locale.Language(identifier: "fr")]) { _ in "French" }
+        #expect(result.priority.isEmpty)
+        #expect(result.others.count == 1)
+    }
 }
 
 @Suite("Menu bar dot (M9 UI core REQ-UI-61)")
