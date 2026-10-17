@@ -1,3 +1,5 @@
+import subprocess
+
 import pytest
 
 from tcbench.cli import _repo_is_dirty, main
@@ -29,6 +31,17 @@ def test_baseline_cli_refuses_dirty_tree(capsys, monkeypatch):
     assert "uncommitted" in capsys.readouterr().err.lower()
 
 
-def test_repo_is_dirty_smoke():
-    # The harness worktree itself has uncommitted changes during this test.
-    assert _repo_is_dirty() is True
+def test_repo_is_dirty_smoke(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "file.txt").write_text("clean\n")
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "add", "file.txt"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True)
+
+    assert _repo_is_dirty(repo) is False
+
+    (repo / "file.txt").write_text("dirty\n")
+    assert _repo_is_dirty(repo) is True

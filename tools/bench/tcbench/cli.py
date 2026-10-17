@@ -15,15 +15,20 @@ def _load_json(path: str) -> dict:
     return json.loads(Path(path).read_text())
 
 
-def _repo_is_dirty() -> bool:
-    """Return True if the git working tree under the repo root has changes."""
+def _repo_is_dirty(repo_dir: Path | str | None = None) -> bool:
+    """Return True if the git working tree under ``repo_dir`` has changes.
+
+    Defaults to the repository root (three parents above this file).
+    """
+    if repo_dir is None:
+        repo_dir = Path(__file__).resolve().parents[3]
     try:
         result = subprocess.run(
             ["git", "status", "--porcelain"],
             capture_output=True,
             text=True,
             check=True,
-            cwd=Path(__file__).resolve().parents[3],
+            cwd=repo_dir,
         )
     except (subprocess.CalledProcessError, FileNotFoundError):
         # git unavailable or not a repo: assume clean to avoid blocking.
