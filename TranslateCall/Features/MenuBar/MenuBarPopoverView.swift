@@ -29,10 +29,13 @@ struct MenuBarPopoverContent: View {
     /// The primary button's title and whether it is pressable (false while the call app opens, P24).
     var primaryTitle = ""
     var primaryDisabled = false
+    /// Translating layout: whether the session is paused (the Pause/Resume button, REQ-UI-52).
+    var isPaused = false
     var outgoing: DirectionRow?
     var incoming: DirectionRow?
     var onPrimary: () -> Void = {}
     var onStop: () -> Void = {}
+    var onTogglePause: () -> Void = {}
     var onShowPanel: () -> Void = {}
     var onOpenMain: () -> Void = {}
     var onSettings: () -> Void = {}
@@ -46,16 +49,23 @@ struct MenuBarPopoverContent: View {
             if isTranslating {
                 if let outgoing { MenuBarMiniRow(row: outgoing) }
                 if let incoming { MenuBarMiniRow(row: incoming) }
-                Button(action: onStop) {
-                    Label("Stop translating", systemImage: "stop")
-                        .fontWeight(.medium)
-                        .foregroundStyle(Theme.Status.red)
-                        .frame(maxWidth: .infinity, minHeight: 32)
-                        .background(Theme.soft(Theme.Status.red))
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous))
-                        .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous))
+                HStack(spacing: Theme.Spacing.small) {
+                    Button(action: onTogglePause) {
+                        Label(isPaused ? "Resume" : "Pause", systemImage: isPaused ? "play" : "pause")
+                            .fontWeight(.medium)
+                            .foregroundStyle(Color.primary)
+                            .modifier(PopoverButtonShape(tint: Theme.Status.neutral))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isPaused ? "Resume translating" : "Pause translating")
+                    Button(action: onStop) {
+                        Label("Stop translating", systemImage: "stop")
+                            .fontWeight(.medium)
+                            .foregroundStyle(Theme.Status.red)
+                            .modifier(PopoverButtonShape(tint: Theme.Status.red))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
                 .disabled(primaryDisabled)
             } else {
                 Button(action: onPrimary) {
@@ -115,6 +125,19 @@ struct MenuBarPopoverContent: View {
         case .orange: Theme.Status.orange
         case .none: Theme.Status.neutral
         }
+    }
+}
+
+/// The in-call buttons' 32 pt soft-tinted shape (the panel's button convention, larger).
+private struct PopoverButtonShape: ViewModifier {
+    let tint: Color
+
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: .infinity, minHeight: 32)
+            .background(Theme.soft(tint))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous))
     }
 }
 
@@ -184,7 +207,7 @@ struct MenuBarPopoverView: View {
 
     var body: some View {
         let languages = setup.languagePairManager
-        let (source, target) = (languages.sourceLanguage, languages.targetLanguage)
+        let (source, target) = (setup.sourceLanguage, setup.targetLanguage)
         let appName = setup.selectedRow?.appName ?? String(localized: "No call app")
         let pair = "\(languages.displayName(for: source)) ↔ \(languages.displayName(for: target))"
         let translating = session.phase == .running
@@ -195,11 +218,12 @@ struct MenuBarPopoverView: View {
             isTranslating: translating, dot: translating ? dot : .none,
             headline: translating ? session.title.text : (setup.readiness.blockingReason ?? String(localized: "Ready")),
             subtitle: "\(appName) · \(pair)", startedAt: session.sessionStartedAt,
-            primaryTitle: setup.readiness.primary.title, primaryDisabled: busy,
+            primaryTitle: setup.readiness.primary.title, primaryDisabled: busy, isPaused: session.isPaused,
             outgoing: translating ? row(.outgoing, from: source, to: target, appName: appName) : nil,
             incoming: translating ? row(.incoming, from: target, to: source, appName: appName) : nil,
             onPrimary: { MenuBarStart.start(setup: setup, viewModel: viewModel) },
             onStop: { Task { await session.stop() } },
+            onTogglePause: { Task { await session.togglePause() } },
             onShowPanel: { panel.show() },
             onOpenMain: { NSApp.showMainWindow() },
             onSettings: { SettingsOpener.shared.open(tab: .general) },
