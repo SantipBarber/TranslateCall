@@ -152,7 +152,7 @@ def test_own_clip_missing_fails(world, capsys):
     assert e.value.code == 1
     err = capsys.readouterr().err
     assert own_id in err
-    assert "re-run tcbench ingest" in err
+    assert "re-run just bench-ingest" in err
 
 
 def test_own_clip_sha_mismatch_fails(world, capsys):
@@ -168,4 +168,4 @@ def test_own_clip_sha_mismatch_fails(world, capsys):
     assert e.value.code == 1
     err = capsys.readouterr().err
     assert own_id in err
-    assert "re-run tcbench ingest" in err
+    assert "re-run just bench-ingest" in err

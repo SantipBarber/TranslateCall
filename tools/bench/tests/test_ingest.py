@@ -381,3 +381,18 @@ def test_entries_have_manifest_keys(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     m = json.loads(manifest_path.read_text())
     assert len(m["clips"]) == 1
     assert set(m["clips"][0]) == expected
+
+
+def test_es_es_sheet_translation_keyed_en(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(groundtruth, "speech_span", lambda samples, sr=16000, why=None: (200.0, 1800.0))
+    sheet = tmp_path / "sheet.md"
+    _sheet(sheet, [{"id": "es-ES-01", "purpose": "short", "text": "Vale.", "reference": "Okay."}])
+    _wav(tmp_path / "es-ES-01.wav", seconds=2.0)
+    manifest_path = tmp_path / "manifest.json"
+    _manifest(manifest_path)
+
+    ingest.run(tmp_path, sheet, "es-ES", True, manifest_path, cache_dir=tmp_path / "cache")
+
+    m = json.loads(manifest_path.read_text())
+    assert len(m["clips"]) == 1
+    assert m["clips"][0]["translations"] == {"en": "Okay."}

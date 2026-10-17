@@ -50,9 +50,9 @@ def run(manifest_path, cache_dir, set_name: str = "pr", limit: int | None = None
         target = cache_dir / c["audio"]
         if c["source"]["dataset"] == "own":
             if not target.exists():
-                _fail(f"own recording {c['id']} missing from the cache — re-run tcbench ingest <dir>")
+                _fail(f"own recording {c['id']} missing from the cache — re-run just bench-ingest <dir> <variant>")
             if audio_mod.sha256(target) != c["sha256"]:
-                _fail(f"own recording {c['id']} sha256 mismatch in the cache — re-run tcbench ingest <dir>")
+                _fail(f"own recording {c['id']} sha256 mismatch in the cache — re-run just bench-ingest <dir> <variant>")
             continue
         if target.exists():
             if audio_mod.sha256(target) != c["sha256"]:
