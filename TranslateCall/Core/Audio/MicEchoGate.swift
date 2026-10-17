@@ -1,8 +1,5 @@
 import AVFoundation
-import OSLog
 import Synchronization
-
-nonisolated private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "MicEchoGate")
 
 // MARK: - MicEchoGate
 
@@ -85,15 +82,7 @@ nonisolated final class MicEchoGate: Sendable {
     /// like the other capture streams (F8.5.1 REQ-C-05).
     func gatedSession(_ input: AsyncStream<AVAudioPCMBuffer>,
                       capacity: Int = SessionAudioStream.capacity) -> SessionAudioStream {
-        let output = SessionAudioStream(label: "outgoing-gated", capacity: capacity)
-        // Ends when `input` finishes (the producer owns the session); yields to a gone consumer are no-ops.
-        Task { [self] in
-            for await buffer in input {
-                output.yield(process(buffer))
-            }
-            output.finish()
-        }
-        return output
+        GatedAudioStream.make(input, label: "outgoing-gated", capacity: capacity) { [self] in process($0) }
     }
 
     /// One buffer through the gate: the same instance when open, a zeroed copy when muting (REQ-H-03).
@@ -108,30 +97,11 @@ nonisolated final class MicEchoGate: Sendable {
         }
         if changed { onPausedChange(muting) }
         guard muting else { return buffer }
-        if let silent = Self.silence(like: buffer) { return silent }
-        // Allocation failed: silence the buffer itself rather than let echo through (never drop it).
-        logger.error("Could not allocate a silent buffer; zeroing the captured one in place")
-        Self.zero(buffer)
-        return buffer
+        // Never echo: a failed allocation zeroes the buffer itself (never drops it).
+        return GatedAudioStream.silenced(buffer)
     }
 
     // MARK: - Helpers
-
-    /// A buffer of `buffer`'s format and length, every byte zero.
-    static func silence(like buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-        guard let silent = AVAudioPCMBuffer(pcmFormat: buffer.format,
-                                            frameCapacity: max(buffer.frameLength, 1)) else { return nil }
-        silent.frameLength = buffer.frameLength
-        zero(silent)
-        return silent
-    }
-
-    private static func zero(_ buffer: AVAudioPCMBuffer) {
-        for audio in UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList) {
-            guard let data = audio.mData else { continue }
-            memset(data, 0, Int(audio.mDataByteSize))
-        }
-    }
 
     /// Elapsed time on `clock` since the gate was created (opens the existential's `Instant`).
     private static func offsetReader<C: Clock>(_ clock: C) -> @Sendable () -> Duration where C.Duration == Duration {
