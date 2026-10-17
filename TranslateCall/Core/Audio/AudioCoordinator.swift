@@ -65,13 +65,25 @@ final class AudioCoordinator: ObservableObject {
     @Published private(set) var isStarting: Bool = false
     @Published private(set) var availableCaptureApps: [SCRunningApplication] = []
 
+    // MARK: - UI session state (M9 UI core design §4.1)
+    // Written by AudioCoordinator+Session.swift and +Pipeline.swift, hence internal setters.
+
+    @Published var isOutgoingTranslating = false
+    @Published var isIncomingTranslating = false
+    /// The incoming VAD hears speech ("Hearing them").
+    @Published var isIncomingSpeechActive = false
+    /// This session's sentences, newest last, at most `TranscriptEntry.limit` (REQ-UI-44).
+    @Published var transcript: [TranscriptEntry] = []
+    /// When the outgoing side went active; nil outside a session.
+    @Published var sessionStartedAt: Date?
+
     // MARK: - TTS Audio Monitor (local playback + recording of outgoing TTS)
 
     @Published var ttsMonitorEnabled: Bool = false {
         didSet { ttsMonitor?.isEnabled = ttsMonitorEnabled }
     }
-    @Published private(set) var ttsMonitorRecording: Bool = false
-    private(set) var ttsMonitor: TTSAudioMonitor?
+    @Published var ttsMonitorRecording: Bool = false
+    var ttsMonitor: TTSAudioMonitor?
 
     // MARK: - TTS notice (F8.5.2 REQ-T-41)
 
@@ -195,6 +207,7 @@ final class AudioCoordinator: ObservableObject {
         guard packsInstalled else { return errorAlert = makeAlertItem(for: TranslationError.modelNotLoaded) }
         self.captureTarget = captureTarget
         micEchoGate = makeMicEchoGate()
+        beginSessionUIState()
         alertedTranslationErrors.removeAll()
         await warmUpTranslation()   // returns at once: the sessions open while capture starts (REQ-TR-05)
 
@@ -203,16 +216,19 @@ final class AudioCoordinator: ObservableObject {
         } catch {
             errorAlert = makeAlertItem(for: error)
             releaseMicEchoGate()   // no session: the gate is nil outside one
+            endSessionUIState()
             return
         }
         guard generation == sessionGeneration, audioCapture.isCapturing else {
             logger.info("start() superseded (stop or mic ended) — releasing outgoing")
             await teardownOutgoingServices()
             releaseMicEchoGate()
+            endSessionUIState()
             return
         }
 
         isOutgoingActive = true
+        sessionStartedAt = .now
         subscribeToIncomingEvents()
         let activation = Task { await self.activateIncoming() }
         incomingActivationTask = activation
@@ -246,6 +262,7 @@ final class AudioCoordinator: ObservableObject {
         incomingTranscription = nil
         incomingTranslation = nil
         suppressNextOutgoingTurnFlag = false
+        endSessionUIState()
         ttsNoticeTask?.cancel()
         ttsNotice = nil
 
@@ -302,48 +319,6 @@ final class AudioCoordinator: ObservableObject {
             guard !Task.isCancelled else { return }   // a newer notice replaced this one
             self?.ttsNotice = nil
         }
-    }
-
-    // MARK: - TTS Monitor actions
-
-    /// Initializes the monitor (lazy — only created when first enabled).
-    func enableTTSMonitor() {
-        if ttsMonitor == nil {
-            do {
-                ttsMonitor = try TTSAudioMonitor()
-            } catch {
-                errorAlert = makeAlertItem(for: error)
-                return
-            }
-        }
-        ttsMonitor?.isEnabled = true
-        ttsMonitorEnabled = true
-        Task { await outgoingTTS?.setAudioMonitor(ttsMonitor) }
-    }
-
-    func disableTTSMonitor() {
-        ttsMonitor?.isEnabled = false
-        ttsMonitorEnabled = false
-        Task { await outgoingTTS?.setAudioMonitor(nil) }
-    }
-
-    func toggleTTSRecording() {
-        guard let monitor = ttsMonitor else { return }
-        if monitor.isRecording {
-            monitor.stopRecording()
-            ttsMonitorRecording = false
-        } else {
-            do {
-                try monitor.startRecording()
-                ttsMonitorRecording = true
-            } catch {
-                errorAlert = makeAlertItem(for: error)
-            }
-        }
-    }
-
-    func playLastRecording() {
-        ttsMonitor?.playLastRecording()
     }
 
     /// Update STT locales when the language pair changes.

@@ -105,6 +105,7 @@ extension AudioCoordinator {
             incomingVAD = vad
             try await vad.activate(stream: systemStream)
             try ensureCurrent(generation)
+            observeIncomingVADState(vad)
 
             let targetLocale = Locale(identifier: languagePairManager.targetLanguage.minimalIdentifier)
             let stt = incomingSTTFactory(targetLocale)
@@ -187,6 +188,7 @@ extension AudioCoordinator {
         incomingTasks.forEach { $0.cancel() }
         incomingTasks.removeAll()
         isIncomingSpeaking = false
+        isIncomingSpeechActive = false
         reopenMicEchoGate()
         let (vad, stt, tts) = (incomingVAD, incomingSTT, incomingTTS)
         incomingVAD = nil
@@ -276,6 +278,9 @@ extension AudioCoordinator {
         }
         // Never dropped while the other side speaks (F8.5.3 REQ-H-10): echo is handled by MicEchoGate.
         guard !text.isEmpty else { return }
+        let entry = appendTranscript(.outgoing, text)
+        isOutgoingTranslating = true
+        defer { isOutgoingTranslating = false }
         // No stopSpeaking() first: sentences queue and are coalesced, never cut or dropped (F8.5.3 D-5).
         do {
             let translated = try await outgoingTranslationService.translate(
@@ -284,9 +289,11 @@ extension AudioCoordinator {
                 to: languagePairManager.targetLanguage
             )
             outgoingTranslation = translated
+            completeTranscript(entry, translation: translated)
             let locale = Locale(identifier: languagePairManager.targetLanguage.minimalIdentifier)
             await outgoingTTS?.speak(text: translated, locale: locale)
         } catch {
+            skipTranscript(entry, error: error)
             handleTranslationFailure(error, outgoing: true)
         }
     }
@@ -295,6 +302,9 @@ extension AudioCoordinator {
         // Never dropped while either TTS speaks (F8.5.3 REQ-H-11): SCStream captures only the call app,
         // which does not play the user's own voice back. Remote sentences queue like outgoing ones.
         guard !text.isEmpty else { return }
+        let entry = appendTranscript(.incoming, text)
+        isIncomingTranslating = true
+        defer { isIncomingTranslating = false }
         do {
             let translated = try await incomingTranslationService.translate(
                 text: text,
@@ -302,9 +312,11 @@ extension AudioCoordinator {
                 to: languagePairManager.sourceLanguage
             )
             incomingTranslation = translated
+            completeTranscript(entry, translation: translated)
             let locale = Locale(identifier: languagePairManager.sourceLanguage.minimalIdentifier)
             await incomingTTS?.speak(text: translated, locale: locale)
         } catch {
+            skipTranscript(entry, error: error)
             handleTranslationFailure(error, outgoing: false)
         }
     }

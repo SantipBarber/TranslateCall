@@ -13,10 +13,19 @@ final class MockTranslationService: TranslationService {
     private(set) var translateCallCount = 0
     private(set) var lastTranslatedText: String?
     private(set) var warmUpCalls: [(source: Locale.Language, target: Locale.Language)] = []
+    /// When set, the next `translate` waits here until `releaseHeld()` (a slow translation).
+    var holdNext = false
+    private var held: CheckedContinuation<Void, Never>?
+    var isHolding: Bool { held != nil }
+    func releaseHeld() { held?.resume(); held = nil }
 
     func translate(text: String, from source: Locale.Language, to target: Locale.Language) async throws -> String {
         translateCallCount += 1
         lastTranslatedText = text
+        if holdNext {
+            holdNext = false
+            await withCheckedContinuation { held = $0 }
+        }
         if !errors.isEmpty { throw errors.removeFirst() }
         if let error = shouldThrow { throw error }
         return "TRANSLATED: \(text)"

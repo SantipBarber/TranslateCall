@@ -70,6 +70,11 @@ actor MockVADService: VADService {
         return (0..<Int(buffer.frameLength)).reduce(Float(0)) { max($0, abs(data[$1])) }
     }
 
+    /// Inject a VAD speech-state change (`true` = speech started).
+    func injectVADState(_ active: Bool) {
+        stateContinuation?.yield(active)
+    }
+
     /// Inject a speech segment into the stream (for driving downstream STT in tests).
     func injectSpeechSegment(_ segment: SpeechSegment) {
         speechContinuation?.yield(segment)
