@@ -19,6 +19,8 @@ struct TranslateCallApp: App {
             .environmentObject(container.audioViewModel.engineSelector)
             .environmentObject(container.audioViewModel.ttsEngineSelector)
             .onAppear {
+                // Only now: a host on screen before this point stops SwiftUI opening this window (A26).
+                container.translationHost.show()
                 MainWindowOpener.shared.openWindow = { [openWindow] in openWindow(id: MainWindowOpener.windowID) }
                 guard menuBarController == nil else { return }
                 menuBarController = MenuBarController(viewModel: container.audioViewModel)

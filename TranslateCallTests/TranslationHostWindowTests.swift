@@ -25,7 +25,18 @@ struct TranslationHostWindowTests {
     func hostIsNotMainCandidate() {
         let host = TranslationHostWindow(outgoing: TranslationBridgeModel(), incoming: TranslationBridgeModel())
         defer { host.close() }
+        host.show()
         #expect(host.window.isVisible)
         #expect(!(host.window.canBecomeMain && host.window.isVisible))
+    }
+
+    @Test("created hidden, so SwiftUI still opens the main window at launch; show() is idempotent (A26)")
+    func hiddenUntilShown() {
+        let host = TranslationHostWindow(outgoing: TranslationBridgeModel(), incoming: TranslationBridgeModel())
+        defer { host.close() }
+        #expect(!host.window.isVisible)
+        host.show()
+        host.show()
+        #expect(host.window.isVisible)
     }
 }
