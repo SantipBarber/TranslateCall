@@ -20,10 +20,12 @@ extension IntegrationTests {
             try await requireEdgeNetwork()
             let edge = EdgeUtteranceSynthesizer()
             defer { Task { await edge.shutdown() } }
-            let buffers = try #require(try await collect(edge.synthesize(text: "hello", locale: english),
-                                                         within: .seconds(10)),
-                                       "no audio from Edge within 10 s")
-            #expect(buffers.reduce(0) { $0 + Int($1.frameLength) } > 0)
+            await withKnownIssue("A27: Edge answers 403 to the WebSocket upgrade since 2026-10-17", isIntermittent: true) {
+                let buffers = try #require(try await collect(edge.synthesize(text: "hello", locale: english),
+                                                             within: .seconds(10)),
+                                           "no audio from Edge within 10 s")
+                #expect(buffers.reduce(0) { $0 + Int($1.frameLength) } > 0)
+            }
         }
     }
 }
