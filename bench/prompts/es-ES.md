@@ -31,11 +31,11 @@
 | es-ES-20 | hesitation | El viernes ‖ o mejor el lunes ‖ quedamos para cerrar el acuerdo. | Friday, or better yet Monday, we'll meet to close the agreement. |
 | es-ES-21 | hesitation | Entonces ‖ si he entendido bien ‖ el plazo es el diez de diciembre. | So, if I've understood correctly, the deadline is December tenth. |
 | es-ES-22 | hesitation | Es decir ‖ necesitamos que enviéis el borrador ‖ antes de la reunión. | That is, we need you to send the draft before the meeting. |
-| es-ES-23 | hesitation | Mira ‖ el móvil no me deja entrar a la videollamada ‖ ahora sí. | Look, my phone won't let me join the video call. Now it will. |
+| es-ES-23 | hesitation | Mira ‖ el móvil no me deja entrar a la videollamada ‖ ahora sí. | Look, my phone won't let me join the video call... now it works. |
 | es-ES-24 | hesitation | Bueno ‖ pues ‖ queda apuntado para el martes a las diez. | Well then, it's noted down for Tuesday at ten. |
-| es-ES-25 | turn-end | Con eso ya estaría todo, gracias por vuestro tiempo. | With that everything would be covered, thank you for your time. |
+| es-ES-25 | turn-end | Con eso ya estaría todo, gracias por vuestro tiempo. | That should be everything, thank you for your time. |
 | es-ES-26 | turn-end | Me lo apunto y os confirmo el lunes, ¿vale? | I'll write it down and confirm with you on Monday, okay? |
-| es-ES-27 | turn-end | No tengo nada más que añadir, paso palabra. | I don't have anything else to add, I'll hand over. |
+| es-ES-27 | turn-end | No tengo nada más que añadir, paso palabra. | I have nothing else to add, over to you. |
 | es-ES-28 | turn-end | Perfecto, nos vemos en la siguiente reunión. | Perfect, see you in the next meeting. |
 | es-ES-29 | turn-end | Quedamos así entonces, un saludo. | That's settled then, regards. |
 | es-ES-30 | turn-end | Eso es todo por mi parte, hasta luego. | That's all from me, goodbye. |
@@ -45,7 +45,7 @@
 | es-ES-34 | turn-pause | Hablamos con María ‖ y ella se encarga de avisar al resto. | We spoke with María and she'll take care of notifying the rest. |
 | es-ES-35 | turn-pause | Si no tenéis más preguntas ‖ pasamos al siguiente punto. | If you don't have any more questions, we'll move on to the next item. |
 | es-ES-36 | turn-pause | He cogido el ordenador ‖ pero no encuentro el archivo. | I picked up the computer but I can't find the file. |
-| es-ES-37 | multi-sentence | He revisado el correo. El cliente confirma la fecha. Quedamos el martes a las once. | I've checked email. The client confirms the date. We'll meet on Tuesday at eleven. |
+| es-ES-37 | multi-sentence | He revisado el correo. El cliente confirma la fecha. Quedamos el martes a las once. | I've checked my email. The client confirms the date. We'll meet on Tuesday at eleven. |
 | es-ES-38 | multi-sentence | Vale. Preparad la presentación y conectaos diez minutos antes. No quiero retrasos. | Okay. Prepare the presentation and join ten minutes early. I don't want delays. |
-| es-ES-39 | multi-sentence | El presupuesto sube un cinco por ciento. Avísalo al equipo. Nosotros seguimos con el plan. | The budget goes up by five percent. Let the team know. We'll stick with the plan. |
+| es-ES-39 | multi-sentence | El presupuesto sube un cinco por ciento. Avisa al equipo. Nosotros seguimos con el plan. | The budget goes up by five percent. Let the team know. We'll stick with the plan. |
 | es-ES-40 | multi-sentence | Cogí el móvil para llamarte. Estaba en silencio. ¿Me has dicho las tres? | I picked up my phone to call you. It was on silent. Did you say three o'clock? |
