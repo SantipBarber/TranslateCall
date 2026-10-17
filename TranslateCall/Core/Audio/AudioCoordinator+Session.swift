@@ -17,6 +17,7 @@ extension AudioCoordinator {
     /// A new session: empty transcript.
     func beginSessionUIState() {
         transcript.removeAll()
+        pauseGate = PauseGate()
     }
 
     /// The session ended (stop, or a start that did not go active). The transcript stays readable
@@ -26,6 +27,26 @@ extension AudioCoordinator {
         isIncomingTranslating = false
         isIncomingSpeechActive = false
         sessionStartedAt = nil
+        pauseGate = nil
+        isPaused = false
+    }
+
+    /// Pauses both directions with the engines kept warm: call audio and mic reach the VADs as
+    /// silence, playing and queued translations stop, text arriving meanwhile is dropped.
+    /// No-op outside a session or when already paused. The echo gate is not touched.
+    func pause() async {
+        guard isOutgoingActive, !isPaused else { return }
+        isPaused = true
+        pauseGate?.setPaused(true)
+        await outgoingTTS?.stopSpeaking()
+        await incomingTTS?.stopSpeaking()
+    }
+
+    /// Back to normal processing from the next buffer; nothing is reloaded (REQ-UI-51).
+    func resume() {
+        guard isPaused else { return }
+        isPaused = false
+        pauseGate?.setPaused(false)
     }
 
     /// Appends a sentence (translation pending) and keeps the newest `TranscriptEntry.limit`.

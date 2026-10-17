@@ -76,6 +76,10 @@ final class AudioCoordinator: ObservableObject {
     @Published var transcript: [TranscriptEntry] = []
     /// When the outgoing side went active; nil outside a session.
     @Published var sessionStartedAt: Date?
+    /// Both directions paused, engines warm (D-5).
+    @Published var isPaused = false
+    /// This session's pause gate; nil outside a session.
+    var pauseGate: PauseGate?
 
     // MARK: - TTS Audio Monitor (local playback + recording of outgoing TTS)
 
