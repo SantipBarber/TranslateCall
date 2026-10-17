@@ -127,6 +127,35 @@ struct PipelineTracerTests {
         #expect(tracer.openSeqs.isEmpty)
     }
 
+    private func terminalCount(_ seq: Int) -> Int {
+        sink.stages(of: seq).filter { $0 == .dropped || $0 == .ttsEnd }.count
+    }
+
+    private func closeMidSynthesis(_ tracer: PipelineTracer) {
+        tracer.segmentClosed(capturedAt: date0, audioSeconds: 1)
+        tracer.transcribed(capturedAt: date0, text: "a", engine: "x", confidence: 1)
+        tracer.translated(source: "a", result: "A")
+        tracer.speakRequested(text: "A")
+        tracer.synthesisStarted(text: "A", engine: "x")
+        tracer.closeOpen(reason: "idle-timeout")
+        tracer.synthesisFinished()
+    }
+
+    @Test func lateBufferAfterCloseOpenAddsNoSecondTerminalEvent() {
+        let tracer = makeTracer()
+        closeMidSynthesis(tracer)
+        tracer.bufferScheduled()
+        #expect(terminalCount(0) == 1)
+        #expect(sink.stages(of: 0).last == .dropped)
+    }
+
+    @Test func nextSynthesisAfterCloseOpenAddsNoSecondTerminalEvent() {
+        let tracer = makeTracer()
+        closeMidSynthesis(tracer)
+        tracer.synthesisStarted(text: "B", engine: "x")
+        #expect(terminalCount(0) == 1)
+    }
+
     @Test func overheadPerEventIsUnder50Microseconds() {
         let tracer = PipelineTracer(direction: .outgoing, sink: NoopTraceSink(), trailingSilence: .milliseconds(600))
         let start = ContinuousClock.now

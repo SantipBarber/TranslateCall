@@ -212,19 +212,29 @@ nonisolated final class PipelineTracer: Sendable {
     /// Ends every open utterance as dropped (session stop, bench idle timeout).
     func closeOpen(reason: String) {
         let stamp = now()
-        openSeqs.forEach { finish($0, .dropped, at: stamp, ["reason": reason]) }
+        let closed = state.withLock { current -> [Utterance] in
+            current.attempt = nil
+            defer { current.open.removeAll() }
+            return current.open
+        }
+        for utterance in closed {
+            if let interval = utterance.interval { signposter.endInterval("Utterance", interval) }
+            emit(utterance.seq, .dropped, at: stamp, ["reason": reason])
+        }
     }
 
     // MARK: - Emission
 
-    /// Forgets `seq`, closes its signpost interval and emits its last event.
+    /// Forgets `seq`, closes its signpost interval and emits its last event, unless another call
+    /// already ended it (one terminal event per utterance).
     private func finish(_ seq: Int, _ stage: TraceStage, at stamp: ContinuousClock.Instant,
                         _ detail: [String: String] = [:]) {
-        let interval = state.withLock { current -> OSSignpostIntervalState? in
+        let removed = state.withLock { current -> Utterance? in
             guard let index = current.open.firstIndex(where: { $0.seq == seq }) else { return nil }
-            return current.open.remove(at: index).interval
+            return current.open.remove(at: index)
         }
-        if let interval { signposter.endInterval("Utterance", interval) }
+        guard let removed else { return }
+        if let interval = removed.interval { signposter.endInterval("Utterance", interval) }
         emit(seq, stage, at: stamp, detail)
     }
 
