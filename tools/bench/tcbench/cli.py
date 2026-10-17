@@ -8,7 +8,7 @@ from pathlib import Path
 
 from tcbench import baseline, compare, runs
 
-STUBS = ("ingest", "analyze", "report")
+STUBS = ("analyze", "report")
 REPO = Path(__file__).resolve().parents[3]
 DEFAULT_MANIFEST = REPO / "bench" / "manifests" / "phase1.json"
 
@@ -46,6 +46,36 @@ def _cmd_manifest(args) -> int:
                 print(f"  silero end - refined end ({name}): median {np.median(v[name]):.0f} ms, p90 {np.percentile(v[name], 90):.0f} ms, n={len(v[name])}")
     print(f"wrote {out}: {len(m['clips'])} clips, {len(m['mtOnly'])} mt-only sentences")
     return 0
+
+
+def _parse_bool(s: str) -> bool:
+    s = s.lower()
+    if s in ("true", "1", "yes"):
+        return True
+    if s in ("false", "0", "no"):
+        return False
+    raise argparse.ArgumentTypeError(f"expected true/false, got {s!r}")
+
+
+def _cmd_ingest(args) -> int:
+    try:
+        import silero_vad  # noqa: F401
+    except ImportError:
+        print(
+            "tcbench ingest needs silero-vad (optional extra 'vad').\n"
+            "Run: uv run --locked --extra vad --project tools/bench tcbench ingest ...",
+            file=sys.stderr,
+        )
+        return 1
+    from . import ingest
+
+    sheet = args.sheet or str(REPO / "bench" / "prompts" / f"{args.variant}.md")
+    problems = ingest.run(
+        Path(args.dir), Path(sheet), args.variant, args.native, Path(args.manifest)
+    )
+    for p in problems:
+        print(p)
+    return 1 if problems else 0
 
 
 def _cmd_fetch(args) -> int:
@@ -149,6 +179,14 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("--out", default=str(DEFAULT_MANIFEST))
     m.add_argument("--seed", type=int, default=1729)
     m.set_defaults(func=_cmd_manifest)
+    i = sub.add_parser("ingest", help="ingest the user's own recordings into the manifest")
+    i.add_argument("dir", help="folder containing the recordings")
+    i.add_argument("--variant", choices=["es-ES", "en"], required=True)
+    i.add_argument("--native", type=_parse_bool, required=True, help="true or false")
+    i.add_argument("--sheet", default=None, help="override the default prompt sheet")
+    i.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
+    i.set_defaults(func=_cmd_ingest)
+
     for name in STUBS:
         sub.add_parser(name)
 
