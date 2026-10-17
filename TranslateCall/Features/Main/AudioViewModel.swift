@@ -28,32 +28,18 @@ final class AudioViewModel: ObservableObject {
     @Published private(set) var outputDevices: [AudioDevice] = []
     @Published var selectedInput: AudioDevice?
     @Published var selectedOutput: AudioDevice?
-    @Published private(set) var inputLevel: Float = -160
     @Published private(set) var isCapturing = false
 
     // MARK: - Outgoing pipeline state (from coordinator)
 
-    @Published private(set) var isSpeechActive: Bool = false
-    @Published private(set) var latestTranscription: String?
-    @Published private(set) var latestTranslation: String?
-    @Published private(set) var isSpeaking: Bool = false
     @Published private(set) var isStarting = false
-    /// One-line TTS notice (skip, fallback, drop) from the coordinator; clears itself (F8.5.2 REQ-T-41).
-    @Published private(set) var ttsNotice: String?
 
     /// A translation session is running or starting: the voice preview stays disabled (REQ-T-33).
     var isSessionActive: Bool { isCapturing || isStarting }
 
     // MARK: - Incoming pipeline state (from coordinator)
 
-    @Published private(set) var incomingTranscription: String?
-    @Published private(set) var incomingTranslation: String?
-    @Published private(set) var isIncomingActive: Bool = false
     @Published private(set) var incomingStatus: IncomingStatus = .idle
-
-    // MARK: - Conversation state (from coordinator, F8.5.3 REQ-H-13)
-
-    @Published private(set) var conversationState: ConversationState = .listening
 
     // MARK: - TTS Monitor state (from coordinator)
 
@@ -165,7 +151,6 @@ final class AudioViewModel: ObservableObject {
         audioManager.$outputDevices.assign(to: &$outputDevices)
         audioManager.$selectedInput.assign(to: &$selectedInput)
         audioManager.$selectedOutput.assign(to: &$selectedOutput)
-        audioManager.$inputLevel.assign(to: &$inputLevel)
         audioManager.$isCapturing.assign(to: &$isCapturing)
         // AudioManager may stop the mic on its own (device lost, failed switch): end the
         // coordinator session too, or the UI is stuck (Start no-ops while isOutgoingActive).
@@ -211,17 +196,8 @@ final class AudioViewModel: ObservableObject {
     }
 
     private func bindCoordinator() {
-        coordinator.$isSpeechActive.assign(to: &$isSpeechActive)
-        coordinator.$outgoingTranscription.assign(to: &$latestTranscription)
-        coordinator.$outgoingTranslation.assign(to: &$latestTranslation)
-        coordinator.$isOutgoingSpeaking.assign(to: &$isSpeaking)
         coordinator.$isStarting.assign(to: &$isStarting)
-        coordinator.$ttsNotice.assign(to: &$ttsNotice)
-        coordinator.$incomingTranscription.assign(to: &$incomingTranscription)
-        coordinator.$incomingTranslation.assign(to: &$incomingTranslation)
-        coordinator.$isIncomingActive.assign(to: &$isIncomingActive)
         coordinator.$incomingStatus.assign(to: &$incomingStatus)
-        coordinator.$conversationState.assign(to: &$conversationState)
         coordinator.$ttsMonitorEnabled.assign(to: &$ttsMonitorEnabled)
         coordinator.$ttsMonitorRecording.assign(to: &$ttsMonitorRecording)
         coordinator.$errorAlert.assign(to: &$errorAlert)
@@ -347,13 +323,12 @@ final class AudioViewModel: ObservableObject {
 
     // MARK: - Preview factory
 
-    static func preview(capturing: Bool = false, level: Float = -60) -> AudioViewModel {
+    static func preview(capturing: Bool = false) -> AudioViewModel {
         let instance = AudioViewModel(conversationSettings: ConversationSettings())
         instance.inputDevices = AudioDevice.mockInputs
         instance.outputDevices = AudioDevice.mockOutputs
         instance.selectedInput = AudioDevice.mockInputs.first
         instance.selectedOutput = AudioDevice.mockOutputs.first
-        instance.inputLevel = level
         return instance
     }
 }

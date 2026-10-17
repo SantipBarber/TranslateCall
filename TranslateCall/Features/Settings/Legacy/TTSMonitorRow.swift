@@ -48,6 +48,6 @@ struct TTSMonitorRow: View {
 
 #Preview {
     TTSMonitorRow()
-        .environmentObject(AudioViewModel.preview(capturing: false, level: -160))
+        .environmentObject(AudioViewModel.preview(capturing: false))
         .padding()
 }

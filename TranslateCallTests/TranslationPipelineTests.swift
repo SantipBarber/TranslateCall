@@ -78,8 +78,8 @@ struct TranslationPipelineTests {
 
     @Test func initialStateIsClean() {
         let viewModel = AudioViewModel(translationService: MockTranslationService(), conversationSettings: .forTesting())
-        #expect(viewModel.latestTranslation == nil)
-        #expect(viewModel.latestTranscription == nil)
+        #expect(viewModel.coordinator.outgoingTranslation == nil)
+        #expect(viewModel.coordinator.outgoingTranscription == nil)
         #expect(viewModel.isCapturing == false)
     }
 

@@ -179,13 +179,6 @@ struct AudioViewModelTests {
         #expect(harness.viewModel.isSessionActive)
         harness.audioManager.stopCapture()
     }
-
-    @Test("the coordinator's TTS notice reaches the view model")
-    func ttsNoticeIsBound() async {
-        let harness = ViewModelHarness()
-        harness.coordinator.showTTSNotice("Speech failed — sentence skipped")
-        #expect(await waitUntil { harness.viewModel.ttsNotice == "Speech failed — sentence skipped" })
-    }
 }
 
 @Suite("AudioViewModel call-app selection (M9 UI core REQ-UI-80b)", .serialized) @MainActor

@@ -238,7 +238,7 @@ extension LegacyAdvancedSettingsView {
 // MARK: - Previews
 
 #Preview("Automatic") {
-    let viewModel = AudioViewModel.preview(capturing: false, level: -160)
+    let viewModel = AudioViewModel.preview(capturing: false)
     LegacyAdvancedSettingsView(vadProvider: viewModel.vadProvider)
         .environmentObject(viewModel)
         .environmentObject(SetupManager())
@@ -248,7 +248,7 @@ extension LegacyAdvancedSettingsView {
 }
 
 #Preview("Manual") {
-    let viewModel = AudioViewModel.preview(capturing: false, level: -160)
+    let viewModel = AudioViewModel.preview(capturing: false)
     viewModel.engineSelector.setPreferredEngine(.whisper)
     return LegacyAdvancedSettingsView(vadProvider: viewModel.vadProvider)
         .environmentObject(viewModel)
