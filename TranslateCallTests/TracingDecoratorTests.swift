@@ -50,7 +50,12 @@ struct TracingDecoratorTests {
         inner.errors = [TranslationError.timedOut]
         let service = TracingTranslationService(wrapping: inner, tracer: tracer)
         let (es, en) = (Locale.Language(identifier: "es"), Locale.Language(identifier: "en"))
-        await #expect(throws: TranslationError.timedOut) { try await service.translate(text: "a", from: es, to: en) }
+        do {
+            _ = try await service.translate(text: "a", from: es, to: en)
+            Issue.record("expected translate to throw")
+        } catch {
+            #expect(error as? TranslationError == .timedOut)
+        }
         #expect(try await service.translate(text: "b", from: es, to: en) == "TRANSLATED: b")
         #expect(sink.event(0, .dropped) != nil)
         #expect(sink.event(1, .translated)?.detail["text"] == "TRANSLATED: b")
