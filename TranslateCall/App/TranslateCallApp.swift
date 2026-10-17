@@ -39,6 +39,9 @@ struct TranslateCallApp: App {
                     openFeedbackURL()
                 }
             }
+            CommandMenu("Call") {
+                CallCommandMenu(session: container.uiServices.callSession)
+            }
         }
         Settings {
             SettingsView()
@@ -50,6 +53,25 @@ struct TranslateCallApp: App {
                 .environmentObject(container.audioViewModel.ttsEngineSelector)
                 .environmentObject(container.uiServices.callSession)
                 .environmentObject(container.uiServices.mainSetupModel)
+        }
+    }
+
+    // MARK: - Call Commands
+
+    private struct CallCommandMenu: View {
+        @ObservedObject var session: CallSessionModel
+
+        var body: some View {
+            Button(session.isPaused ? "Resume" : "Pause") {
+                Task { await session.togglePause() }
+            }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .disabled(session.phase != .running)
+            Button("Skip My Next Sentence") {
+                session.skipNextSentence()
+            }
+            .keyboardShortcut("m", modifiers: [.command, .shift])
+            .disabled(session.phase != .running)
         }
     }
 

@@ -191,26 +191,4 @@ struct AudioCoordinatorEchoGateTests {
     }
 }
 
-@Suite("Conversation state presentation")
-struct ConversationStatePresentationTests {
-    @Test("badge label and icon per state (REQ-H-13)")
-    func badge() {
-        let idle = StatusBadgeView.presentation(isCapturing: false, isSpeechActive: false, state: .speaking)
-        #expect(idle.label == "Idle")
-        #expect(StatusBadgeView.presentation(isCapturing: true, isSpeechActive: true, state: .listening).label
-                == "Speech detected")
-        #expect(StatusBadgeView.presentation(isCapturing: true, isSpeechActive: false, state: .speaking).label
-                == "Speaking translation")
-        let paused = StatusBadgeView.presentation(isCapturing: true, isSpeechActive: false, state: .micPaused)
-        #expect(paused.label == "Mic paused (speakers)")
-        #expect(paused.icon == "mic.slash")
-    }
 
-    @Test("menu bar icon per state")
-    func menuBarIcon() {
-        #expect(MenuBarController.iconName(state: .listening, isCapturing: false) == "mic.slash")
-        #expect(MenuBarController.iconName(state: .listening, isCapturing: true) == "mic")
-        #expect(MenuBarController.iconName(state: .speaking, isCapturing: true) == "waveform")
-        #expect(MenuBarController.iconName(state: .micPaused, isCapturing: true) == "mic.slash.circle")
-    }
-}

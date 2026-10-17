@@ -382,7 +382,7 @@ extension AudioViewModel {
 // MARK: - Language download (F8.5.4)
 
 extension AudioViewModel {
-    /// Downloads the pair with `LanguagePairView`'s own session: the sheet shows there (F8.5.4 REQ-TR-40/41).
+    /// Downloads the pair with `LanguageSection`'s own session: the sheet shows there (F8.5.4 REQ-TR-40/41).
     func downloadLanguages(using session: some TranslationSessioning) async {
         do {
             try await session.prepare()

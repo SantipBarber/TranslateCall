@@ -143,16 +143,6 @@ final class MenuBarController: NSObject {
             }
     }
 
-    /// Menu bar symbol for a state (F8.5.3 REQ-H-13).
-    nonisolated static func iconName(state: ConversationState, isCapturing: Bool) -> String {
-        guard isCapturing else { return "mic.slash" }
-        switch state {
-        case .listening:  return "mic"
-        case .speaking:   return "waveform"
-        case .micPaused:  return "mic.slash.circle"
-        }
-    }
-
     private func updateIcon(dot: MenuBarDot) {
         statusItem?.button?.image = Self.icon(dot: dot)
     }
