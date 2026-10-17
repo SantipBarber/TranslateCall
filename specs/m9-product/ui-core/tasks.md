@@ -79,13 +79,15 @@
 - **Pause pressed while a sentence is being translated.** The sentence appears in the transcript but is never spoken, and nothing plays during the pause. This is pinned in Task 9 (`translationReturningAfterPauseIsNotSpoken`).
 - **An engine fails while the session starts** (e.g. STT activation throws) but the session goes active, so the main window closes. The error becomes a panel notice: no modal over the call, and no alert lost behind a closed window. This is pinned in Task 13 (`startErrorOfActiveSessionIsNotice`).
 - **Only the reverse direction's pack is missing.** The button says "Download Español to start", not "Ready". This is pinned in Task 12 (`pairReadiness`).
+- **"Open Zoom and start" pressed twice while Zoom launches.** The second press is ignored; it never stops the session the first one starts. This is pinned in Task 13 (`secondStartWhileLaunching`).
+- **A Start from the menu bar fails before the session goes active, with every window closed.** The main window comes up and shows the alert. This is pinned in Task 13 (`failedStartKeepsAlert`).
 
 ## Decisions made while planning (spec deviations are marked ⚠)
 
-Every logic task below (1–13) was implemented on a throwaway clone of `spec/m9-ui-swiftui` at feceed3 while planning.
-- **Checks passed:** `just build`, `just lint`, `just scan`, every new suite and the whole unit tier.
-- **Repeated runs:** the concurrency suites (`AudioCoordinatorSessionTests`, `CallSessionModelTests`) passed 3 runs in a row.
-- **Not replayed:** view tasks 14–22.
+Every logic task below (1–13) was implemented on a throwaway clone of `spec/m9-ui-swiftui` at feceed3 while planning, then replayed again after the pre-flight rulings R1–R24 (2026-10-17, rows P19–P33).
+- **Checks passed:** `just build`, `just lint`, `just scan`, every new and affected suite, and the whole unit tier (688 tests).
+- **Repeated runs:** the concurrency suites (`PauseGateTests`, `AudioCoordinatorSessionTests`, `CallSessionModelTests`, `ModelPreloaderTests`) and `MicEchoGateTests`/`AudioCoordinatorEchoGateTests` passed 3 runs in a row.
+- **Not replayed:** view tasks 14–22. Their tests and code stay prose-specified; reviewers enforce the previews and the pen.dev comparison.
 
 | # | Point | Choice |
 |---|-------|--------|
@@ -94,19 +96,34 @@ Every logic task below (1–13) was implemented on a throwaway clone of `spec/m9
 | P3 | `TranscriptEntry.Direction` (design §4.1) | A top-level `nonisolated enum TranscriptDirection { case outgoing, incoming }`, also used by `ModelCatalog`, `LatencyProvider` and `DirectionCopy`. |
 | P4 | Parakeet for incoming | `ModelChoice.stt` takes a direction, and Parakeet is never chosen for incoming: one shared ASR model, outgoing only, as today. |
 | P5 | The shared automatic flag | Both selectors read `tlk.models.automatic` from their `defaults` on every use (computed `isAutomatic`, default `true`), so a manual pick in one selector switches the other at once. The flag lives on `ModelChoice.automaticKey`. |
-| P6 | Existing selector tests | Their helpers set `tlk.models.automatic = false`, so they keep covering manual mode unchanged: `STTEngineSelectorTests`, `TTSEngineSelectorTests`, `TTSEngineSelectorVoiceCloneTests`, `EdgeTTSTests`, `WhisperSTTTests`. |
+| P6 | Existing selector tests | Each suite's `makeSelector` sets `tlk.models.automatic = false` on the defaults it uses (its own or one a test passes in), so they keep covering manual mode unchanged: `STTEngineSelectorTests`, `TTSEngineSelectorTests`, `TTSEngineSelectorVoiceCloneTests`, `TTSEngineSelectorEdgeTTSTests` (`EdgeTTSTests.swift`), `STTEngineSelectorWhisperRoutingTests` (`WhisperSTTTests.swift`). |
 | P7 ⚠ | Not in design: with a `Settings` scene, `MainWindowOpener.show` would raise the Settings window (it can become main) instead of the setup window | `MainWindowCandidate` gains `sceneIdentifier`, and only windows whose id starts with `"main-"` count. The test host shows the setup window's id is `main-AppWindow-1` (Task 1). |
 | P8 | Qwen `isModelCached()` checks `~/.cache/huggingface/hub/models--…`, a folder that exists without usable weights | It checks mlx-audio's working copy `~/.cache/huggingface/hub/mlx-audio/<owner>_<name>` for `config.json` plus a non-empty `.safetensors`, which is `ModelUtils.resolveOrDownloadModel`'s own rule. It is `nonisolated` and takes a `home` for tests (Task 4). |
 | P9 | The Whisper size is not persisted | The cache check uses `WhisperConfiguration.default` (`.base`), the size `STTEngineSelector` loads. |
 | P10 | `CallAppMonitor.waitUntilRunning` | It polls every 200 ms and calls `refresh()` (a task-group version hit Swift 6 region-isolation errors). Polling also survives a missed launch notification. |
-| P11 | Kokoro preload vs voice clone | The preloader never loads Kokoro while `voiceCloningEnabled` is on, even before the clone is loaded: one MLX TTS model at a time (NF-04). |
-| P12 | `AppContainer.init` is at its 50-line limit | A `UIServices` struct (`uiServices`) holds the preloader, the call-app monitor and the session model. `VoiceProfileManager(...)` is written on two lines to make room. |
+| P11 | Kokoro preload vs voice clone | Superseded by P20: the preloader never loads Kokoro. One MLX TTS model at a time (NF-04) still holds, because the catalog never picks Kokoro while the voice clone is ready. |
+| P12 | `AppContainer.init` is at its 50-line limit | A `UIServices` struct (`uiServices`) holds the preloader (T6), the call-app monitor (T11), the session model (T13), the `MainSetupModel` (T15) and the `StatusPanelController` (T17), all created eagerly. `VoiceProfileManager(...)` is written on two lines to make room. |
 | P13 | Readiness complexity | Card building is the separate `Readiness.cards(...)`, to stay under cyclomatic complexity 10. |
-| P14 | Pre-call alerts (REQ-UI-36) | `MainSetupView` presents `AudioViewModel.errorAlert` only while `!isStarting`. `CallSessionModel` turns an alert into a notice when the session is active (mid-call, or raised during a start that went active). Otherwise it stays for the window. |
+| P14 | Pre-call alerts (REQ-UI-36) | `MainSetupView` presents `AudioViewModel.errorAlert` only while `!isStarting`. One function, `CallSessionModel.routeAlert`, turns an alert into a notice when the session is active (mid-call, or raised during a start that went active). Otherwise it stays for the window (P27). |
 | P15 ⚠ | The prototype's lost-audio copy "No sound from Teams for 20 s…" | Silence detection is out of scope (design call 6). The line comes from `DirectionCopy.unavailableLine(reason, appName:)`, and the chip reads "Can't hear <App>". |
 | P16 | Pre-existing flake (not caused by this plan) | `LanguagePairManagerTests.persistsTargetLanguageToUserDefaults` uses `UserDefaults.standard` in a parallel suite. It failed once in 4 full unit runs on the replay clone. Task 23 records it in the backlog (A29); do not "fix" it inside this feature. |
 | P17 | "Downloaded languages" (REQ-UI-71) | There is no API that lists installed packs. The General tab checks `LanguageAvailability().status(from: sourceLanguage, to: L)` for each supported language `L` when the tab appears, lists those that are `.installed` (plus the source language) by display name, and "Manage…" opens `x-apple.systempreferences:com.apple.Localization-Settings.extension`. |
-| P18 | Menu bar glyph | The SF Symbol `translate`, with the coloured dot drawn over it (`MenuBarDot`). The old `MenuBarController.iconName(state:isCapturing:)` and its test are removed in Task 22. |
+| P18 | Menu bar glyph | The SF Symbol `translate`, with the coloured dot drawn over it (`MenuBarDot`). Task 19 replaces `observeState()`/`updateIcon(state:isCapturing:)`, the only callers of `MenuBarController.iconName(state:isCapturing:)`; Task 22 removes `iconName` and its test. |
+| P19 ⚠ | design §3.2 names `ModelAvailability` fields `…Ready` plus `hasSystemVoice`; "ready" for the voice clone | Fields: `parakeetCached`, `whisperCached`, `kokoroCached`, `voiceCloneReady`. The system voice and Apple Speech are always ready, so `hasSystemVoice` is not an input (the Edge fallback stays in `systemOrEdgePrimary`). Automatic mode counts the voice clone ready when the Qwen model is on disk (`isModelCached`, P8) and "Use my voice" is on and a profile is active (D-6), not when it is loaded. |
+| P20 ⚠ | REQ-UI-21a / D-6: preloading must never download | The preloader loads through load-only paths that throw `ModelCacheError.notCached`. Parakeet: `AsrModels.isModelValid` (every file present, each model loads without network), then `loadFromCache`, because `loadFromCache` alone downloads missing files and re-downloads a cache that fails to load. Whisper: WhisperKit with `download = false` on its download folder, only when the three bundles and the tokenizer are there. Voice clone: `ensureReady` only when `isModelCached` holds, the rule under which mlx-audio uses the folder as is. **Kokoro is not preloaded**: FluidAudio's `KokoroTtsManager.initialize` fetches lexicon and voice files on demand and has no load-only path, so Kokoro loads at Start as today. A corrupt cache is not repaired automatically; the user re-downloads in the legacy tab. |
+| P21 ⚠ | design §3.3 puts `isModelCached()` on each manager | The checks live in one `nonisolated enum ModelCache` and reach the selectors through an injectable `ModelCacheProbe`. Only Qwen keeps a method on its manager (`isModelCached(home:)`), because its repo comes from the manager's configuration. |
+| P22 ⚠ | REQ-UI-40 ("the main window SHALL close", menu bar the only surface with the panel off) vs design §7.1 (the window stays when the panel is off) | Design wins: with "Show the status panel" off, the main window stays open after Start, so a visible surface besides the menu bar remains. REQ-UI-40 is amended accordingly. |
+| P23 | Pause gate vs echo gate | Both gates share one loop and one silencing helper, `GatedAudioStream` (`make`, `silenced`). A paused buffer becomes a zeroed copy, or the buffer itself zeroed in place when the copy cannot be allocated, exactly as `MicEchoGate` does: real audio never passes a pause. `MicEchoGate`'s behaviour and tests are unchanged. |
+| P24 | "Open <App> and start" pressed twice during the 15 s launch wait | `SessionPhase` gains `.launching`. `CallSessionModel.start(launching:)` ignores a second call while launching; the primary button reads "Opening <App>…", disabled. Without it, the second press reached `toggleCapture()` and stopped the session the first press had started. |
+| P25 | The panel presenter (design §7.2 "`StatusPanelController` owned by `AppContainer`") | `StatusPanelController` is the presenter: it owns `isExpanded`, `show()`, `hide()`, `toggleExpanded()` and `resize(to:)`. `UIServices.statusPanel` owns it (Task 17), and `MenuBarController` receives it for "Show status panel". There is no separate `PanelPresenter`. |
+| P26 | REQ-UI-60 "the first blocking reason" | `Readiness.Card` carries its `title` and `message`; `Readiness.blockingReason` is nil ("Ready") while Start is enabled, else the first blocking card's title (a denied microphone) or the primary title ("Download Deutsch to start"). Informative cards (screen recording, audio driver, app not open) never replace "Ready". |
+| P27 | REQ-UI-36: a menu-bar Start that fails before going active, with no main window open | When an alert stays (no session), `CallSessionModel` brings up the main window once per alert (`NSApp.showMainWindow()`), so `MainSetupView` presents it. A window pops after a failed menu-bar Start, which is the intent. |
+| P28 ⚠ | design §3.1 tests "the bundled JSON equals the built-in catalog" | The tests check the catalog's invariants instead (every table has `default`, no `edgeTTS`, every list ends with an always-ready engine), for the bundled JSON and for `builtIn`. `bundled` asserts in debug builds when the file is missing or invalid; `load(from:)` never asserts and falls back to `builtIn` (the corrupt-file test uses it). The benchmark can rewrite the JSON without a code change (D-2). |
+| P29 ⚠ | `MenuBarDot` while starting | No dot while launching or starting: REQ-UI-61 only names running (green) and paused or partly working (orange). |
+| P30 | design §7.2 first-mouse and material | Task 2 implements both: `PanelHostingView` overrides `acceptsFirstMouse`, and the controller puts the content on an `NSVisualEffectView` (`.popover`, 12 pt corners). Views add no SwiftUI material. |
+| P31 | `showStatusPanel` default (REQ-UI-40 "default on") | `UISettingsKeys.registerDefaults()` registers both UI settings as on at launch (`UIServices.init`), so `UserDefaults.bool(forKey:)` (panel) and `@AppStorage` (Settings) agree on a fresh install. |
+| P32 | Waiting for the call app without real-time sleeps (plan rule, design §10 "test clock") | `CallAppMonitor` takes a clock (default `ContinuousClock()`); `waitUntilRunning` counts `pollEvery` steps on it up to `timeout`. Tests drive it with `TestClock`. |
+| P33 | Edge consent in tests | `TTSEngineSelector.edgeConsentGiven` is injectable (default `EdgeTTSConsentManager.consentGiven`), so `automaticNeverEdgeWithoutConsent` asserts on every Mac and has a with-consent control. |
 
 ## File Structure
 
@@ -114,47 +131,60 @@ Every logic task below (1–13) was implemented on a throwaway clone of `spec/m9
 TranslateCall/
   App/
     MainWindowOpener.swift              MOD T1 sceneIdentifier filter
-    TranslateCallApp.swift              MOD T1 Settings scene; T2 DEBUG panel command; T16 MainSetupView; T17 panel wiring;
-                                            T22 "Skip my next sentence" command
-    AppContainer.swift                  MOD T6 UIServices (preloader); T11 +monitor; T13 +callSession; T17 +statusPanel
+    TranslateCallApp.swift              MOD T1 Settings scene; T2 DEBUG panel command; T16 MainSetupView, callSession and
+                                            mainSetupModel in both scenes; T17 removes the DEBUG command;
+                                            T19 MenuBarController arguments; T22 "Call" menu (Pause, Skip my next sentence)
+    AppContainer.swift                  MOD T6 UIServices (preloader); T11 +callAppMonitor; T13 +callSession,
+                                            registerDefaults; T15 +mainSetupModel; T17 +statusPanel
+  Core/Audio/
+    AudioCoordinator.swift              MOD T8 UI state + hooks; T9 pause state
+    AudioCoordinator+Pipeline.swift     MOD T8 transcript/translating; T9 pause gates + paused guards
+    AudioCoordinator+Monitor.swift      NEW T8 (moved TTS-monitor actions)
+    AudioCoordinator+Session.swift      NEW T8 transcript, incoming VAD state; T9 pause/resume
+    GatedAudioStream.swift              NEW T7 (loop + silencing shared by both gates)
+    MicEchoGate.swift                   MOD T7 uses GatedAudioStream
   Core/Models/                          NEW T3 ModelCatalog.swift, ModelCatalog.json, ModelChoice.swift;
                                             T4 ModelCache.swift; T5 ModelChoice+Selectors.swift; T6 ModelPreloader.swift
   Core/Session/                         NEW T3 TranscriptEntry.swift; T7 PauseGate.swift; T10 DirectionState.swift;
                                             T13 LatencyProvider.swift
   Core/Setup/                           NEW T11 CallApp.swift, CallAppMonitor.swift; T12 Permissions.swift
     SetupManager.swift                  MOD T11 selectCaptureApp(bundleID:), selectedCaptureBundleID
-  Core/Audio/
-    AudioCoordinator.swift              MOD T8 UI state + hooks; T9 pause state
-    AudioCoordinator+Pipeline.swift     MOD T8 transcript/translating; T9 pause gates + paused guards
-    AudioCoordinator+Monitor.swift      NEW T8 (moved TTS-monitor actions)
-    AudioCoordinator+Session.swift      NEW T8 transcript, incoming VAD state; T9 pause/resume
   Core/STT/STTEngineSelector.swift      MOD T5 automatic branch, catalog/cacheProbe
-  Core/TTS/TTSEngineSelector.swift      MOD T5 automatic branch, catalog/cacheProbe
-  Core/VoiceCloning/QwenCloneModelManager.swift  MOD T4 isModelCached fix
+  Core/STT/ParakeetModelManager.swift   MOD T6 loadCached (cache-only factory)
+  Core/STT/WhisperModelManager.swift    MOD T6 loadCached (disk-only pipe)
+  Core/TTS/TTSEngineSelector.swift      MOD T5 automatic branch, catalog/cacheProbe, edgeConsentGiven
+  Core/VoiceCloning/QwenCloneModelManager.swift  MOD T4 isModelCached fix; T6 loadCached
   Features/Main/                        NEW T12 Readiness.swift, LanguageOrdering.swift; T15 MainSetupModel.swift,
-                                            MainSetupView.swift, CallAppSection.swift, StateCards.swift;
-                                            T16 LanguageSection.swift, VoiceSection.swift, SetupFooter.swift
-    AudioViewModel.swift                MOD T11 retry hook on selectedCaptureBundleID
+                                            CallAppSection.swift, StateCards.swift; T16 MainSetupView.swift,
+                                            LanguageSection.swift, VoiceSection.swift, SetupFooter.swift;
+                                            T19 AudioViewModel+Start.swift
+    AudioViewModel.swift                MOD T11 retry hook on selectedCaptureBundleID; T19 toggleCapture uses
+                                            needsEdgeConsentBeforeStart; T22 doc comment
   Features/Session/CallSessionModel.swift        NEW T13
-  Features/StatusPanel/                 NEW T2 StatusPanel.swift; T10 DirectionCopy.swift; T17 StatusPanelView.swift,
-                                            DirectionRow.swift, PanelNotices.swift; T18 TranscriptView.swift
-  Features/MenuBar/                     NEW T10 MenuBarIcon.swift; MOD T19 MenuBarController.swift,
-                                            MenuBarPopoverView.swift (rewritten)
+  Features/StatusPanel/                 NEW T2 StatusPanel.swift (panel, PanelHostingView, StatusPanelController);
+                                            T10 DirectionCopy.swift; T17 StatusPanelView.swift, DirectionRow.swift,
+                                            PanelNotices.swift, StatusPanelController+Session.swift; T18 TranscriptView.swift
+  Features/MenuBar/                     NEW T10 MenuBarIcon.swift (MOD T19 MenuBarStartPolicy);
+                                            MOD T19 MenuBarController.swift, MenuBarPopoverView.swift (rewritten);
+                                            MOD T22 MenuBarController.swift (iconName removed)
   Features/Settings/                    NEW T1 SettingsOpener.swift, SettingsView.swift; T13 UISettingsKeys.swift;
                                             T20 GeneralSettingsView.swift; T21 LegacyAdvancedSettingsView.swift,
-                                            Legacy/ (moved views)
+                                            Legacy/ (copies; the originals go in T22)
   UI/                                   NEW T14 Theme.swift, Chip.swift, SectionHeader.swift, CardBox.swift
   Resources/Localizable.xcstrings       NEW T14
   Features/ContentView*.swift + old Main/ views  DEL T22 (REQ-UI-80)
 TranslateCallTests/
   SettingsOpenerTests, StatusPanelTests (T1, T2); MainWindowOpenerTests MOD T1
   ModelCatalogTests T3; ModelCacheTests T4 (+QwenCloneModelManagerTests MOD); ModelChoiceSelectorTests T5
-  (+ manual-mode pins in 5 existing suites); ModelPreloaderTests T6; PauseGateTests T7;
-  AudioCoordinatorSessionTests T8/T9; DirectionStateTests + UICopyTests (incl. MenuBarDotTests) T10;
+  (+ manual-mode pins in the makeSelector of 5 existing suites); ModelPreloaderTests (+ModelLoadOnlyTests) T6;
+  PauseGateTests T7 (MicEchoGateTests unchanged, must stay green);
+  AudioCoordinatorSessionTests T8/T9; DirectionStateTests + UICopyTests (incl. MenuBarDotTests, ported
+  IncomingStatusBanner cases) T10;
   CallAppMonitorTests, Mocks/FakeWorkspace.swift, SetupManagerTests MOD, AudioViewModelTests MOD T11;
   ReadinessTests T12 (+ LanguageOrdering cases in UICopyTests); CallSessionModelTests T13;
   Mocks/MockVADService.swift MOD T8 (injectVADState); TranslationPipelineTests.swift MOD T8 (MockTranslationService hold)
-  ConversationSettingsViewTests, IncomingStatusBannerTests, StatusBadgeView/iconName cases  DEL/PORT T22
+  MainSetupModelTests T15; MenuBarStartTests T19; GeneralSettingsTests T20; LegacyAdvancedSettingsTests T21
+  ConversationSettingsViewTests, IncomingStatusBannerTests, StatusBadgeView/iconName cases  DEL T22 (ported in T10/T21)
 specs/m9-product/backlog.md (new) or specs/m8.5-stabilization/backlog.md, docs/ARCHITECTURE.md   MOD T23
 ```
 
@@ -162,7 +192,7 @@ specs/m9-product/backlog.md (new) or specs/m8.5-stabilization/backlog.md, docs/A
 - T1 → T2 → T3 → T4 → T5 → T6;
 - T7 → T8 → T9;
 - T10 needs T3;
-- T11 is independent;
+- T11 needs T6 (`UIServices`);
 - T12 needs T10 (`SessionPhase`) and T11 (`CallAppRow`);
 - T13 needs T8 through T12;
 - the view tasks T14 → T22 follow in order;
@@ -325,7 +355,7 @@ The view has `.frame(width: 560)`. Tasks 20–21 replace the placeholders.
 
 `TranslateCall/App/TranslateCallApp.swift`:
 - add `@Environment(\.openSettings) private var openSettings` next to `openWindow`;
-- add a `Settings { SettingsView() }` scene after the `WindowGroup`, injecting the same environment objects;
+- add a `Settings { SettingsView() }` scene after the `WindowGroup`, injecting the same environment objects as the `WindowGroup`. Every object injected into the `WindowGroup` from now on goes into the `Settings` scene too (Task 16 adds `callSession` and `mainSetupModel`; the General tab reads `CallSessionModel`);
 - in the existing `.onAppear`, right after the `MainWindowOpener` hand-over, add `SettingsOpener.shared.openSettings = { [openSettings] in openSettings() }`.
 
 Keep the A26 lines (`translationHost.show()` first) exactly as they are.
@@ -353,7 +383,7 @@ git commit -m "feat(ui): Settings scene and SettingsOpener; main-window lookup i
 
 ---
 
-### Task 2: `StatusPanel`, a non-activating `NSPanel`, and its controller (opus)
+### Task 2: `StatusPanel`, a non-activating `NSPanel`, and its controller, the panel presenter (opus)
 
 **Files:**
 - Create: `TranslateCall/Features/StatusPanel/StatusPanel.swift`
@@ -363,15 +393,20 @@ git commit -m "feat(ui): Settings scene and SettingsOpener; main-window lookup i
 **Interfaces:**
 - Produces:
   - `final class StatusPanel: NSPanel` (`init(contentRect:)`, `static defaultOrigin(size:visibleFrame:inset:)`, `static resized(_:to:)`);
-  - `@MainActor final class StatusPanelController`:
-    - `init(content: NSView, size: NSSize, autosaveName: String? = "StatusPanel", screenFrame: @escaping () -> NSRect?)`;
+  - `final class PanelHostingView<Content: View>: NSHostingView<Content>`, which accepts the first mouse click (design §7.2, P30);
+  - `@MainActor final class StatusPanelController: ObservableObject`, the panel presenter (P25):
+    - `init(size: NSSize, autosaveName: String? = "StatusPanel", screenFrame: () -> NSRect?, content: (StatusPanelController) -> NSView)`. The content sits on an `NSVisualEffectView` with a 12 pt corner radius (P30);
+    - `@Published private(set) var isExpanded`, `toggleExpanded()`;
     - `show()`, `hide()`, `resize(to:)`, `isVisible`, `panel`.
+
+  Task 17 makes it show and hide with the session; `UIServices` owns it (P25).
 
 - [ ] **Step 1: Write the failing tests**
 
 `TranslateCallTests/StatusPanelTests.swift`:
 ```swift
 import AppKit
+import SwiftUI
 import Testing
 @testable import TranslateCall
 
@@ -379,8 +414,8 @@ import Testing
 struct StatusPanelTests {
 
     private func makeController() -> StatusPanelController {
-        StatusPanelController(content: NSView(), size: NSSize(width: 320, height: 174), autosaveName: nil,
-                              screenFrame: { NSRect(x: 0, y: 0, width: 1440, height: 875) })
+        StatusPanelController(size: NSSize(width: 320, height: 174), autosaveName: nil,
+                              screenFrame: { NSRect(x: 0, y: 0, width: 1440, height: 875) }) { _ in NSView() }
     }
 
     @Test("floating, non-activating, on every Space and over full screen; never key or main")
@@ -434,6 +469,25 @@ struct StatusPanelTests {
         controller.show()
         #expect(MainWindowOpener().show(in: [controller.panel]) == .openRequested)
     }
+
+    @Test("material background; buttons act on the first click (design §7.2)")
+    func materialAndFirstMouse() {
+        let controller = makeController()
+        defer { controller.panel.close() }
+        #expect(controller.panel.contentView is NSVisualEffectView)
+        #expect(PanelHostingView(rootView: Text("Pause")).acceptsFirstMouse(for: nil))
+    }
+
+    @Test("the expand button toggles compact ↔ expanded")
+    func toggleExpanded() {
+        let controller = makeController()
+        defer { controller.panel.close() }
+        #expect(!controller.isExpanded)
+        controller.toggleExpanded()
+        #expect(controller.isExpanded)
+        controller.toggleExpanded()
+        #expect(!controller.isExpanded)
+    }
 }
 ```
 
@@ -445,6 +499,8 @@ Expected: FAIL (`StatusPanelController` undefined).
 - [ ] **Step 3: Implement** `TranslateCall/Features/StatusPanel/StatusPanel.swift`:
 ```swift
 import AppKit
+import Combine
+import SwiftUI
 
 // MARK: - StatusPanel
 
@@ -483,27 +539,38 @@ final class StatusPanel: NSPanel {
     }
 }
 
+// MARK: - PanelHostingView
+
+/// The panel's SwiftUI host. The panel never becomes key, so its buttons must act on the first
+/// click without activating the app (design §7.2).
+final class PanelHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 // MARK: - StatusPanelController
 
-/// Shows, hides and resizes the panel; owned by `AppContainer` (design §7.2).
+/// Shows, hides, expands and resizes the panel (the "panel presenter"); owned by `UIServices`
+/// (design §7.2). Views observe `isExpanded`.
 @MainActor
-final class StatusPanelController {
+final class StatusPanelController: ObservableObject {
     let panel: StatusPanel
-    private let screenFrame: () -> NSRect?
+    /// Compact (direction rows) or expanded (transcript, REQ-UI-44).
+    @Published private(set) var isExpanded = false
 
     /// - Parameters:
     ///   - autosaveName: remembers the position across launches; nil in tests.
     ///   - screenFrame: the main screen's visible frame (injected for tests).
-    init(content: NSView, size: NSSize, autosaveName: String? = "StatusPanel",
-         screenFrame: @escaping () -> NSRect? = { NSScreen.main?.visibleFrame }) {
-        self.screenFrame = screenFrame
+    ///   - content: builds the panel's content; it receives the controller (to observe `isExpanded`).
+    init(size: NSSize, autosaveName: String? = "StatusPanel",
+         screenFrame: () -> NSRect? = { NSScreen.main?.visibleFrame },
+         content: (StatusPanelController) -> NSView) {
         panel = StatusPanel(contentRect: NSRect(origin: .zero, size: size))
-        panel.contentView = content
         let restored = autosaveName.map { panel.setFrameUsingName($0) } ?? false
         if let autosaveName { panel.setFrameAutosaveName(autosaveName) }
         if !restored, let visible = screenFrame() {
             panel.setFrameOrigin(StatusPanel.defaultOrigin(size: size, visibleFrame: visible))
         }
+        panel.contentView = Self.background(around: content(self))
     }
 
     var isVisible: Bool { panel.isVisible }
@@ -513,9 +580,27 @@ final class StatusPanelController {
 
     func hide() { panel.orderOut(nil) }
 
+    /// The expand button: compact ↔ expanded.
+    func toggleExpanded() { isExpanded.toggle() }
+
     /// Compact ↔ expanded, anchored at the top edge.
     func resize(to size: NSSize) {
         panel.setFrame(StatusPanel.resized(panel.frame, to: size), display: true, animate: false)
+    }
+
+    /// A material background with a 12 pt corner radius, `content` filling it (design §7.2).
+    private static func background(around content: NSView) -> NSVisualEffectView {
+        let background = NSVisualEffectView()
+        background.material = .popover
+        background.blendingMode = .behindWindow
+        background.state = .active
+        background.wantsLayer = true
+        background.layer?.cornerRadius = 12
+        background.layer?.masksToBounds = true
+        content.frame = background.bounds
+        content.autoresizingMask = [.width, .height]
+        background.addSubview(content)
+        return background
     }
 }
 ```
@@ -531,7 +616,7 @@ In `TranslateCallApp.swift`, add it to `.commands`, inside `#if DEBUG`:
 - a `CommandMenu("Debug")` with `Button("Toggle Test Status Panel")`;
 - the button calls `DebugStatusPanel.toggle()`;
 - `DebugStatusPanel` is a `@MainActor enum`, inside `#if DEBUG` in the same file, with:
-  - a `static let controller = StatusPanelController(content: NSHostingView(rootView: Text("Status panel test").padding().frame(width: 320, height: 120)), size: NSSize(width: 320, height: 120), autosaveName: nil)`;
+  - a `static let controller = StatusPanelController(size: NSSize(width: 320, height: 120), autosaveName: nil) { _ in PanelHostingView(rootView: Text("Status panel test").padding().frame(width: 320, height: 120)) }`;
   - a `toggle()` written as `if controller.isVisible { controller.hide() } else { controller.show() }` (no void ternary: lint).
 
 Task 17 deletes this command.
@@ -572,11 +657,12 @@ git commit -m "feat(ui): non-activating status panel window and controller (M9 U
   - `nonisolated enum TranscriptDirection { case outgoing, incoming }`;
   - `nonisolated struct TranscriptEntry`, with `limit = 200`, used in Task 8;
   - `struct ModelCatalog: Decodable, Equatable`, with:
-    - `static bundled`, `static builtIn`, `static load(from:)`;
+    - `static bundled` (asserts in debug builds when the bundled file is missing or invalid), `static builtIn` (the fallback);
+    - `static load(from:)` (never asserts; falls back to `builtIn`), `static decode(from:) -> ModelCatalog?`;
     - `sttEngines(for:)`, `ttsEngines(for:direction:)`;
-  - `struct ModelAvailability { parakeetCached, whisperCached, kokoroCached, voiceCloneActive }`;
+  - `struct ModelAvailability { parakeetCached, whisperCached, kokoroCached, voiceCloneReady }` (P19);
   - `enum ModelChoice`, with:
-    - `automaticKey = "tlk.models.automatic"`, `isAutomatic(in:)`;
+    - `automaticKey = "tlk.models.automatic"`, `isAutomatic(in:)`, `setAutomatic(_:in:)`;
     - `stt(for:direction:catalog:availability:) -> STTEngine`;
     - `tts(for:direction:catalog:availability:) -> TTSEngine`.
 
@@ -598,11 +684,26 @@ private let uk = Locale(identifier: "uk-UA")
 @Suite("ModelCatalog (M9 UI core)") @MainActor
 struct ModelCatalogTests {
 
-    @Test("the bundled JSON decodes and equals the built-in catalog (REQ-UI-20)")
-    func bundledMatchesBuiltIn() throws {
+    /// What any catalog must hold, whatever the benchmark writes (D-2): a `default` entry in every
+    /// table, no Edge TTS, and every list ending with an engine that is always ready.
+    private func expectInvariants(_ catalog: ModelCatalog) {
+        for (table, last) in [(catalog.stt, "appleSpeech"), (catalog.ttsOutgoing, "avSpeech"),
+                              (catalog.ttsIncoming, "avSpeech")] {
+            #expect(table["default"] != nil)
+            for list in table.values {
+                #expect(!list.contains(TTSEngine.edgeTTS.rawValue))
+                #expect(list.last == last)
+            }
+        }
+    }
+
+    @Test("the bundled JSON is in the app, decodes and keeps the catalog invariants (REQ-UI-20, D-2)")
+    func bundledInvariants() throws {
         let url = try #require(Bundle.main.url(forResource: "ModelCatalog", withExtension: "json"))
-        #expect(ModelCatalog.load(from: url) == ModelCatalog.builtIn)
-        #expect(ModelCatalog.bundled == ModelCatalog.builtIn)
+        let catalog = try #require(ModelCatalog.decode(from: url))
+        #expect(ModelCatalog.bundled == catalog)
+        expectInvariants(catalog)
+        expectInvariants(.builtIn)
     }
 
     @Test("a missing or corrupt file falls back to the built-in catalog")
@@ -610,6 +711,7 @@ struct ModelCatalogTests {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("catalog-\(UUID()).json")
         try Data("{ not json".utf8).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
+        #expect(ModelCatalog.decode(from: url) == nil)
         #expect(ModelCatalog.load(from: url) == ModelCatalog.builtIn)
         #expect(ModelCatalog.load(from: nil) == ModelCatalog.builtIn)
     }
@@ -645,9 +747,9 @@ struct ModelCatalogTests {
 
     @Test("TTS outgoing: the voice clone when active, else Kokoro for English, else the system voice",
           arguments: [
-            (en, ModelAvailability(kokoroCached: true, voiceCloneActive: true), TTSEngine.voiceClone),
+            (en, ModelAvailability(kokoroCached: true, voiceCloneReady: true), TTSEngine.voiceClone),
             (en, ModelAvailability(kokoroCached: true), .kokoro),
-            (es, ModelAvailability(kokoroCached: true, voiceCloneActive: true), .voiceClone),
+            (es, ModelAvailability(kokoroCached: true, voiceCloneReady: true), .voiceClone),
             (es, ModelAvailability(kokoroCached: true), .avSpeech),
             (de, ModelAvailability(), .avSpeech),
           ])
@@ -659,7 +761,7 @@ struct ModelCatalogTests {
     @Test("TTS incoming: Kokoro for English only while the voice clone is not active (MLX exclusivity, §3.3)")
     func ttsIncomingMLXExclusivity() {
         let kokoro = ModelAvailability(kokoroCached: true)
-        let both = ModelAvailability(kokoroCached: true, voiceCloneActive: true)
+        let both = ModelAvailability(kokoroCached: true, voiceCloneReady: true)
         #expect(ModelChoice.tts(for: en, direction: .incoming, catalog: .builtIn, availability: kokoro) == .kokoro)
         #expect(ModelChoice.tts(for: en, direction: .incoming, catalog: .builtIn, availability: both) == .avSpeech)
         #expect(ModelChoice.tts(for: es, direction: .incoming, catalog: .builtIn, availability: kokoro) == .avSpeech)
@@ -669,7 +771,7 @@ struct ModelCatalogTests {
     func neverEdge() {
         let catalog = ModelCatalog(version: 1, stt: [:], ttsOutgoing: ["default": ["edgeTTS"]],
                                    ttsIncoming: ["default": ["edgeTTS"]])
-        let all = ModelAvailability(parakeetCached: true, whisperCached: true, kokoroCached: true, voiceCloneActive: true)
+        let all = ModelAvailability(parakeetCached: true, whisperCached: true, kokoroCached: true, voiceCloneReady: true)
         #expect(ModelChoice.tts(for: uk, direction: .outgoing, catalog: catalog, availability: all) == .avSpeech)
         #expect(ModelChoice.tts(for: uk, direction: .incoming, catalog: catalog, availability: all) == .avSpeech)
         #expect(ModelChoice.stt(for: uk, direction: .outgoing, catalog: catalog, availability: all) == .appleSpeech)
@@ -723,10 +825,18 @@ struct ModelCatalog: Decodable, Equatable {
     let ttsOutgoing: [String: [String]]
     let ttsIncoming: [String: [String]]
 
-    /// The bundled catalog; the built-in fallback when the file is missing or corrupt.
-    static let bundled: ModelCatalog = load(from: Bundle.main.url(forResource: "ModelCatalog", withExtension: "json"))
+    /// The bundled catalog. A missing or invalid file is a packaging bug: it asserts in debug builds
+    /// and falls back to `builtIn` in release builds (design §3.1).
+    static let bundled: ModelCatalog = {
+        guard let catalog = decode(from: Bundle.main.url(forResource: "ModelCatalog", withExtension: "json")) else {
+            assertionFailure("ModelCatalog.json missing or invalid")
+            return load(from: nil)
+        }
+        return catalog
+    }()
 
-    /// Same values as `ModelCatalog.json` (version 1).
+    /// The fallback when the bundled file is missing or invalid (the version-1 preferences). The
+    /// bundled JSON may differ: the benchmark rewrites it without code changes (D-2).
     static let builtIn = ModelCatalog(
         version: 1,
         stt: ["en": ["parakeet", "whisper", "appleSpeech"], "default": ["whisper", "appleSpeech"]],
@@ -734,14 +844,19 @@ struct ModelCatalog: Decodable, Equatable {
         ttsIncoming: ["en": ["kokoro", "avSpeech"], "default": ["avSpeech"]]
     )
 
-    /// Decodes the catalog at `url`; any failure logs and returns `builtIn`.
+    /// Decodes the catalog at `url`; any failure logs and returns `builtIn`. Never asserts.
     static func load(from url: URL?) -> ModelCatalog {
-        guard let url, let data = try? Data(contentsOf: url),
-              let catalog = try? JSONDecoder().decode(ModelCatalog.self, from: data) else {
+        guard let catalog = decode(from: url) else {
             logger.error("ModelCatalog.json missing or invalid; using the built-in catalog")
             return builtIn
         }
         return catalog
+    }
+
+    /// The catalog at `url`, or nil when it is missing or does not decode.
+    static func decode(from url: URL?) -> ModelCatalog? {
+        guard let url, let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(ModelCatalog.self, from: data)
     }
 
     func sttEngines(for locale: Locale) -> [STTEngine] {
@@ -766,13 +881,13 @@ import Foundation
 
 // MARK: - ModelAvailability
 
-/// What is usable on this Mac right now (D-6: "ready" = downloaded on disk; the voice clone also
-/// needs to be enabled, loaded and have an active profile — `TTSEngineSelector.voiceCloningActive`).
+/// What is usable on this Mac right now (D-6: "ready" = downloaded on disk). The voice clone is
+/// ready when its model is on disk, "Use my voice" is on and a voice profile is active (P19).
 struct ModelAvailability: Equatable {
     var parakeetCached = false
     var whisperCached = false
     var kokoroCached = false
-    var voiceCloneActive = false
+    var voiceCloneReady = false
 }
 
 // MARK: - ModelChoice
@@ -785,6 +900,10 @@ enum ModelChoice {
 
     static func isAutomatic(in defaults: UserDefaults) -> Bool {
         defaults.object(forKey: automaticKey) as? Bool ?? true
+    }
+
+    static func setAutomatic(_ automatic: Bool, in defaults: UserDefaults) {
+        defaults.set(automatic, forKey: automaticKey)
     }
 
     /// Parakeet serves the outgoing direction only, as today (one shared ASR model).
@@ -811,12 +930,12 @@ enum ModelChoice {
         }
     }
 
-    /// Kokoro is never chosen while the voice clone is active: only one MLX TTS model at a time (§3.3).
+    /// Kokoro is never chosen while the voice clone is ready: only one MLX TTS model at a time (§3.3).
     private static func isReady(_ engine: TTSEngine, _ availability: ModelAvailability) -> Bool {
         switch engine {
         case .avSpeech: true
-        case .kokoro: availability.kokoroCached && !availability.voiceCloneActive
-        case .voiceClone: availability.voiceCloneActive
+        case .kokoro: availability.kokoroCached && !availability.voiceCloneReady
+        case .voiceClone: availability.voiceCloneReady
         case .edgeTTS: false
         }
     }
@@ -860,7 +979,7 @@ nonisolated struct TranscriptEntry: Identifiable, Sendable, Equatable {
 - [ ] **Step 4: Run**
 
 Run: `just test-only ModelCatalogTests`
-Expected: PASS. `bundledMatchesBuiltIn` also proves that the JSON is in the app bundle.
+Expected: PASS. `bundledInvariants` also proves that the JSON is in the app bundle. It checks the catalog's shape, not its values, so the benchmark can rewrite the JSON without a code or test change (D-2, P28).
 
 - [ ] **Step 5: Commit**
 
@@ -880,18 +999,20 @@ git commit -m "feat(models): bundled model catalog and automatic engine choice (
 
 **Interfaces:**
 - Produces:
-  - `nonisolated enum ModelCache`, with:
-    - `allExist(_:in:)`, `hasMLXWeights(in:)`;
-    - `whisperDirectory(for:home:)`, `kokoroDirectory(home:)`, `mlxAudioDirectory(repo:home:)`, `homeDirectory`;
+  - `nonisolated enum ModelCache` (P21), with:
+    - `allExist(_:in:)`, `hasMLXWeights(in:)` (a `config.json` that parses, as mlx-audio requires);
+    - `whisperRequired`, `kokoroRequired`;
+    - `whisperDirectory(for:home:)`, `hasWhisperTokenizer(for:home:)`, `kokoroDirectory(home:)`, `mlxAudioDirectory(repo:home:)`, `homeDirectory`;
     - `isParakeetCached()`, `isWhisperCached()`, `isKokoroCached()`;
-  - `nonisolated struct ModelCacheProbe { parakeet, whisper, kokoro: @Sendable () -> Bool; static live; static none }`;
+  - `nonisolated struct ModelCacheProbe { parakeet, whisper, kokoro, voiceClone: @Sendable () -> Bool; static live; static none }`. `voiceClone` is `QwenCloneModelManager.shared.isModelCached()`: the automatic voice-clone readiness (P19);
+  - `nonisolated enum ModelCacheError: Error { case notCached }`, thrown by the load-only paths of Task 6;
   - `QwenCloneModelManager.isModelCached(home:)`, now `nonisolated`.
 
 The folders come from the packages:
 - **Parakeet:** FluidAudio's `AsrModels.defaultCacheDirectory`/`modelsExist(at:version:)`.
-- **Whisper:** WhisperKit's default download base, `~/Documents/huggingface/models/argmaxinc/whisperkit-coreml/<size>`, which must contain `MelSpectrogram.mlmodelc`, `AudioEncoder.mlmodelc` and `TextDecoder.mlmodelc`.
+- **Whisper:** WhisperKit's default download base, `~/Documents/huggingface/models/argmaxinc/whisperkit-coreml/<size>`, which must contain `MelSpectrogram.mlmodelc`, `AudioEncoder.mlmodelc` and `TextDecoder.mlmodelc`. Its tokenizer is fetched on first load into `~/Documents/huggingface/models/openai/whisper-<size>/tokenizer.json`.
 - **Kokoro:** FluidAudio TTS on macOS, `~/.cache/fluidaudio/Models/kokoro`, which must contain `kokoro_21_5s.mlmodelc` and `kokoro_21_15s.mlmodelc`.
-- **Qwen:** mlx-audio, `~/.cache/huggingface/hub/mlx-audio/<owner>_<name>` (P8).
+- **Qwen:** mlx-audio, `~/.cache/huggingface/hub/mlx-audio/<owner>_<name>` (P8), with a `config.json` that parses and a non-empty `.safetensors`: exactly the rule under which `ModelUtils.resolveOrDownloadModel` uses the folder without downloading.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -913,7 +1034,8 @@ private final class TempHome {
                 try FileManager.default.createDirectory(at: folder.appendingPathComponent(name),
                                                         withIntermediateDirectories: true)
             } else {
-                try Data("x".utf8).write(to: folder.appendingPathComponent(name))
+                let contents = name.hasSuffix(".json") ? "{}" : "x"
+                try Data(contents.utf8).write(to: folder.appendingPathComponent(name))
             }
         }
     }
@@ -933,6 +1055,15 @@ struct ModelCacheTests {
         #expect(ModelCache.allExist(ModelCache.whisperRequired, in: folder))
     }
 
+    @Test("Whisper: the tokenizer counts too (WhisperKit would fetch a missing one)")
+    func whisperTokenizer() throws {
+        let home = TempHome()
+        #expect(!ModelCache.hasWhisperTokenizer(for: .base, home: home.url))
+        try home.make(["tokenizer.json"],
+                      in: home.url.appendingPathComponent("Documents/huggingface/models/openai/whisper-base"))
+        #expect(ModelCache.hasWhisperTokenizer(for: .base, home: home.url))
+    }
+
     @Test("Kokoro: both variants are required")
     func kokoroFolder() throws {
         let home = TempHome()
@@ -944,7 +1075,7 @@ struct ModelCacheTests {
         #expect(ModelCache.allExist(ModelCache.kokoroRequired, in: folder))
     }
 
-    @Test("mlx-audio: needs config.json and a non-empty .safetensors")
+    @Test("mlx-audio: needs a config.json that parses and a non-empty .safetensors")
     func mlxWeights() throws {
         let home = TempHome()
         let folder = ModelCache.mlxAudioDirectory(repo: "owner/model", home: home.url)
@@ -955,6 +1086,8 @@ struct ModelCacheTests {
         #expect(!ModelCache.hasMLXWeights(in: folder), "a zero-byte weights file is a partial download")
         try home.make(["model.safetensors"], in: folder)
         #expect(ModelCache.hasMLXWeights(in: folder))
+        try Data("{ partial".utf8).write(to: folder.appendingPathComponent("config.json"))
+        #expect(!ModelCache.hasMLXWeights(in: folder), "mlx-audio would clear an invalid config and download")
     }
 
     @Test("Qwen: the old `models--…` hub folder alone is not a cached model")
@@ -998,11 +1131,13 @@ nonisolated enum ModelCache {
         names.allSatisfy { FileManager.default.fileExists(atPath: directory.appendingPathComponent($0).path) }
     }
 
-    /// An mlx-audio model folder is usable: `config.json` plus at least one non-empty `.safetensors`
-    /// (the rule `ModelUtils.resolveOrDownloadModel` applies before it trusts a cached copy).
+    /// An mlx-audio model folder is usable: a `config.json` that parses plus at least one non-empty
+    /// `.safetensors`. This is the rule `ModelUtils.resolveOrDownloadModel` applies before it trusts a
+    /// cached copy, so loading a folder that passes never downloads (P20).
     static func hasMLXWeights(in directory: URL) -> Bool {
         let manager = FileManager.default
-        guard manager.fileExists(atPath: directory.appendingPathComponent("config.json").path),
+        guard let config = try? Data(contentsOf: directory.appendingPathComponent("config.json")),
+              (try? JSONSerialization.jsonObject(with: config)) != nil,
               let files = try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey])
         else { return false }
         return files.contains { file in
@@ -1020,6 +1155,14 @@ nonisolated enum ModelCache {
     static func whisperDirectory(for size: WhisperModelSize, home: URL = homeDirectory) -> URL {
         home.appendingPathComponent("Documents/huggingface/models/argmaxinc/whisperkit-coreml")
             .appendingPathComponent(size.whisperKitName)
+    }
+
+    /// WhisperKit's tokenizer, fetched on first load: `~/Documents/huggingface/models/openai/whisper-<size>`
+    /// (or bundled in the model folder).
+    static func hasWhisperTokenizer(for size: WhisperModelSize, home: URL = homeDirectory) -> Bool {
+        let repo = size.whisperKitName.replacingOccurrences(of: "openai_", with: "openai/")
+        let hub = home.appendingPathComponent("Documents/huggingface/models").appendingPathComponent(repo)
+        return [hub, whisperDirectory(for: size, home: home)].contains { allExist(["tokenizer.json"], in: $0) }
     }
 
     /// FluidAudio TTS on macOS: `~/.cache/fluidaudio/Models/kokoro`.
@@ -1059,13 +1202,23 @@ nonisolated struct ModelCacheProbe: Sendable {
     var parakeet: @Sendable () -> Bool
     var whisper: @Sendable () -> Bool
     var kokoro: @Sendable () -> Bool
+    var voiceClone: @Sendable () -> Bool
 
     static let live = ModelCacheProbe(
         parakeet: { ModelCache.isParakeetCached() },
         whisper: { ModelCache.isWhisperCached() },
-        kokoro: { ModelCache.isKokoroCached() }
+        kokoro: { ModelCache.isKokoroCached() },
+        voiceClone: { QwenCloneModelManager.shared.isModelCached() }
     )
-    static let none = ModelCacheProbe(parakeet: { false }, whisper: { false }, kokoro: { false })
+    static let none = ModelCacheProbe(parakeet: { false }, whisper: { false }, kokoro: { false },
+                                      voiceClone: { false })
+}
+
+// MARK: - ModelCacheError
+
+/// A load-only path found no usable copy on disk (it never downloads; M9 UI core D-6).
+nonisolated enum ModelCacheError: Error, Equatable {
+    case notCached
 }
 ```
 
@@ -1103,19 +1256,35 @@ git commit -m "feat(models): on-disk model checks; Qwen cache check looks at mlx
 
 **Interfaces:**
 - Consumes: Task 3 (`ModelChoice`, `ModelCatalog`), Task 4 (`ModelCacheProbe`).
-- Produces, on both selectors:
-  - `isAutomatic: Bool`, `setAutomatic(_:)`, `availability: ModelAvailability`, `var catalog`, `var cacheProbe`;
-  - `setPreferredEngine` now also switches to manual.
+- Produces:
+  - `protocol AutomaticModeSelector` (both selectors conform), which implements `isAutomatic: Bool` and `setAutomatic(_:)` once (P5);
+  - on both selectors: `availability: ModelAvailability`, `var catalog`, `var cacheProbe`; `setPreferredEngine` now also switches to manual;
+  - `TTSEngineSelector.edgeConsentGiven: () -> Bool` (default `EdgeTTSConsentManager.consentGiven`), injectable so tests never depend on this Mac's consent (P33).
 
   `STTEngineSelector.automaticService(for:direction:)` and `TTSEngineSelector.automaticPrimary(for:direction:)` are used internally. `TTSEngineSelector.systemOrEdgePrimary(for:)` becomes internal (it was private).
 
 - [ ] **Step 1: Pin manual mode in the existing suites**
 
-In each of the five suites' fresh-defaults helper, after the suite is created or cleared, add:
-```swift
-        suite.set(false, forKey: ModelChoice.automaticKey)   // these tests cover manual mode (M9 UI core)
-```
-Use the helper's own variable name (`suite` or `defaults`). In `TTSEngineSelectorVoiceCloneTests.makeSelector()`, set it on the `defaults` it creates.
+Each suite's `makeSelector` pins manual mode on whatever `UserDefaults` it uses, its own fresh one or the one a test passes in (P6):
+- `STTEngineSelectorTests.makeSelector` and `STTEngineSelectorWhisperRoutingTests.makeSelector` (`WhisperSTTTests.swift`):
+  ```swift
+      ) -> STTEngineSelector {
+          let defaults = defaults ?? freshDefaults()
+          defaults.set(false, forKey: ModelChoice.automaticKey)   // these tests cover manual mode (M9 UI core)
+          return STTEngineSelector(
+              defaults: defaults,
+  ```
+- `TTSEngineSelectorTests.makeSelector`:
+  ```swift
+          let defaults = defaults ?? freshDefaults()
+          defaults.set(false, forKey: ModelChoice.automaticKey)   // these tests cover manual mode (M9 UI core)
+          let selector = TTSEngineSelector(defaults: defaults)
+  ```
+- `TTSEngineSelectorEdgeTTSTests.makeSelector` (`EdgeTTSTests.swift`), after `let defs = defaults ?? freshDefaults()`:
+  ```swift
+          defs.set(false, forKey: ModelChoice.automaticKey)   // these tests cover manual mode (M9 UI core)
+  ```
+- `TTSEngineSelectorVoiceCloneTests.makeSelector()`: the same line on the `defaults` it creates.
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -1166,7 +1335,7 @@ private func makeTTS(_ defaults: UserDefaults, probe: ModelCacheProbe) -> TTSEng
     return selector
 }
 
-private let cachedAll = ModelCacheProbe(parakeet: { true }, whisper: { true }, kokoro: { true })
+private let cachedAll = ModelCacheProbe(parakeet: { true }, whisper: { true }, kokoro: { true }, voiceClone: { false })
 
 @Suite("Selectors in automatic mode (M9 UI core REQ-UI-21…23)") @MainActor
 struct ModelChoiceSelectorTests {
@@ -1232,9 +1401,25 @@ struct ModelChoiceSelectorTests {
     func automaticNeverEdgeWithoutConsent() throws {
         let tts = makeTTS(freshDefaults(), probe: .none)
         tts.hasSystemVoice = { _ in false }
-        guard !EdgeTTSConsentManager.consentGiven else { return }   // machine-wide consent: nothing to check
+        tts.edgeConsentGiven = { false }
         let service = try tts.makeOutgoingService(for: Locale(identifier: "uk-UA"), deviceID: nil)
         #expect(service.primaryEngine == .avSpeech)
+
+        tts.edgeConsentGiven = { true }   // control: with consent, today's Edge fallback applies
+        let consented = try tts.makeOutgoingService(for: Locale(identifier: "uk-UA"), deviceID: nil)
+        #expect(consented.primaryEngine == .edgeTTS)
+    }
+
+    @Test("the voice clone is the automatic outgoing voice when on disk, enabled and with a profile (D-6)")
+    func automaticVoiceCloneFromDisk() {
+        let probe = ModelCacheProbe(parakeet: { false }, whisper: { false }, kokoro: { true }, voiceClone: { true })
+        let tts = makeTTS(freshDefaults(), probe: probe)
+        #expect(!tts.availability.voiceCloneReady, "not enabled, no profile")
+        tts.voiceCloningEnabled = true
+        tts.activeVoiceProfileId = UUID()
+        #expect(tts.availability.voiceCloneReady, "loading is not required: on disk is enough")
+        tts.cacheProbe = .none
+        #expect(!tts.availability.voiceCloneReady)
     }
 }
 ```
@@ -1242,7 +1427,7 @@ struct ModelChoiceSelectorTests {
 - [ ] **Step 3: Run, expect failure**
 
 Run: `just test-only ModelChoiceSelectorTests`
-Expected: FAIL (`catalog`, `cacheProbe`, `isAutomatic` undefined).
+Expected: FAIL (`catalog`, `cacheProbe`, `isAutomatic`, `edgeConsentGiven` undefined).
 
 - [ ] **Step 4: Implement**
 
@@ -1262,6 +1447,12 @@ Expected: FAIL (`catalog`, `cacheProbe`, `isAutomatic` undefined).
 - `defaults` loses `private`;
 - `profileStore` becomes `private(set)`;
 - add the same two stored properties;
+- add, after `hasSystemVoice`:
+  ```swift
+      /// Edge TTS consent (machine-wide); injectable so tests never depend on this Mac's answer.
+      var edgeConsentGiven: () -> Bool = { EdgeTTSConsentManager.consentGiven }
+  ```
+  and read `edgeConsentGiven()` instead of `EdgeTTSConsentManager.consentGiven` in `needsEdgeTTSConsent`, `isUsingEdgeTTS` and `systemOrEdgePrimary(for:)`;
 - `systemOrEdgePrimary(for:)` loses `private`;
 - `outgoingPrimary`/`incomingPrimary` start with `if isAutomatic { return automaticPrimary(for: locale, direction: .outgoing / .incoming) }`;
 - `setPreferredEngine` calls `setAutomatic(false)`.
@@ -1275,16 +1466,23 @@ import Foundation
 
 // MARK: - Automatic mode in the selectors (M9 UI core REQ-UI-21…23, design §3.3)
 
-extension STTEngineSelector {
-    /// Automatic (catalog) or manual (`preferredEngine`, today's behaviour). Shared with the TTS selector.
+/// The one shared implementation of the automatic flag for both selectors (P5).
+protocol AutomaticModeSelector: ObservableObject where ObjectWillChangePublisher == ObservableObjectPublisher {
+    var defaults: UserDefaults { get }
+}
+
+extension AutomaticModeSelector {
+    /// Automatic (catalog) or manual (`preferredEngine`, today's behaviour). Shared by both selectors.
     var isAutomatic: Bool { ModelChoice.isAutomatic(in: defaults) }
 
     /// `true` = back to automatic ("Automatic (recommended)"); `setPreferredEngine` sets `false`.
     func setAutomatic(_ automatic: Bool) {
         objectWillChange.send()
-        defaults.set(automatic, forKey: ModelChoice.automaticKey)
+        ModelChoice.setAutomatic(automatic, in: defaults)
     }
+}
 
+extension STTEngineSelector: AutomaticModeSelector {
     var availability: ModelAvailability {
         ModelAvailability(parakeetCached: cacheProbe.parakeet(), whisperCached: cacheProbe.whisper())
     }
@@ -1298,16 +1496,12 @@ extension STTEngineSelector {
     }
 }
 
-extension TTSEngineSelector {
-    var isAutomatic: Bool { ModelChoice.isAutomatic(in: defaults) }
-
-    func setAutomatic(_ automatic: Bool) {
-        objectWillChange.send()
-        defaults.set(automatic, forKey: ModelChoice.automaticKey)
-    }
-
+extension TTSEngineSelector: AutomaticModeSelector {
+    /// The voice clone counts as ready when its model is on disk, "Use my voice" is on and a profile
+    /// is active (P19, D-6); the preloader loads it ahead of Start.
     var availability: ModelAvailability {
-        ModelAvailability(kokoroCached: cacheProbe.kokoro(), voiceCloneActive: voiceCloningActive)
+        let voiceCloneReady = voiceCloningEnabled && activeVoiceProfileId != nil && cacheProbe.voiceClone()
+        return ModelAvailability(kokoroCached: cacheProbe.kokoro(), voiceCloneReady: voiceCloneReady)
     }
 
     /// The system voice path keeps today's Edge fallback, which needs prior consent (REQ-UI-22).
@@ -1330,8 +1524,8 @@ extension TTSEngineSelector {
 
 - [ ] **Step 5: Run**
 
-Run: `just test-only ModelChoiceSelectorTests ModelCatalogTests STTEngineSelectorTests TTSEngineSelectorTests TTSEngineSelectorVoiceCloneTests EdgeTTSTests WhisperSTTTests`
-Expected: PASS.
+Run: `just test-only ModelChoiceSelectorTests ModelCatalogTests STTEngineSelectorTests TTSEngineSelectorTests TTSEngineSelectorVoiceCloneTests TTSEngineSelectorEdgeTTSTests STTEngineSelectorWhisperRoutingTests`
+Expected: PASS. (`test-only` takes suite struct names: the Edge and Whisper selector suites live in `EdgeTTSTests.swift` and `WhisperSTTTests.swift`.)
 
 - [ ] **Step 6: Lint and commit**
 
@@ -1346,22 +1540,27 @@ git commit -m "feat(models): selectors pick engines from the catalog in automati
 
 ---
 
-### Task 6: `ModelPreloader` and `UIServices` in `AppContainer` (opus)
+### Task 6: `ModelPreloader`, load-only model paths, and `UIServices` in `AppContainer` (opus)
 
 **Files:**
 - Create: `TranslateCall/Core/Models/ModelPreloader.swift`
 - Modify: `TranslateCall/App/AppContainer.swift`
-- Test: `TranslateCallTests/ModelPreloaderTests.swift`
+- Modify (load-only paths, P20): `TranslateCall/Core/STT/ParakeetModelManager.swift`, `TranslateCall/Core/STT/WhisperModelManager.swift`, `TranslateCall/Core/VoiceCloning/QwenCloneModelManager.swift`
+- Test: `TranslateCallTests/ModelPreloaderTests.swift` (`ModelPreloaderTests` and `ModelLoadOnlyTests`)
 
 **Interfaces:**
-- Consumes: Task 5 (selectors' `isAutomatic`, `availability`, `catalog`); `LanguagePairManager.$sourceLanguage`/`$targetLanguage`.
+- Consumes: Task 5 (selectors' `isAutomatic`, `availability`, `catalog`), Task 4 (`ModelCache`, `ModelCacheError`); `LanguagePairManager.$sourceLanguage`/`$targetLanguage`.
 - Produces:
-  - `enum PreloadModel { parakeet, whisper, kokoro }`;
+  - load-only paths that throw `ModelCacheError.notCached` instead of downloading (P20):
+    - `ParakeetModelManager.loadCached(config:)`, with an injectable `cachedFactory` (default `cacheOnlyFactory`);
+    - `WhisperModelManager.loadCached(config:)`, with an injectable `cachedPipeFactory` (default `cacheOnlyPipe`);
+    - `QwenCloneModelManager.loadCached(home:)`;
+  - `enum PreloadModel { parakeet, whisper, voiceClone }`. Kokoro is not preloaded (P20);
   - `struct ModelLoaders { load, unload; static live }`;
   - `@MainActor final class ModelPreloader`:
     - `init(stt:tts:languagePairManager:loaders:isSessionActive:)`;
     - `start()`, `wantedModels()`, `preload() async`, `loaded`;
-  - `@MainActor struct UIServices` (`AppContainer.uiServices`). Tasks 11 and 13 add fields to it.
+  - `@MainActor struct UIServices` (`AppContainer.uiServices`). Tasks 11, 13, 15 and 17 add fields to it (P12).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1389,7 +1588,6 @@ private struct Harness {
     let tts: TTSEngineSelector
     let pair: LanguagePairManager
     let log = LoaderLog()
-    var sessionActive = false
 
     init(source: String, target: String, probe: ModelCacheProbe) {
         let name = "ModelPreloaderTests.\(UUID().uuidString)"
@@ -1413,21 +1611,21 @@ private struct Harness {
     }
 }
 
-private let cachedAll = ModelCacheProbe(parakeet: { true }, whisper: { true }, kokoro: { true })
+private let cachedAll = ModelCacheProbe(parakeet: { true }, whisper: { true }, kokoro: { true }, voiceClone: { true })
 
 @Suite("ModelPreloader (M9 UI core REQ-UI-21a)", .serialized) @MainActor
 struct ModelPreloaderTests {
 
-    @Test("ES ↔ EN with everything cached: Whisper (ES out), Whisper (EN in)… plus Kokoro for English")
+    @Test("ES ↔ EN with everything cached: Whisper for my Spanish and for their English; never Kokoro")
     func wantedForSpanishEnglish() {
         let harness = Harness(source: "es", target: "en", probe: cachedAll)
-        #expect(harness.preloader().wantedModels() == [.whisper, .kokoro])
+        #expect(harness.preloader().wantedModels() == [.whisper])
     }
 
     @Test("EN → ES: Parakeet for my English, Whisper for their Spanish")
     func wantedForEnglishSpanish() {
         let harness = Harness(source: "en", target: "es", probe: cachedAll)
-        #expect(harness.preloader().wantedModels() == [.parakeet, .whisper, .kokoro])
+        #expect(harness.preloader().wantedModels() == [.parakeet, .whisper])
     }
 
     @Test("nothing on disk → nothing to preload (never downloads)")
@@ -1438,11 +1636,13 @@ struct ModelPreloaderTests {
         #expect(harness.log.entries.isEmpty)
     }
 
-    @Test("no Kokoro while the voice clone is enabled (one MLX TTS model at a time)")
-    func noKokoroWithVoiceClone() {
+    @Test("the voice clone is preloaded when it is my outgoing voice: on disk, enabled, with a profile (D-6)")
+    func voiceCloneWhenOutgoingChoice() {
         let harness = Harness(source: "es", target: "en", probe: cachedAll)
+        #expect(!harness.preloader().wantedModels().contains(.voiceClone), "Use my voice is off")
         harness.tts.voiceCloningEnabled = true
-        #expect(!harness.preloader().wantedModels().contains(.kokoro))
+        harness.tts.activeVoiceProfileId = UUID()
+        #expect(harness.preloader().wantedModels() == [.whisper, .voiceClone])
     }
 
     @Test("a pair change unloads what the new pair no longer uses and loads the new picks")
@@ -1454,7 +1654,6 @@ struct ModelPreloaderTests {
         await harness.pair.setTargetLanguage(Locale.Language(identifier: "es"))
         await preloader.preload()
         #expect(harness.log.entries.contains("unload parakeet"))
-        #expect(harness.log.entries.contains("unload kokoro"))
         #expect(harness.log.entries.filter { $0 == "load whisper" }.count == 1, "already loaded: not reloaded")
         #expect(preloader.loaded == [.whisper])
     }
@@ -1471,12 +1670,64 @@ struct ModelPreloaderTests {
         #expect(harness.log.entries.isEmpty)
     }
 }
+
+// MARK: - Load-only paths (P20: the preloader never triggers a download)
+
+@Suite("Load-only model paths (M9 UI core D-6)")
+struct ModelLoadOnlyTests {
+
+    @Test("Parakeet: loadCached uses the cache-only factory, never the downloading one")
+    func parakeetLoadCached() async throws {
+        let downloads = CallCounter()
+        let manager = ParakeetModelManager(managerFactory: { _ in downloads.increment(); return MockAsrTranscriber() },
+                                           cachedFactory: { _ in MockAsrTranscriber() })
+        try await manager.loadCached()
+        #expect(await manager.modelState == .ready)
+        #expect(downloads.value == 0)
+    }
+
+    @Test("Parakeet: a missing or unusable cache throws and is not repaired")
+    func parakeetNotCached() async {
+        let downloads = CallCounter()
+        let manager = ParakeetModelManager(managerFactory: { _ in downloads.increment(); return MockAsrTranscriber() },
+                                           cachedFactory: { _ in throw ModelCacheError.notCached })
+        await #expect(throws: ModelCacheError.notCached) { try await manager.loadCached() }
+        #expect(downloads.value == 0)
+    }
+
+    @Test("Whisper: loadCached uses the disk-only pipe, never the downloading one")
+    func whisperLoadCached() async {
+        let downloads = CallCounter()
+        let manager = WhisperModelManager(pipeFactory: { _ in downloads.increment(); throw ModelCacheError.notCached },
+                                          cachedPipeFactory: { _ in throw ModelCacheError.notCached })
+        await #expect(throws: ModelCacheError.notCached) { try await manager.loadCached() }
+        #expect(downloads.value == 0)
+    }
+
+    @Test("voice clone: loadCached loads only what is on disk")
+    func voiceCloneLoadCached() async throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("home-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let loads = CallCounter()
+        let manager = QwenCloneModelManager(config: QwenCloneConfiguration(modelRepo: "owner/model"),
+                                            modelLoader: { _ in loads.increment(); return MockQwenCloneInferrer() })
+        await #expect(throws: ModelCacheError.notCached) { try await manager.loadCached(home: home) }
+        #expect(loads.value == 0)
+
+        let folder = ModelCache.mlxAudioDirectory(repo: "owner/model", home: home)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: folder.appendingPathComponent("config.json"))
+        try Data("x".utf8).write(to: folder.appendingPathComponent("model.safetensors"))
+        try await manager.loadCached(home: home)
+        #expect(loads.value == 1)
+    }
+}
 ```
 
 - [ ] **Step 2: Run, expect failure**
 
-Run: `just test-only ModelPreloaderTests`
-Expected: FAIL (types undefined).
+Run: `just test-only ModelPreloaderTests ModelLoadOnlyTests`
+Expected: FAIL (types and `loadCached` undefined).
 
 - [ ] **Step 3: Implement** `TranslateCall/Core/Models/ModelPreloader.swift`:
 ```swift
@@ -1486,13 +1737,14 @@ import OSLog
 
 nonisolated private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "ModelPreloader")
 
-/// A model the preloader can load ahead of Start.
+/// A model the preloader can load ahead of Start. Kokoro is not one: FluidAudio has no load path that
+/// cannot download (its lexicon and voice files are fetched on demand), so it loads at Start (P20).
 nonisolated enum PreloadModel: Hashable, Sendable {
-    case parakeet, whisper, kokoro
+    case parakeet, whisper, voiceClone
 }
 
-/// Loads and unloads one model; `live` uses the shared managers. Loading never downloads in
-/// practice: the preloader only asks for models the cache probe found on disk.
+/// Loads and unloads one model; `live` uses the shared managers' load-only paths, which throw
+/// instead of downloading (D-6, P20).
 nonisolated struct ModelLoaders: Sendable {
     var load: @Sendable (PreloadModel) async -> Void
     var unload: @Sendable (PreloadModel) async -> Void
@@ -1501,9 +1753,9 @@ nonisolated struct ModelLoaders: Sendable {
         load: { model in
             do {
                 switch model {
-                case .parakeet: _ = try await ParakeetModelManager.shared.ensureReady()
-                case .whisper: try await WhisperModelManager.shared.loadIfNeeded()
-                case .kokoro: _ = try await KokoroModelManager.shared.ensureReady()
+                case .parakeet: try await ParakeetModelManager.shared.loadCached()
+                case .whisper: try await WhisperModelManager.shared.loadCached()
+                case .voiceClone: try await QwenCloneModelManager.shared.loadCached()
                 }
             } catch {
                 logger.info("Preload of \(String(describing: model)) skipped: \(error.localizedDescription)")
@@ -1513,7 +1765,7 @@ nonisolated struct ModelLoaders: Sendable {
             switch model {
             case .parakeet: await ParakeetModelManager.shared.unload()
             case .whisper: await WhisperModelManager.shared.unloadModel()
-            case .kokoro: await KokoroModelManager.shared.unload()
+            case .voiceClone: break   // owned by "Use my voice": disableVoiceCloning() unloads it
             }
         }
     )
@@ -1523,8 +1775,9 @@ nonisolated struct ModelLoaders: Sendable {
 
 /// Preloads the cached models the catalog picks for the current pair, at launch and on every
 /// pair change, so Start is fast (M9 UI core D-6, REQ-UI-21a, design §3.3). Never downloads,
-/// never runs during a session, and never loads Kokoro while the voice clone is enabled
-/// (one MLX TTS model at a time). `AppContainer` does not start it in the test host.
+/// never runs during a session. The voice clone is preloaded when it is the outgoing choice; the
+/// catalog never picks Kokoro then, so one MLX TTS model at a time holds (NF-04).
+/// `AppContainer` does not start it in the test host.
 @MainActor
 final class ModelPreloader {
     private let stt: STTEngineSelector
@@ -1559,19 +1812,18 @@ final class ModelPreloader {
         guard stt.isAutomatic else { return [] }
         let source = Locale(identifier: languagePairManager.sourceLanguage.minimalIdentifier)
         let target = Locale(identifier: languagePairManager.targetLanguage.minimalIdentifier)
-        let (sttAvailable, ttsAvailable) = (stt.availability, tts.availability)
+        let sttAvailable = stt.availability
         let sttPicks = [
             ModelChoice.stt(for: source, direction: .outgoing, catalog: stt.catalog, availability: sttAvailable),
             ModelChoice.stt(for: target, direction: .incoming, catalog: stt.catalog, availability: sttAvailable)
         ]
-        let ttsPicks = [
-            ModelChoice.tts(for: target, direction: .outgoing, catalog: tts.catalog, availability: ttsAvailable),
-            ModelChoice.tts(for: source, direction: .incoming, catalog: tts.catalog, availability: ttsAvailable)
-        ]
+        // My voice, spoken in their language.
+        let outgoingVoice = ModelChoice.tts(for: target, direction: .outgoing, catalog: tts.catalog,
+                                            availability: tts.availability)
         var wanted: Set<PreloadModel> = []
         if sttPicks.contains(.parakeet) { wanted.insert(.parakeet) }
         if sttPicks.contains(.whisper) { wanted.insert(.whisper) }
-        if ttsPicks.contains(.kokoro), !tts.voiceCloningEnabled { wanted.insert(.kokoro) }
+        if outgoingVoice == .voiceClone { wanted.insert(.voiceClone) }
         return wanted
     }
 
@@ -1594,7 +1846,110 @@ final class ModelPreloader {
 }
 ```
 
-- [ ] **Step 4: Wire it in `AppContainer` (P12)**
+- [ ] **Step 4: Load-only paths in the managers (P20)**
+
+FluidAudio's `AsrModels.loadFromCache` downloads missing files and, when a load fails, deletes the cache and downloads again; WhisperKit downloads unless told not to. Each manager gets a second factory that never does, and `loadCached` runs it through the manager's existing coalescing.
+
+`ParakeetModelManager.swift`:
+- `typealias Factory = @Sendable (ParakeetConfiguration) async throws -> any AsrTranscriber`; `managerFactory` uses it and a second stored `cachedFactory: Factory` is added. `init(managerFactory: @escaping Factory = ParakeetModelManager.defaultFactory, cachedFactory: @escaping Factory = ParakeetModelManager.cacheOnlyFactory)`;
+- `ensureReady(config:)` becomes `try await load(config: config, using: managerFactory)`, and the new method follows it:
+  ```swift
+      /// Loads the model from the disk cache only; throws instead of downloading (M9 UI core D-6).
+      func loadCached(config: ParakeetConfiguration = .default) async throws {
+          _ = try await load(config: config, using: cachedFactory)
+      }
+  ```
+- the old `ensureReady` body (fast path, coalescing, `loadTask`) moves unchanged into `private func load(config: ParakeetConfiguration, using factory: @escaping Factory) async throws -> any AsrTranscriber`, at the top of `// MARK: - Private`; its task calls `performLoad(config: config, factory: factory)`, and `performLoad` calls `factory(config)` instead of `managerFactory(config)`;
+- the factories:
+  ```swift
+      /// Tries to load from cache; falls back to download.
+      nonisolated static let defaultFactory: Factory = { config in
+          let mlConfig = modelConfiguration(for: config)
+          let models: AsrModels
+          do {
+              models = try await AsrModels.loadFromCache(
+                  configuration: mlConfig,
+                  version: config.modelVersion
+              )
+              modelLogger.debug("Loaded Parakeet model from cache")
+          } catch {
+              modelLogger.info("Cache miss (\(error.localizedDescription)); downloading…")
+              models = try await AsrModels.downloadAndLoad(
+                  configuration: mlConfig,
+                  version: config.modelVersion
+              )
+              modelLogger.debug("Downloaded Parakeet model")
+          }
+          return try await initializedManager(models)
+      }
+
+      /// Loads from the cache only; a missing or unusable cache throws `ModelCacheError.notCached`
+      /// (M9 UI core D-6). `loadFromCache` alone is not enough: it downloads missing files and, when a
+      /// load fails, deletes the cache and downloads again. `isModelValid` checks every file and loads
+      /// each model once (CPU) without network, so the load that follows finds a complete cache.
+      nonisolated static let cacheOnlyFactory: Factory = { config in
+          guard (try? await AsrModels.isModelValid(version: config.modelVersion)) == true else {
+              throw ModelCacheError.notCached
+          }
+          let models = try await AsrModels.loadFromCache(configuration: modelConfiguration(for: config),
+                                                         version: config.modelVersion)
+          return try await initializedManager(models)
+      }
+
+      nonisolated private static func modelConfiguration(for config: ParakeetConfiguration) -> MLModelConfiguration {
+          let mlConfig = MLModelConfiguration()
+          mlConfig.computeUnits = config.preferANE ? .all : .cpuAndGPU
+          return mlConfig
+      }
+
+      nonisolated private static func initializedManager(_ models: AsrModels) async throws -> any AsrTranscriber {
+          let mgr = AsrManager()
+          try await mgr.initialize(models: models)
+          return mgr
+      }
+  ```
+
+`WhisperModelManager.swift`:
+- `typealias Factory = @Sendable (WhisperModelSize) async throws -> WhisperKit`; `pipeFactory` uses it (same default) and `init` gains `cachedPipeFactory: @escaping Factory = WhisperModelManager.cacheOnlyPipe`, stored in `private let cachedPipeFactory: Factory`;
+- `ensureReady(config:)` becomes `try await load(config.modelSize, using: pipeFactory)`; its old body moves into `private func load(_ size: WhisperModelSize, using factory: @escaping Factory) async throws -> WhisperKit` under a new `// MARK: - Private` at the end (`config.modelSize` → `size`, `pipeFactory(size)` → `factory(size)`, the `let size = config.modelSize` line goes);
+- after `loadIfNeeded`, add:
+  ```swift
+      /// Loads the model from disk only; throws `ModelCacheError.notCached` instead of downloading
+      /// (M9 UI core D-6).
+      func loadCached(config: WhisperConfiguration = .default) async throws {
+          _ = try await load(config.modelSize, using: cachedPipeFactory)
+      }
+  ```
+  and, after `unloadModel()`:
+  ```swift
+      /// WhisperKit with downloads off, on the folder its default download wrote. The tokenizer is
+      /// checked too: WhisperKit would fetch a missing one.
+      nonisolated static let cacheOnlyPipe: Factory = { size in
+          let folder = ModelCache.whisperDirectory(for: size)
+          guard ModelCache.allExist(ModelCache.whisperRequired, in: folder),
+                ModelCache.hasWhisperTokenizer(for: size) else { throw ModelCacheError.notCached }
+          let config = WhisperKitConfig()
+          config.modelFolder = folder.path
+          config.download = false
+          config.verbose = false
+          return try await WhisperKit(config)
+      }
+  ```
+
+`QwenCloneModelManager.swift`, after `isModelCached(home:)`:
+```swift
+    /// Loads the model only when it is on disk; throws `ModelCacheError.notCached` otherwise and never
+    /// downloads (M9 UI core D-6): mlx-audio uses a folder that passes `isModelCached` as it is.
+    func loadCached(home: URL = ModelCache.homeDirectory) async throws {
+        guard isModelCached(home: home) else { throw ModelCacheError.notCached }
+        try await ensureReady()
+    }
+```
+
+Run: `just test-only ModelLoadOnlyTests ParakeetModelManagerTests WhisperModelManagerTests QwenCloneModelManagerTests`
+Expected: PASS.
+
+- [ ] **Step 5: Wire it in `AppContainer` (P12)**
 
 Add `let uiServices: UIServices` with a doc line, `/// M9 UI core: in-call state for the panel and popover, the call-app list, model preload.`.
 
@@ -1627,29 +1982,34 @@ struct UIServices {
 }
 ```
 
-- [ ] **Step 5: Run, lint**
+- [ ] **Step 6: Run, lint**
 
-Run: `just test-only ModelPreloaderTests ModelChoiceSelectorTests && just lint`
+Run: `just test-only ModelPreloaderTests ModelLoadOnlyTests ModelChoiceSelectorTests ParakeetModelManagerTests WhisperModelManagerTests QwenCloneModelManagerTests && just lint`
 Expected: PASS, and no lint output (`AppContainer.init` ≤ 50 lines).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add TranslateCall/Core/Models/ModelPreloader.swift TranslateCall/App/AppContainer.swift TranslateCallTests/ModelPreloaderTests.swift
-git commit -m "feat(models): preload cached models for the current pair at launch and on pair change (M9 UI core T6)"
+git add TranslateCall/Core/Models/ModelPreloader.swift TranslateCall/App/AppContainer.swift TranslateCallTests/ModelPreloaderTests.swift \
+  TranslateCall/Core/STT/ParakeetModelManager.swift TranslateCall/Core/STT/WhisperModelManager.swift \
+  TranslateCall/Core/VoiceCloning/QwenCloneModelManager.swift
+git commit -m "feat(models): preload cached models for the current pair, never downloading (M9 UI core T6)"
 ```
 
 ---
 
-### Task 7: `PauseGate` (opus)
+### Task 7: `PauseGate`, sharing the gate loop with `MicEchoGate` (opus)
 
 **Files:**
-- Create: `TranslateCall/Core/Session/PauseGate.swift`
-- Test: `TranslateCallTests/PauseGateTests.swift`
+- Create: `TranslateCall/Core/Session/PauseGate.swift`, `TranslateCall/Core/Audio/GatedAudioStream.swift`
+- Modify: `TranslateCall/Core/Audio/MicEchoGate.swift` (uses `GatedAudioStream`; behaviour unchanged, P23)
+- Test: `TranslateCallTests/PauseGateTests.swift`; `MicEchoGateTests` must stay green unchanged
 
 **Interfaces:**
-- Consumes: `MicEchoGate.silence(like:)` (existing, static), `SessionAudioStream(label:)`.
-- Produces: `nonisolated final class PauseGate: Sendable`, with `isPaused`, `setPaused(_:)`, `gate(_:label:) -> AsyncStream<AVAudioPCMBuffer>` and `process(_:)`.
+- Consumes: `SessionAudioStream(label:capacity:)`.
+- Produces:
+  - `nonisolated enum GatedAudioStream`, with `make(_:label:capacity:process:) -> SessionAudioStream`, `silenced(_:)` (a zeroed copy, or the buffer zeroed in place when the copy cannot be allocated) and `silence(like:)`. `MicEchoGate.silence(like:)` moves here;
+  - `nonisolated final class PauseGate: Sendable`, with `isPaused`, `setPaused(_:)`, `gate(_:label:) -> AsyncStream<AVAudioPCMBuffer>` and `process(_:)`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1698,19 +2058,23 @@ struct PauseGateTests {
         #expect(gate.process(next) === next)
     }
 
-    @Test("the gated stream keeps every buffer and finishes with its input")
+    @Test("the gated stream keeps every buffer, each gated by the state when it arrives, and finishes with its input")
     func streamKeepsEveryBuffer() async {
         let gate = PauseGate()
         let (input, continuation) = AsyncStream.makeStream(of: AVAudioPCMBuffer.self)
-        let output = gate.gate(input, label: "test")
+        var output = gate.gate(input, label: "test").makeAsyncIterator()
+
         continuation.yield(makePCMBuffer(fill: 0.5))
+        let first = await output.next()
         gate.setPaused(true)
         continuation.yield(makePCMBuffer(fill: 0.5))
+        let second = await output.next()
         continuation.finish()
-        var peaks: [Float] = []
-        for await buffer in output { peaks.append(samples(of: buffer).max() ?? 0) }
-        #expect(peaks.count == 2)
-        #expect(peaks.last == 0)
+        let end = await output.next()
+
+        #expect(first.map { samples(of: $0).allSatisfy { $0 == 0.5 } } == true, "running: passed through")
+        #expect(second.map { samples(of: $0).allSatisfy { $0 == 0 } } == true, "paused: silenced")
+        #expect(end == nil)
     }
 }
 ```
@@ -1720,7 +2084,79 @@ struct PauseGateTests {
 Run: `just test-only PauseGateTests`
 Expected: FAIL (`PauseGate` undefined).
 
-- [ ] **Step 3: Implement** `TranslateCall/Core/Session/PauseGate.swift`:
+- [ ] **Step 3: Implement**
+
+`TranslateCall/Core/Audio/GatedAudioStream.swift`, the loop and the silencing taken out of `MicEchoGate`:
+```swift
+import AVFoundation
+import OSLog
+
+nonisolated private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "GatedAudioStream")
+
+// MARK: - GatedAudioStream
+
+/// The stream loop and the silencing shared by `MicEchoGate` and `PauseGate` (M9 UI core P23).
+/// A gate passes each buffer on or replaces it by zeros of the same format and length: the VAD
+/// keeps a continuous timeline, and nothing is dropped, reordered or resized (REQ-H-04, REQ-UI-50).
+nonisolated enum GatedAudioStream {
+
+    /// `input` through `process`, buffer by buffer; finishes when `input` finishes. Overflow drops
+    /// are counted and logged like the other capture streams (F8.5.1 REQ-C-05).
+    static func make(_ input: AsyncStream<AVAudioPCMBuffer>, label: String,
+                     capacity: Int = SessionAudioStream.capacity,
+                     process: @escaping @Sendable (AVAudioPCMBuffer) -> AVAudioPCMBuffer) -> SessionAudioStream {
+        let output = SessionAudioStream(label: label, capacity: capacity)
+        // Ends when `input` finishes (the producer owns the session); yields to a gone consumer are no-ops.
+        Task {
+            for await buffer in input {
+                output.yield(process(buffer))
+            }
+            output.finish()
+        }
+        return output
+    }
+
+    /// A zeroed copy of `buffer`. If the copy cannot be allocated, `buffer` itself is zeroed in place:
+    /// real audio never passes a closed gate, and no buffer is dropped.
+    static func silenced(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer {
+        if let silent = silence(like: buffer) { return silent }
+        logger.error("Could not allocate a silent buffer; zeroing the captured one in place")
+        zero(buffer)
+        return buffer
+    }
+
+    /// A buffer of `buffer`'s format and length, every byte zero.
+    static func silence(like buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        guard let silent = AVAudioPCMBuffer(pcmFormat: buffer.format,
+                                            frameCapacity: max(buffer.frameLength, 1)) else { return nil }
+        silent.frameLength = buffer.frameLength
+        zero(silent)
+        return silent
+    }
+
+    private static func zero(_ buffer: AVAudioPCMBuffer) {
+        for audio in UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList) {
+            guard let data = audio.mData else { continue }
+            memset(data, 0, Int(audio.mDataByteSize))
+        }
+    }
+}
+```
+
+`MicEchoGate.swift`:
+- `gatedSession(_:capacity:)` becomes one line:
+  ```swift
+          GatedAudioStream.make(input, label: "outgoing-gated", capacity: capacity) { [self] in process($0) }
+  ```
+- the end of `process(_:)` becomes:
+  ```swift
+          guard muting else { return buffer }
+          // Never echo: a failed allocation zeroes the buffer itself (never drops it).
+          return GatedAudioStream.silenced(buffer)
+  ```
+- `silence(like:)`, `zero(_:)`, the file's `logger` and `import OSLog` go (they live in `GatedAudioStream`); `offsetReader` stays under `// MARK: - Helpers`.
+
+`TranslateCall/Core/Session/PauseGate.swift`:
 ```swift
 import AVFoundation
 import Synchronization
@@ -1745,33 +2181,28 @@ nonisolated final class PauseGate: Sendable {
 
     /// The gated copy of `input`, finishing when `input` finishes.
     func gate(_ input: AsyncStream<AVAudioPCMBuffer>, label: String) -> AsyncStream<AVAudioPCMBuffer> {
-        let output = SessionAudioStream(label: label)
-        Task { [self] in
-            for await buffer in input {
-                output.yield(process(buffer))
-            }
-            output.finish()
-        }
-        return output.stream
+        GatedAudioStream.make(input, label: label) { [self] in process($0) }.stream
     }
 
-    /// The same instance when running, a zeroed copy while paused.
+    /// The same instance when running, zeros while paused: a zeroed copy, or the buffer itself zeroed
+    /// in place if the copy cannot be allocated (real audio never passes a pause).
     func process(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer {
         guard isPaused else { return buffer }
-        return MicEchoGate.silence(like: buffer) ?? buffer
+        return GatedAudioStream.silenced(buffer)
     }
 }
 ```
 
 - [ ] **Step 4: Run**
 
-Run: `just test-only PauseGateTests MicEchoGateTests`
-Expected: PASS.
+Run: `for i in 1 2 3; do just test-only PauseGateTests MicEchoGateTests AudioCoordinatorEchoGateTests; done && just lint`
+Expected: PASS in every run (`MicEchoGateTests` unchanged), no lint output.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add TranslateCall/Core/Session/PauseGate.swift TranslateCallTests/PauseGateTests.swift
+git add TranslateCall/Core/Session/PauseGate.swift TranslateCall/Core/Audio/GatedAudioStream.swift \
+  TranslateCall/Core/Audio/MicEchoGate.swift TranslateCallTests/PauseGateTests.swift
 git commit -m "feat(session): pause gate that silences audio before the VAD (M9 UI core T7)"
 ```
 
@@ -1833,7 +2264,7 @@ import Testing
 private let callTarget = CaptureTarget.app(bundleID: "com.test.call")
 
 @MainActor
-private func makeCoordinator(_ mocks: CoordinatorMocks) -> AudioCoordinator {
+private func makeCoordinator(_ mocks: CoordinatorMocks, gateClock: TestClock = TestClock()) -> AudioCoordinator {
     AudioCoordinator(
         audioCapture: mocks.mockAudioCapture,
         systemCapture: mocks.mockSystemCapture,
@@ -1846,7 +2277,7 @@ private func makeCoordinator(_ mocks: CoordinatorMocks) -> AudioCoordinator {
         outgoingTTSFactory: { _, _ in mocks.mockOutgoingTTS },
         incomingTTSFactory: { _, _ in mocks.mockIncomingTTS },
         languagePairManager: mocks.languagePairManager,
-        echoGateClock: TestClock(),
+        echoGateClock: gateClock,
         noticeClock: TestClock()
     )
 }
@@ -2140,17 +2571,32 @@ Add inside `AudioCoordinatorSessionTests`, after the last test:
         await coordinator.stop()
     }
 
-    @Test("pause outside a session does nothing; Stop while paused resets; the echo gate is untouched")
+    @Test("pause outside a session does nothing; pause and resume leave the echo gate working; Stop resets")
     func pauseEdges() async {
         let mocks = CoordinatorMocks()
-        let coordinator = makeCoordinator(mocks)
+        let gateClock = TestClock()
+        let coordinator = makeCoordinator(mocks, gateClock: gateClock)
+        let micPeak = {
+            await peakAtVAD(mocks.mockVADFactory) { mocks.mockAudioCapture.injectBuffer(makePCMBuffer(frames: 160, fill: 0.5)) }
+        }
         await coordinator.pause()
         #expect(!coordinator.isPaused)
 
         coordinator.listeningMode = .speakers
         await coordinator.start(captureTarget: callTarget)
+        coordinator.isIncomingSpeaking = true   // their translation plays on speakers: the echo gate mutes
+        #expect(await micPeak() == 0)
+        #expect(await waitUntil { coordinator.isMicPaused })
+
         await coordinator.pause()
-        #expect(coordinator.conversationState != .micPaused, "pausing is not the echo gate")
+        coordinator.resume()
+        #expect(coordinator.isMicPaused, "pausing is not the echo gate: it is never reset")
+        #expect(await micPeak() == 0, "the echo gate still mutes after Resume")
+        coordinator.isIncomingSpeaking = false
+        gateClock.advance(by: .milliseconds(300))
+        #expect(await micPeak() == 0.5, "and reopens by its own tail rule")
+
+        await coordinator.pause()
         await coordinator.stop()
         #expect(!coordinator.isPaused)
         #expect(coordinator.pauseGate == nil)
@@ -2252,10 +2698,10 @@ git commit -m "feat(session): Pause and Resume both directions with engines kept
 - Consumes: `IncomingStatus`, `IncomingStopReason` (existing), `TranscriptDirection` (Task 3).
 - Produces:
   - `DirectionState`, with `outgoing(paused:micPaused:speaking:translating:speech:)` and `incoming(status:paused:speaking:translating:speech:)`;
-  - `SessionPhase { idle, starting, running }`;
+  - `SessionPhase { idle, launching, starting, running }` (`launching`: P24);
   - `PanelTitle`, with `derive(isStarting:isPaused:incoming:)` and `.text`;
-  - `DirectionCopy`, with `chip(_:direction:appName:)`, `unavailableLine(_:appName:)`, `outgoingOnlyLine` and `accessibilityLabel(direction:from:to:state:)`;
-  - `MenuBarDot`, with `derive(phase:title:)` and `symbolName = "translate"`.
+  - `DirectionCopy`, with `chip(_:direction:appName:)`, `unavailableLine(_:appName:)`, `outgoingOnlyLine`, `incomingLine(_:appName:)`, `showsRetry(_:)` and `accessibilityLabel(direction:from:to:state:)`. `incomingLine` and `showsRetry` replace `IncomingStatusBanner.text`/`showsRetry`, whose tests are ported here (`incomingLines`); `unavailableLine` stays separate from `IncomingStopReason.message`, which is the old banner's technical wording;
+  - `MenuBarDot`, with `derive(phase:title:)` (no dot while launching or starting, P29) and `symbolName = "translate"`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2337,6 +2783,20 @@ struct UICopyTests {
         #expect(DirectionCopy.unavailableLine(.streamError("boom"), appName: "Zoom") == "Call audio stopped: boom")
     }
 
+    @Test("the Them row's line and Retry per incoming status (ported from IncomingStatusBannerTests)")
+    func incomingLines() {
+        #expect(DirectionCopy.incomingLine(.idle, appName: "Zoom") == nil)
+        #expect(DirectionCopy.incomingLine(.active, appName: "Zoom") == nil)
+        #expect(DirectionCopy.incomingLine(.disabled, appName: "Zoom") == "Only your voice is translated")
+        #expect(DirectionCopy.incomingLine(.starting, appName: "Zoom") == "Connecting to Zoom…")
+        let stopped = IncomingStatus.stopped(.targetNotFound(bundleID: "us.zoom.xos"))
+        #expect(DirectionCopy.incomingLine(stopped, appName: "Zoom") == "Zoom isn't running. Open it, then Retry.")
+        #expect(DirectionCopy.showsRetry(stopped))
+        #expect(!DirectionCopy.showsRetry(.disabled))
+        #expect(!DirectionCopy.showsRetry(.starting))
+        #expect(!DirectionCopy.showsRetry(.active))
+    }
+
     @Test("VoiceOver label reads direction, languages and state (NFR-UI-04)")
     func accessibility() {
         #expect(DirectionCopy.accessibilityLabel(direction: .outgoing, from: "Spanish", to: "German", state: "Speaking")
@@ -2346,13 +2806,14 @@ struct UICopyTests {
 
 @Suite("Menu bar dot (M9 UI core REQ-UI-61)")
 struct MenuBarDotTests {
-    @Test("idle → none; translating → green; paused, partly working or starting → orange")
+    @Test("translating → green; paused or partly working → orange; idle, launching or starting → no dot")
     func dots() {
         #expect(MenuBarDot.derive(phase: .idle, title: .translating) == MenuBarDot.none)
         #expect(MenuBarDot.derive(phase: .running, title: .translating) == .green)
         #expect(MenuBarDot.derive(phase: .running, title: .paused) == .orange)
         #expect(MenuBarDot.derive(phase: .running, title: .partlyWorking) == .orange)
-        #expect(MenuBarDot.derive(phase: .starting, title: .starting) == .orange)
+        #expect(MenuBarDot.derive(phase: .launching, title: .translating) == MenuBarDot.none)
+        #expect(MenuBarDot.derive(phase: .starting, title: .starting) == MenuBarDot.none)
     }
 }
 ```
@@ -2409,9 +2870,10 @@ nonisolated enum DirectionState: Equatable, Sendable {
 
 // MARK: - Session phase
 
-/// Idle, starting or running: drives the primary button, the panel and the menu bar dot.
+/// Drives the primary button, the panel and the menu bar dot. `launching`: "Open <App> and start"
+/// is waiting for the call app to run (REQ-UI-34), before the coordinator starts (P24).
 nonisolated enum SessionPhase: Sendable, Equatable {
-    case idle, starting, running
+    case idle, launching, starting, running
 }
 
 // MARK: - Panel title
@@ -2469,6 +2931,23 @@ nonisolated enum DirectionCopy {
     /// "Only your voice is translated" when no call app is chosen (`IncomingStatus.disabled`).
     static let outgoingOnlyLine = String(localized: "Only your voice is translated")
 
+    /// The line under the "Them" row for `status` (replaces `IncomingStatusBanner.text`); nil while
+    /// incoming is idle or active.
+    static func incomingLine(_ status: IncomingStatus, appName: String) -> String? {
+        switch status {
+        case .idle, .active: nil
+        case .disabled: outgoingOnlyLine
+        case .starting: String(localized: "Connecting to \(appName)…")
+        case .stopped(let reason): unavailableLine(reason, appName: appName)
+        }
+    }
+
+    /// "Retry" is offered only for a stopped capture (replaces `IncomingStatusBanner.showsRetry`).
+    static func showsRetry(_ status: IncomingStatus) -> Bool {
+        if case .stopped = status { return true }
+        return false
+    }
+
     /// VoiceOver: "You, Spanish to German, speaking" (NFR-UI-04).
     static func accessibilityLabel(direction: TranscriptDirection, from source: String, to target: String,
                                    state: String) -> String {
@@ -2482,15 +2961,14 @@ nonisolated enum DirectionCopy {
 ```swift
 import Foundation
 
-/// The status item's dot (REQ-UI-61): none when idle, green while translating, orange while
-/// paused or partly working (or starting).
+/// The status item's dot (REQ-UI-61): green while translating, orange while paused or partly
+/// working; no dot when idle or while the session is still launching or starting (P29).
 nonisolated enum MenuBarDot: Equatable, Sendable {
     case none, green, orange
 
     static func derive(phase: SessionPhase, title: PanelTitle) -> MenuBarDot {
         switch phase {
-        case .idle: return .none
-        case .starting: return .orange
+        case .idle, .launching, .starting: return .none
         case .running: return title == .translating ? .green : .orange
         }
     }
@@ -2519,7 +2997,7 @@ git commit -m "feat(ui): direction state, panel title, chip copy and menu bar do
 
 **Files:**
 - Create: `TranslateCall/Core/Setup/CallApp.swift`, `TranslateCall/Core/Setup/CallAppMonitor.swift`, `TranslateCallTests/Mocks/FakeWorkspace.swift`
-- Modify: `TranslateCall/Core/Setup/SetupManager.swift`, `TranslateCall/Features/Main/AudioViewModel.swift` (`bindSetupManager` only), `TranslateCall/App/AppContainer.swift` (`UIServices.callAppMonitor`)
+- Modify: `TranslateCall/Core/Setup/SetupManager.swift`, `TranslateCall/Features/Main/AudioViewModel.swift` (`bindSetupManager` only), `TranslateCall/App/AppContainer.swift` (`UIServices.callAppMonitor`; needs Task 6's `UIServices`)
 - Test: `TranslateCallTests/CallAppMonitorTests.swift`; append to `TranslateCallTests/SetupManagerTests.swift` and `TranslateCallTests/AudioViewModelTests.swift`
 
 **Interfaces:**
@@ -2528,7 +3006,7 @@ git commit -m "feat(ui): direction state, panel title, chip copy and menu bar do
   - `CallAppRow`, with `bundleID`, `title`, `appName`, `callAppID`, `symbol`, `appURL`, `openURL` and `isRunning`;
   - `protocol WorkspaceProviding`, with `LiveWorkspace` as the real implementation;
   - `@MainActor final class CallAppMonitor`:
-    - `init(workspace:selectedBundleID:)`;
+    - `init(workspace:selectedBundleID:clock:)`; the clock (default `ContinuousClock()`) paces `waitUntilRunning`, so tests use a `TestClock` (P32);
     - `rows`, `runningBundleIDs`;
     - `refresh()`, `setSelected(bundleID:)`, `runningRegularApps()`, `open(_:) async`;
     - `waitUntilRunning(bundleID:timeout:pollEvery:) async -> Bool`;
@@ -2644,18 +3122,29 @@ struct CallAppMonitorTests {
         #expect(fake.openedURLs == [CallApp.meetURL])
     }
 
-    @Test("waitUntilRunning: true once the app runs, false after the timeout")
-    func waitUntilRunning() async {
-        let fake = workspace()
-        let monitor = CallAppMonitor(workspace: fake)
-        #expect(await !monitor.waitUntilRunning(bundleID: "us.zoom.xos", timeout: .milliseconds(100),
-                                                pollEvery: .milliseconds(10)))
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(30))
-            fake.setRunning("us.zoom.xos", true)
+    @Test("waitUntilRunning: false once the timeout has passed on the clock")
+    func waitUntilRunningTimesOut() async {
+        let clock = TestClock()
+        let monitor = CallAppMonitor(workspace: workspace(), clock: clock)
+        let wait = Task { await monitor.waitUntilRunning(bundleID: "us.zoom.xos", timeout: .milliseconds(400),
+                                                         pollEvery: .milliseconds(200)) }
+        for _ in 0..<2 {
+            #expect(await waitUntil { clock.sleeperCount == 1 })
+            clock.advance(by: .milliseconds(200))
         }
-        #expect(await monitor.waitUntilRunning(bundleID: "us.zoom.xos", timeout: .seconds(2),
-                                               pollEvery: .milliseconds(10)))
+        #expect(await wait.value == false)
+    }
+
+    @Test("waitUntilRunning: true at the first poll after the app runs")
+    func waitUntilRunningSucceeds() async {
+        let clock = TestClock()
+        let fake = workspace()
+        let monitor = CallAppMonitor(workspace: fake, clock: clock)
+        let wait = Task { await monitor.waitUntilRunning(bundleID: "us.zoom.xos", timeout: .seconds(15)) }
+        #expect(await waitUntil { clock.sleeperCount == 1 })
+        fake.running.insert("us.zoom.xos")   // no notification: the poll alone must find it
+        clock.advance(by: .milliseconds(200))
+        #expect(await wait.value == true)
     }
 }
 ```
@@ -2829,9 +3318,13 @@ final class CallAppMonitor: ObservableObject {
     /// A persisted choice outside the catalog ("Other app…"): kept as a row.
     private var extraBundleID: String?
     private var observation: Task<Void, Never>?
+    /// Paces `waitUntilRunning`; tests inject a `TestClock`.
+    private let clock: any Clock<Duration>
 
-    init(workspace: any WorkspaceProviding, selectedBundleID: String? = nil) {
+    init(workspace: any WorkspaceProviding, selectedBundleID: String? = nil,
+         clock: any Clock<Duration> = ContinuousClock()) {
         self.workspace = workspace
+        self.clock = clock
         extraBundleID = selectedBundleID
         refresh()
         let changes = workspace.changes
@@ -2871,18 +3364,18 @@ final class CallAppMonitor: ObservableObject {
         }
     }
 
-    /// True once `bundleID` runs, false after `timeout` (REQ-UI-34). Polls as well as listening,
-    /// so a missed launch notification cannot make it wait for the whole timeout.
+    /// True once `bundleID` runs, false after `timeout` on the monitor's clock (REQ-UI-34). Polls
+    /// as well as listening, so a missed launch notification cannot make it wait for the whole timeout.
     func waitUntilRunning(bundleID: String, timeout: Duration,
                           pollEvery: Duration = .milliseconds(200)) async -> Bool {
-        let deadline = ContinuousClock.now + timeout
-        while ContinuousClock.now < deadline {
+        var waited = Duration.zero
+        while true {
             refresh()
             if runningBundleIDs.contains(bundleID) { return true }
-            try? await Task.sleep(for: pollEvery)
+            guard waited < timeout else { return false }
+            do { try await clock.sleep(for: pollEvery) } catch { return false }
+            waited += pollEvery
         }
-        refresh()
-        return runningBundleIDs.contains(bundleID)
     }
 
     // MARK: Rows
@@ -3042,7 +3535,9 @@ git commit -m "feat(setup): installed call apps with live state; select a call a
   - `Readiness`:
     - `primary`, `primaryEnabled`, `cards`;
     - `derive(permissions:blackHolePresent:pair:app:phase:)`, `cards(permissions:blackHolePresent:app:)`;
-    - `Primary.title`;
+    - `Primary.title`, including `.opening(app)` "Opening <App>…" while launching (P24);
+    - `Card.title`, `Card.message` (the cards' copy, REQ-UI-31/32/32a), `Card.isBlocking`;
+    - `blockingReason: String?`, the popover's idle line: nil = "Ready", else the first blocking reason (REQ-UI-60, P26);
   - `LanguageOrdering.ordered(_:displayName:) -> (priority:, others:)`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -3123,10 +3618,24 @@ struct ReadinessTests {
         #expect(derive(app: row(running: false, installed: false)).primary == .start)
     }
 
-    @Test("session running → Stop; starting → disabled")
+    @Test("session running → Stop; starting → disabled; launching → Opening <App>…, disabled (REQ-UI-34)")
     func phases() {
         #expect(derive(phase: .running) == Readiness(primary: .stop, primaryEnabled: true, cards: []))
         #expect(derive(phase: .starting).primaryEnabled == false)
+        let launching = derive(app: row(running: false), phase: .launching)
+        #expect(launching == Readiness(primary: .opening("Zoom"), primaryEnabled: false, cards: []))
+        #expect(launching.primary.title == "Opening Zoom…")
+    }
+
+    @Test("the popover's line: Ready, or the first blocking reason; informative cards never replace Ready")
+    func blockingReason() {
+        #expect(derive().blockingReason == nil)
+        #expect(derive(blackHole: false).blockingReason == nil, "audio driver card does not block")
+        #expect(derive(app: row(running: false)).blockingReason == nil, "Open Zoom and start is enabled")
+        let micOff = derive(PermissionState(microphone: .denied, screenRecording: .denied))
+        #expect(micOff.blockingReason == "Your microphone is off for TranslateCall")
+        #expect(derive(pair: .missing(language: "Deutsch")).blockingReason == "Download Deutsch to start")
+        #expect(Readiness.Card.callAppNotOpen("Zoom").title == "Zoom isn't open")
     }
 
     @Test("pair per direction: outgoing missing names the target, incoming the source; unsupported wins")
@@ -3238,6 +3747,8 @@ nonisolated struct Readiness: Sendable, Equatable {
         case download(String)
         case unsupportedPair
         case checking
+        /// "Open <App> and start" is waiting for the app to run (REQ-UI-34, P24).
+        case opening(String)
         case starting
         case stop
     }
@@ -3259,6 +3770,7 @@ nonisolated struct Readiness: Sendable, Equatable {
         switch phase {
         case .running: return Readiness(primary: .stop, primaryEnabled: true, cards: [])
         case .starting: return Readiness(primary: .starting, primaryEnabled: false, cards: [])
+        case .launching: return Readiness(primary: .opening(app?.appName ?? ""), primaryEnabled: false, cards: [])
         case .idle: break
         }
         let cards = cards(permissions: permissions, blackHolePresent: blackHolePresent, app: app)
@@ -3297,9 +3809,53 @@ nonisolated extension Readiness.Primary {
         case .download(let language): String(localized: "Download \(language) to start")
         case .unsupportedPair: String(localized: "This pair isn't available")
         case .checking: String(localized: "Checking languages…")
+        case .opening(let app): String(localized: "Opening \(app)…")
         case .starting: String(localized: "Starting…")
         case .stop: String(localized: "Stop translating")
         }
+    }
+}
+
+// MARK: - Card copy
+
+/// Each card's title and body (REQ-UI-31/32/32a), shared by the setup window and the popover.
+nonisolated extension Readiness.Card {
+    var title: String {
+        switch self {
+        case .microphoneOff: String(localized: "Your microphone is off for TranslateCall")
+        case .screenRecordingOff: String(localized: "They can't be heard")
+        case .audioDriverMissing: String(localized: "Audio driver missing")
+        case .callAppNotOpen(let app): String(localized: "\(app) isn't open")
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .microphoneOff:
+            String(localized: "Turn it on in System Settings so TranslateCall can translate your voice.")
+        case .screenRecordingOff:
+            String(localized: """
+            Screen & System Audio Recording is off for TranslateCall, so it can't hear the other person in your call.
+            """)
+        case .audioDriverMissing:
+            String(localized: "TranslateCall needs BlackHole 2ch to send your translated voice into the call.")
+        case .callAppNotOpen(let app):
+            String(localized: """
+            TranslateCall will open it for you when you start. Then join or start your meeting in \(app).
+            """)
+        }
+    }
+
+    /// Only a denied microphone stops Start; the other cards inform (REQ-UI-32a, 33).
+    var isBlocking: Bool { self == .microphoneOff }
+}
+
+nonisolated extension Readiness {
+    /// The popover's idle state line (REQ-UI-60): nil = "Ready"; otherwise the first reason Start
+    /// is blocked. Non-blocking cards never replace "Ready".
+    var blockingReason: String? {
+        guard !primaryEnabled else { return nil }
+        return cards.first(where: \.isBlocking)?.title ?? primary.title
     }
 }
 ```
@@ -3352,11 +3908,13 @@ git commit -m "feat(ui): readiness rule for the primary button and pre-call card
 - Produces:
   - `protocol LatencyProvider`, with `NoLatencyProvider` and `Duration.latencyLabel`;
   - `@MainActor final class CallSessionModel`:
-    - published state: `phase`, `outgoing`, `incoming`, `incomingStatus`, `title`, `isPaused`, `transcript`, `sessionStartedAt`, `notices`, `panelNotice`;
+    - `init(coordinator:viewModel:latency:noticeDuration:clock:openMainWindow:)`; `openMainWindow` defaults to `NSApp.showMainWindow()` (P27);
+    - published state: `phase` (`.launching` while "Open <App> and start" waits, P24), `outgoing`, `incoming`, `incomingStatus`, `title`, `isPaused`, `transcript`, `sessionStartedAt`, `notices`, `panelNotice`;
     - properties: `coordinator`, `viewModel`, `latency`;
-    - actions: `togglePause() async`, `stop() async`, `skipNextSentence()`, `start(launching:monitor:timeout:) async`;
-    - helpers: `static elapsedText(from:to:)`, `static composeNotices(listeningMode:transient:)`;
-  - `UISettingsKeys.showStatusPanel = "ui.showStatusPanel"` and `showLatency = "ui.showLatency"`;
+    - actions: `togglePause() async`, `stop() async`, `skipNextSentence()`, `start(launching:monitor:timeout:) async` (a second call while launching is ignored);
+    - helpers: `static elapsedText(from:to:)`, `static composeNotices(listeningMode:transient:)`, `static phase(launching:starting:active:)`;
+    - one alert router (`routeAlert`, P14/P27): running → notice; idle → stays an alert and brings up the main window once; launching or starting → waits;
+  - `UISettingsKeys.showStatusPanel = "ui.showStatusPanel"`, `showLatency = "ui.showLatency"` and `registerDefaults(in:)`, which registers both as on (P31);
   - `UIServices.callSession`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -3375,6 +3933,8 @@ private struct SessionHarness {
     let viewModel: AudioViewModel
     let session: CallSessionModel
     let clock = TestClock()
+    /// Times the main window was brought up for an alert (P27).
+    let windowOpens = CallCounter()
 
     init(packsInstalled: Bool = true) {
         let mocks = self.mocks
@@ -3396,8 +3956,19 @@ private struct SessionHarness {
             setupManager: SetupManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!),
             conversationSettings: ConversationSettings(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
         )
-        session = CallSessionModel(coordinator: coordinator, viewModel: viewModel, clock: clock)
+        let windowOpens = windowOpens
+        session = CallSessionModel(coordinator: coordinator, viewModel: viewModel, clock: clock,
+                                   openMainWindow: { windowOpens.increment() })
     }
+}
+
+/// Zoom installed and not running, on a monitor paced by a `TestClock`.
+@MainActor
+private func zoomNotRunning() -> (workspace: FakeWorkspace, monitor: CallAppMonitor, clock: TestClock) {
+    let workspace = FakeWorkspace()
+    workspace.installed = ["us.zoom.xos": "zoom.us"]
+    let clock = TestClock()
+    return (workspace, CallAppMonitor(workspace: workspace, clock: clock), clock)
 }
 
 @Suite("CallSessionModel (M9 UI core)", .serialized) @MainActor
@@ -3452,14 +4023,18 @@ struct CallSessionModelTests {
         await harness.session.stop()
     }
 
-    @Test("an alert from a start that does not go active stays an alert (REQ-UI-36)")
+    @Test("an alert from a start that does not go active stays an alert and brings up the main window once (REQ-UI-36)")
     func failedStartKeepsAlert() async {
         let harness = SessionHarness(packsInstalled: false)
         await harness.coordinator.start()
         #expect(harness.viewModel.errorAlert?.title == "Languages Not Downloaded")
-        try? await Task.sleep(for: .milliseconds(50))
+        #expect(await waitUntil { harness.windowOpens.value == 1 })
         #expect(harness.viewModel.errorAlert != nil)
         #expect(harness.session.panelNotice == nil)
+
+        harness.viewModel.conversationSettings.listeningMode = .speakers   // any later recompute
+        #expect(await waitUntil { !harness.session.notices.isEmpty })
+        #expect(harness.windowOpens.value == 1, "once per alert")
     }
 
     @Test("Review focus: an error raised while starting, by a session that goes active, is a notice (REQ-UI-36)")
@@ -3476,10 +4051,14 @@ struct CallSessionModelTests {
     @Test("Review focus: the call app never launches → the session starts anyway after the timeout")
     func startAfterLaunchTimeout() async {
         let harness = SessionHarness()
-        let workspace = FakeWorkspace()
-        workspace.installed = ["us.zoom.xos": "zoom.us"]
-        let monitor = CallAppMonitor(workspace: workspace)
-        await harness.session.start(launching: monitor.rows[0], monitor: monitor, timeout: .milliseconds(100))
+        let (workspace, monitor, clock) = zoomNotRunning()
+        let start = Task { await harness.session.start(launching: monitor.rows[0], monitor: monitor,
+                                                       timeout: .milliseconds(400)) }
+        for _ in 0..<2 {
+            #expect(await waitUntil { clock.sleeperCount == 1 })
+            clock.advance(by: .milliseconds(200))
+        }
+        await start.value
         #expect(workspace.openedApps.count == 1)
         #expect(harness.coordinator.isOutgoingActive)
         await harness.session.stop()
@@ -3502,18 +4081,41 @@ struct CallSessionModelTests {
     @Test("Start with the call app closed opens it, waits until it runs, then starts (REQ-UI-34)")
     func startLaunchesApp() async {
         let harness = SessionHarness()
-        let workspace = FakeWorkspace()
-        workspace.installed = ["us.zoom.xos": "zoom.us"]
-        let monitor = CallAppMonitor(workspace: workspace)
-        let zoom = monitor.rows[0]
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(30))
-            workspace.setRunning("us.zoom.xos", true)
-        }
-        await harness.session.start(launching: zoom, monitor: monitor, timeout: .seconds(2))
+        let (workspace, monitor, clock) = zoomNotRunning()
+        let start = Task { await harness.session.start(launching: monitor.rows[0], monitor: monitor) }
+        #expect(await waitUntil { clock.sleeperCount == 1 })
+        #expect(harness.session.phase == .launching)
+        workspace.setRunning("us.zoom.xos", true)
+        clock.advance(by: .milliseconds(200))
+        await start.value
         #expect(workspace.openedApps.count == 1)
         #expect(harness.coordinator.isOutgoingActive)
         await harness.session.stop()
+    }
+
+    @Test("Review focus: a second Start while the call app launches is ignored, not a Stop (REQ-UI-34)")
+    func secondStartWhileLaunching() async {
+        let harness = SessionHarness()
+        let (workspace, monitor, clock) = zoomNotRunning()
+        let first = Task { await harness.session.start(launching: monitor.rows[0], monitor: monitor) }
+        #expect(await waitUntil { clock.sleeperCount == 1 })
+        await harness.session.start(launching: monitor.rows[0], monitor: monitor)   // returns at once
+        #expect(workspace.openedApps.count == 1)
+        workspace.setRunning("us.zoom.xos", true)
+        clock.advance(by: .milliseconds(200))
+        await first.value
+        #expect(await waitUntil { harness.session.phase == .running })
+        await harness.session.stop()
+    }
+
+    @Test("a fresh install reads Show the status panel and Show latency as on: registered at launch (REQ-UI-40)")
+    func settingsDefaultOn() {
+        // The registration domain is process-wide: the test host's AppContainer registered it at launch.
+        let defaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!   // nothing stored
+        #expect(defaults.bool(forKey: UISettingsKeys.showStatusPanel))
+        #expect(defaults.bool(forKey: UISettingsKeys.showLatency))
+        defaults.set(false, forKey: UISettingsKeys.showStatusPanel)
+        #expect(!defaults.bool(forKey: UISettingsKeys.showStatusPanel), "the user's choice wins")
     }
 
     @Test("the latency label is hidden in production: the provider has nothing")
@@ -3562,6 +4164,7 @@ extension Duration {
 
 `TranslateCall/Features/Session/CallSessionModel.swift`:
 ```swift
+import AppKit
 import Combine
 import Foundation
 
@@ -3594,15 +4197,23 @@ final class CallSessionModel: ObservableObject {
     private var noticeTask: Task<Void, Never>?
     /// Which transient notice is newest: the TTS line or the panel notice.
     private var newestTransient: String?
+    /// "Open <App> and start" is waiting for the app: a second press is ignored (P24).
+    private var isLaunching = false
+    /// Brings up the main window for an alert of a start that did not go active (P27).
+    private let openMainWindow: () -> Void
+    /// The alert the main window was last brought up for: once per alert.
+    private var windowOpenedForAlert: AlertItem.ID?
     private var cancellables: Set<AnyCancellable> = []
 
     init(coordinator: AudioCoordinator, viewModel: AudioViewModel, latency: any LatencyProvider = NoLatencyProvider(),
-         noticeDuration: Duration = .seconds(8), clock: any Clock<Duration> = ContinuousClock()) {
+         noticeDuration: Duration = .seconds(8), clock: any Clock<Duration> = ContinuousClock(),
+         openMainWindow: @escaping () -> Void = { NSApp.showMainWindow() }) {
         self.coordinator = coordinator
         self.viewModel = viewModel
         self.latency = latency
         self.noticeDuration = noticeDuration
         self.clock = clock
+        self.openMainWindow = openMainWindow
         coordinator.objectWillChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.recompute() }
@@ -3614,7 +4225,7 @@ final class CallSessionModel: ObservableObject {
         viewModel.$errorAlert
             .compactMap { $0 }
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] alert in self?.routeMidCallAlert(alert) }
+            .sink { [weak self] _ in self?.recompute() }
             .store(in: &cancellables)
         recompute()
     }
@@ -3635,11 +4246,16 @@ final class CallSessionModel: ObservableObject {
 
     /// Start, launching the call app first when it is installed but not running (REQ-UI-34).
     /// After at most `timeout` the session starts anyway; incoming then shows "Can't hear".
+    /// While the app launches, `phase` is `.launching` and another Start is ignored (P24).
     func start(launching app: CallAppRow?, monitor: CallAppMonitor, timeout: Duration = .seconds(15)) async {
-        guard !coordinator.isOutgoingActive, !coordinator.isStarting else { return }
+        guard !isLaunching, !coordinator.isOutgoingActive, !coordinator.isStarting else { return }
         if let app, !app.isRunning, app.appURL != nil {
+            isLaunching = true
+            recompute()
             await monitor.open(app)
             _ = await monitor.waitUntilRunning(bundleID: app.bundleID, timeout: timeout)
+            isLaunching = false
+            recompute()
         }
         await viewModel.toggleCapture()
     }
@@ -3666,7 +4282,8 @@ final class CallSessionModel: ObservableObject {
 
     private func recompute() {
         let coordinator = coordinator
-        phase = coordinator.isStarting ? .starting : coordinator.isOutgoingActive ? .running : .idle
+        phase = Self.phase(launching: isLaunching, starting: coordinator.isStarting,
+                           active: coordinator.isOutgoingActive)
         isPaused = coordinator.isPaused
         incomingStatus = coordinator.incomingStatus
         outgoing = .outgoing(paused: coordinator.isPaused, micPaused: coordinator.isMicPaused,
@@ -3683,31 +4300,37 @@ final class CallSessionModel: ObservableObject {
             newestTransient = nil
         }
         if phase == .idle { clearPanelNotice() }
-        // An alert raised while starting, by a session that did go active: now a notice (REQ-UI-36).
-        if phase == .running, let alert = viewModel.errorAlert {
-            viewModel.errorAlert = nil
-            panelNotice = alert.message
-            newestTransient = alert.message
-            scheduleNoticeExpiry()
-        }
+        routeAlert()
         notices = Self.composeNotices(listeningMode: viewModel.conversationSettings.listeningMode,
                                       transient: newestTransient)
     }
 
-    /// An alert raised while a session runs becomes a notice, never a modal (REQ-UI-82). One raised
-    /// while starting stays an alert unless the session went active (REQ-UI-36): the main window
-    /// shows alerts only once `isStarting` is false.
-    private func routeMidCallAlert(_ alert: AlertItem) {
-        guard coordinator.isOutgoingActive, !coordinator.isStarting else { return }
-        viewModel.errorAlert = nil
-        showPanelNotice(alert.message)
+    nonisolated static func phase(launching: Bool, starting: Bool, active: Bool) -> SessionPhase {
+        if launching { return .launching }
+        if starting { return .starting }
+        return active ? .running : .idle
     }
 
-    private func showPanelNotice(_ text: String) {
-        panelNotice = text
-        newestTransient = text
-        recompute()
-        scheduleNoticeExpiry()
+    /// The one place an `errorAlert` is routed (REQ-UI-36/82, P14, P27):
+    /// - a running session: an 8 s notice, never a modal (mid-call, or raised by a start that went active);
+    /// - no session (a start that did not go active, or a pre-call error): it stays an alert, presented
+    ///   by the main window, which is brought up once per alert (e.g. after a menu-bar Start);
+    /// - launching or starting: it waits for the outcome (the main window hides alerts while starting).
+    private func routeAlert() {
+        guard let alert = viewModel.errorAlert else { return }
+        switch phase {
+        case .running:
+            viewModel.errorAlert = nil
+            panelNotice = alert.message
+            newestTransient = alert.message
+            scheduleNoticeExpiry()
+        case .idle:
+            guard windowOpenedForAlert != alert.id else { return }
+            windowOpenedForAlert = alert.id
+            openMainWindow()
+        case .launching, .starting:
+            break
+        }
     }
 
     private func scheduleNoticeExpiry() {
@@ -3739,14 +4362,20 @@ nonisolated enum UISettingsKeys {
     static let showStatusPanel = "ui.showStatusPanel"
     /// "Show latency in the panel" (default on; only offered while a latency provider can provide).
     static let showLatency = "ui.showLatency"
+
+    /// Registers both defaults as on, so `bool(forKey:)` and `@AppStorage` agree on a fresh install.
+    /// `UIServices` calls it at launch, before any view or the panel reads them (P31).
+    static func registerDefaults(in defaults: UserDefaults = .standard) {
+        defaults.register(defaults: [showStatusPanel: true, showLatency: true])
+    }
 }
 ```
 
-`AppContainer.swift`: `UIServices` gains `let callSession: CallSessionModel`, set first in its `init` with `callSession = CallSessionModel(coordinator: coordinator, viewModel: viewModel)`.
+`AppContainer.swift`: `UIServices.init` starts with `UISettingsKeys.registerDefaults()` (P31), then sets the new `let callSession: CallSessionModel` with `callSession = CallSessionModel(coordinator: coordinator, viewModel: viewModel)`.
 
 - [ ] **Step 4: Run three times, lint**
 
-Run: `for i in 1 2 3; do just test-only CallSessionModelTests; done && just lint`
+Run: `for i in 1 2 3; do just test-only CallSessionModelTests CallAppMonitorTests; done && just lint`
 Expected: PASS in every run, no lint output.
 
 - [ ] **Step 5: Full unit tier and scan (end of the logic tasks)**
@@ -3785,7 +4414,7 @@ Every view task uses the same loop. These tasks were not replayed while planning
 - Produces:
   - `enum Theme`:
     - `static accent = Color.accentColor`;
-    - `enum Status { static green = Color.green, orange = Color.orange, red = Color.red, purple = Color.purple }`;
+    - `enum Status { static green = Color.green, orange = Color.orange, red = Color.red, purple = Color.purple, info = Color.blue }`; `info` tints the "Speaking" and "Translating…" chips;
     - `static func soft(_ color: Color) -> Color` (15 % opacity);
     - `enum Radius { static small: CGFloat = 6, medium = 8, large = 12 }`;
     - `enum Spacing { static small: CGFloat = 8, medium = 12, large = 16 }`;
@@ -3796,7 +4425,7 @@ Every view task uses the same loop. These tasks were not replayed while planning
 - [ ] **Step 1:** Run `Print(GetVariables())` with the pencil MCP. Map each prototype variable to `Theme` or a system colour:
   - `accent` → accent;
   - `green`/`green-soft` → `Status.green`/`soft(.green)`;
-  - `orange`, `purple` likewise;
+  - `orange`, `purple` likewise; the prototype's blue chip colour → `Status.info`;
   - `window-bg` → `windowBackgroundColor`;
   - `group-bg` → `controlBackgroundColor`;
   - `separator` → `separatorColor`;
@@ -3805,7 +4434,7 @@ Every view task uses the same loop. These tasks were not replayed while planning
 
   Write the mapping as a doc comment at the top of `Theme.swift`.
 - [ ] **Step 2:** Implement the four files, plus a `#Preview("Components")` showing:
-  - each `Chip` tint used in the frames ("Speaking" blue, "Listening" green, "Mic paused" grey, "Can't hear Teams" orange);
+  - each `Chip` tint used in the frames ("Speaking" `Status.info`, "Listening" green, "Mic paused" grey, "Can't hear Teams" orange);
   - a `SectionHeader`;
   - a `CardBox`;
 
@@ -3824,6 +4453,7 @@ git commit -m "feat(ui): theme, chip, section header, card box and the String Ca
 
 **Files:**
 - Create: `TranslateCall/Features/Main/MainSetupModel.swift`, `TranslateCall/Features/Main/CallAppSection.swift`, `TranslateCall/Features/Main/StateCards.swift`
+- Modify: `TranslateCall/App/AppContainer.swift` (`UIServices.mainSetupModel`, created eagerly, P12)
 - Test: `TranslateCallTests/MainSetupModelTests.swift`
 
 **Frames:**
@@ -3839,12 +4469,13 @@ git commit -m "feat(ui): theme, chip, section header, card box and the String Ca
     - `permissions: () -> PermissionState = PermissionState.current`;
   - `@Published` `permissions`, `pair: PairReadiness`, `readiness: Readiness`;
   - computed `selectedRow: CallAppRow?`, from the monitor's rows by `setupManager.selectedCaptureBundleID`;
-  - `select(_ row: CallAppRow)`, `selectOther(bundleID: String?)` (nil = None), `open(_ row:) async`;
+  - `select(_ row: CallAppRow)`, `selectOther(bundleID: String?)` (nil = None), `open(_ row:) async`. Both selections write through `setupManager.selectCaptureApp(bundleID:)` **and** call `monitor.setSelected(bundleID:)`, so an "Other app…" pick gets its row, its highlight and a `selectedRow` at once (REQ-UI-02);
   - `refresh() async`, which re-reads permissions and BlackHole (`setupManager.checkBlackHole()`) and re-checks the pair per direction;
   - `primaryAction() async`:
     - `.start` / `.openAppAndStart` → `session.start(launching: selectedRow, monitor:)`;
     - `.stop` → `session.stop()`;
-    - otherwise nothing.
+    - otherwise nothing (`.opening`, `.starting`, `.download`, …: the button is disabled anyway);
+  - `UIServices.mainSetupModel`, built in `UIServices.init` after the monitor and the session model: `MainSetupModel(monitor: callAppMonitor, setupManager: viewModel.setupManager, languagePairManager: viewModel.languagePairManager, session: callSession)`. Views reach it as `container.uiServices.mainSetupModel`.
 
   Readiness is recomputed on every change of the monitor rows, the session phase, the pair or the permissions (Combine `objectWillChange` of those objects, received on the main queue). `MainSetupView` calls `refresh()` on appear, on `NSApplication.didBecomeActiveNotification` and when the language pair changes.
 
@@ -3852,7 +4483,8 @@ git commit -m "feat(ui): theme, chip, section header, card box and the String Ca
   - `selectWritesThroughToSetupManager`: `model.select(zoomRow)` sets `setupManager.selectedCaptureBundleID == "us.zoom.xos"`, and `model.selectedRow?.title == "Zoom"`.
   - `selectOtherNoneClearsTarget`: `model.selectOther(bundleID: nil)` sets `setupManager.captureTarget == nil`.
   - `pairCheckedPerDirection`: with `isInstalled` returning `true` only for (source → target), `await model.refresh()` gives `model.pair == .missing(language: <source display name>)` and `model.readiness.primary == .download(<source display name>)`.
-  - `openAppAndStartWhenNotRunning`: with Zoom selected and both packs installed, `model.readiness.primary == .openAppAndStart("Zoom")`.
+  - `selectOtherAddsRow`: with `FakeWorkspace.installed["com.example.Call"] = "Example Call"`, `model.selectOther(bundleID: "com.example.Call")` makes `monitor.rows.last?.title == "Example Call"` and `model.selectedRow?.bundleID == "com.example.Call"` without a relaunch (REQ-UI-02).
+  - `openAppAndStartWhenNotRunning`: with Zoom selected and both packs installed, after `await model.refresh()`, `model.readiness.primary == .openAppAndStart("Zoom")`.
   - `deniedMicBlocksStart`: with `permissions: { PermissionState(microphone: .denied, screenRecording: .granted) }`, after `refresh()`, `readiness.cards.first == .microphoneOff` and `!readiness.primaryEnabled`.
 - [ ] **Step 2:** Run `just test-only MainSetupModelTests`. Expected: FAIL (undefined).
 - [ ] **Step 3:** Implement `MainSetupModel`. Then run `just test-only MainSetupModelTests`. Expected: PASS.
@@ -3868,14 +4500,12 @@ git commit -m "feat(ui): theme, chip, section header, card box and the String Ca
   - a last row, "+ Other app…": a `Menu` listing `monitor.runningRegularApps()`, a divider, and "None — translate only my voice".
 
   Rows are buttons calling `model.select`. VoiceOver labels read "Zoom, not open, selected".
-- [ ] **Step 5: `StateCards`** (copy from REQ-UI-31/32/32a):
-  - `PermissionCard(kind: .microphone | .screenRecording)`:
+- [ ] **Step 5: `StateCards`.** Every card shows `card.title` and `card.message` from `Readiness.Card` (Task 12, REQ-UI-31/32/32a), never its own copy (P26). Check that copy against the frames; if a frame differs, change it in `Readiness.swift` and its test.
+  - `PermissionCard(card:)` for `.microphoneOff` / `.screenRecordingOff`:
     - a red card;
-    - title "Your microphone is off for TranslateCall", or "They can't be heard";
-    - the body copy from REQ-UI-32;
     - a link "Open System Settings" (`NSWorkspace.shared.open(PermissionState.microphoneSettingsURL / screenRecordingSettingsURL)`);
-  - `CallAppNotOpenCard(appName:)`: orange; "\(app) isn't open"; "TranslateCall will open it for you when you start. Then join or start your meeting in \(app).";
-  - `AudioDriverCard(onSetUp:)`: orange; "Audio driver missing"; "TranslateCall needs BlackHole 2ch to send your translated voice into the call."; a "Set up…" button.
+  - `CallAppNotOpenCard(card:)`: orange;
+  - `AudioDriverCard(card:onSetUp:)`: orange, with a "Set up…" button.
 
   Cards wrap their body text.
 - [ ] **Step 6:** Previews:
@@ -3887,7 +4517,7 @@ git commit -m "feat(ui): theme, chip, section header, card box and the String Ca
 - [ ] **Step 7:** Run `just build && just lint && just test-only MainSetupModelTests`. Commit:
 ```bash
 git add TranslateCall/Features/Main/MainSetupModel.swift TranslateCall/Features/Main/CallAppSection.swift \
-  TranslateCall/Features/Main/StateCards.swift TranslateCallTests/MainSetupModelTests.swift
+  TranslateCall/Features/Main/StateCards.swift TranslateCall/App/AppContainer.swift TranslateCallTests/MainSetupModelTests.swift
 git commit -m "feat(ui): setup model, call app list and pre-call cards (M9 UI core T15)"
 ```
 
@@ -3897,7 +4527,7 @@ git commit -m "feat(ui): setup model, call app list and pre-call cards (M9 UI co
 
 **Files:**
 - Create: `TranslateCall/Features/Main/LanguageSection.swift`, `TranslateCall/Features/Main/VoiceSection.swift`, `TranslateCall/Features/Main/SetupFooter.swift`, `TranslateCall/Features/Main/MainSetupView.swift`
-- Modify: `TranslateCall/App/TranslateCallApp.swift` (the `WindowGroup` hosts `MainSetupView`; the A26 `.onAppear` is kept verbatim), `TranslateCall/App/AppContainer.swift` (owns a `MainSetupModel`)
+- Modify: `TranslateCall/App/TranslateCallApp.swift` (the `WindowGroup` hosts `MainSetupView`; the A26 `.onAppear` is kept verbatim; `callSession` and `mainSetupModel` go into both scenes)
 
 **Frames:**
 - Main Window — Setup: `UVrO6` / `i9YcC`;
@@ -3905,7 +4535,7 @@ git commit -m "feat(ui): setup model, call app list and pre-call cards (M9 UI co
 
 **Interfaces:**
 - Consumes: Task 15, `SettingsOpener`, `LanguageOrdering`, `UISettingsKeys`, `TTSEngineSelector`, `VoiceProfileManager`.
-- Produces: `MainSetupView`, which `TranslateCallApp`'s `WindowGroup(id: MainWindowOpener.windowID)` uses with the same environment objects, plus `.environmentObject(container.uiServices.callSession)` and `.environmentObject(container.mainSetupModel)`.
+- Produces: `MainSetupView`, which `TranslateCallApp`'s `WindowGroup(id: MainWindowOpener.windowID)` uses with the same environment objects, plus `.environmentObject(container.uiServices.callSession)` and `.environmentObject(container.uiServices.mainSetupModel)`. The `Settings` scene gets the same two.
 
 - [ ] **Step 1: `LanguageSection`:**
   - "I speak" / "They speak" `Picker`s, with sections from `LanguageOrdering.ordered(manager.supportedLanguages, displayName: manager.displayName(for:))`: the priority section, a `Divider()`, then the others. Each picker label shows a small caption over the language name;
@@ -3928,7 +4558,7 @@ git commit -m "feat(ui): setup model, call app list and pre-call cards (M9 UI co
 - [ ] **Step 3: `SetupFooter`:** on the left, the listening mode ("Headphones" `headphones` / "Speakers" `hifispeaker`); on the right, "Settings" `gearshape`. Both are borderless buttons calling `SettingsOpener.shared.open(tab: .general)`.
 - [ ] **Step 4: `MainSetupView`:**
   - `VStack` order: permission cards (top) → `CallAppSection` → the call-app-not-open card and the audio driver card → `LanguageSection` → `VoiceSection` → the primary button → `SetupFooter`;
-  - the primary button is full width, `.borderedProminent`, `.controlSize(.large)`, titled `model.readiness.primary.title`, `.disabled(!model.readiness.primaryEnabled)`, with a `play` / `stop` symbol, running `model.primaryAction()`;
+  - the primary button is full width, `.borderedProminent`, `.controlSize(.large)`, titled `model.readiness.primary.title` ("Opening Zoom…" while the call app launches), `.disabled(!model.readiness.primaryEnabled)`, with a `play` / `stop` symbol, running `model.primaryAction()`;
   - `.frame(width: 420)`, height fitting;
   - `.toolbar { ToolbarItem(placement: .primaryAction) { Label("On-device", systemImage: "lock") … } }`, a small green mark;
   - title "TranslateCall".
@@ -3940,7 +4570,7 @@ git commit -m "feat(ui): setup model, call app list and pre-call cards (M9 UI co
   - `setupManager.checkBlackHole()` on appear and on `scenePhase == .active`.
 
   `model.refresh()` runs on appear and on `NSApplication.didBecomeActiveNotification`.
-- [ ] **Step 5:** In `TranslateCallApp`, replace `ContentView()` with `MainSetupView()` and add the two environment objects. Keep the `.onAppear` block (A26 host `show()` → `MainWindowOpener` → `SettingsOpener` → `MenuBarController`) as it is. `AppContainer` gets `let mainSetupModel: MainSetupModel`, built after `uiServices`; if `init` goes over 50 lines, build it inside `UIServices` and expose it there.
+- [ ] **Step 5:** In `TranslateCallApp`, replace `ContentView()` with `MainSetupView()` and add the two environment objects to the `WindowGroup` **and** to the `Settings` scene (`GeneralSettingsView` reads `CallSessionModel`; a missing object crashes the Settings window). Keep the `.onAppear` block (A26 host `show()` → `MainWindowOpener` → `SettingsOpener` → `MenuBarController`) as it is.
 - [ ] **Step 6:** Previews of `MainSetupView`:
   - ready;
   - language not downloaded;
@@ -3955,7 +4585,7 @@ git commit -m "feat(ui): setup model, call app list and pre-call cards (M9 UI co
   - "Open" launches Zoom.
   - Changing the pair re-checks it.
   - Start → the session starts. The old window is gone; the panel comes in Task 17.
-- [ ] **Step 8:** Run `just lint && just test-only MainWindowOpenerTests TranslationHostWindowTests MainSetupModelTests`. Commit:
+- [ ] **Step 8:** Run `just lint && just test-only MainWindowOpenerTests TranslationHostWindowTests MainSetupModelTests`. Open Settings (⌘,) once to check that both scenes have their objects. Commit:
 ```bash
 git add TranslateCall/Features/Main TranslateCall/App
 git commit -m "feat(ui): new setup window with languages, voice and the readiness-driven Start (M9 UI core T16)"
@@ -3966,11 +4596,12 @@ git commit -m "feat(ui): new setup window with languages, voice and the readines
 ### Task 17: Status panel, compact; showing and hiding it with the session (sonnet)
 
 **Files:**
-- Create: `TranslateCall/Features/StatusPanel/StatusPanelView.swift`, `TranslateCall/Features/StatusPanel/DirectionRow.swift`, `TranslateCall/Features/StatusPanel/PanelNotices.swift`
+- Create: `TranslateCall/Features/StatusPanel/StatusPanelView.swift`, `TranslateCall/Features/StatusPanel/DirectionRow.swift`, `TranslateCall/Features/StatusPanel/PanelNotices.swift`, `TranslateCall/Features/StatusPanel/StatusPanelController+Session.swift`
 - Modify:
-  - `TranslateCall/App/AppContainer.swift`: `StatusPanelController` owned by `UIServices` or a lazy property;
+  - `TranslateCall/App/AppContainer.swift`: `UIServices.statusPanel: StatusPanelController`, created eagerly (P12, P25);
   - `TranslateCall/App/TranslateCallApp.swift`: remove the Task 2 DEBUG command;
-  - `TranslateCall/Features/Main/MainSetupView.swift`: dismiss on start.
+  - `TranslateCall/Features/StatusPanel/StatusPanel.swift`: `StatusPanelController.sessionSubscription`;
+  - `TranslateCall/Features/Main/MainSetupView.swift`: dismiss on start when the panel setting is on.
 
 **Frames:**
 - Status Panel — Compact: `vr2HP` / `WiCOt`;
@@ -3979,8 +4610,11 @@ git commit -m "feat(ui): new setup window with languages, voice and the readines
 - In Context: `BPf5j`.
 
 **Interfaces:**
-- Consumes: `CallSessionModel`, `DirectionCopy`, `Chip`, `StatusPanelController`, `UISettingsKeys`, `CallAppMonitor` (app name).
-- Produces: `StatusPanelView(expanded: Binding<Bool>)` (Task 18 adds the expanded body) and `PanelPresenter` (`@MainActor`), which shows and hides the panel with `callSession.phase`.
+- Consumes: `CallSessionModel`, `DirectionCopy`, `Chip`, `StatusPanelController` and `PanelHostingView` (Task 2), `UISettingsKeys`, `MainSetupModel` (app name).
+- Produces:
+  - `StatusPanelView`, which reads `@EnvironmentObject var panel: StatusPanelController` for `isExpanded` (Task 18 adds the expanded body);
+  - `extension StatusPanelController { func bind(to session: CallSessionModel, defaults: UserDefaults = .standard) }`, which shows and hides the panel with `session.phase` (P25: the controller is the presenter; there is no `PanelPresenter`);
+  - `UIServices.statusPanel`.
 
 - [ ] **Step 1: `DirectionRow`:**
   - "You" or "Them" (semibold), then "ES → DE" (secondary, from `Locale.Language.languageCode` uppercased);
@@ -3989,16 +4623,17 @@ git commit -m "feat(ui): new setup window with languages, voice and the readines
 
     | State | Icon | Tint |
     |---|---|---|
-    | speaking | `speaker.wave.2` | blue |
+    | speaking | `speaker.wave.2` | `Theme.Status.info` (blue) |
     | listening | `ear` | green |
     | hearing | `waveform` | green |
-    | translating | `ellipsis` | blue |
+    | translating | `ellipsis` | `Theme.Status.info` (blue) |
     | paused | `pause` | secondary |
     | mic paused | `mic.slash` | secondary |
     | unavailable | `speaker.slash` | orange |
   - below: the last translation of that direction, from `session.transcript.last(where:)` (its `translation`, else `original`), `.lineLimit(2)`, in « » / „ “ quotes as in the frame;
-  - **unavailable state:** the row's border is orange. It shows `DirectionCopy.unavailableLine`, a "Retry" link (`viewModel.retryIncoming()`) and "Choose another app…" (`NSApp.showMainWindow()`, REQ-UI-80b);
-  - `IncomingStatus.disabled` shows `DirectionCopy.outgoingOnlyLine` and no chip;
+  - the "Them" row shows `DirectionCopy.incomingLine(session.incomingStatus, appName:)` when it is not nil;
+  - **unavailable state:** the row's border is orange. Under the line, a "Retry" link (`viewModel.retryIncoming()`, shown when `DirectionCopy.showsRetry(status)`) and "Choose another app…" (`NSApp.showMainWindow()`, REQ-UI-80b);
+  - `IncomingStatus.disabled` shows its line (`outgoingOnlyLine`) and no chip;
   - `.accessibilityElement(children: .combine)` with `DirectionCopy.accessibilityLabel`.
 - [ ] **Step 2: `PanelNotices`:** `session.notices`, each with an icon: `info.circle` for the speakers line, `forward.end` (orange) for the others. Text wraps.
 - [ ] **Step 3: `StatusPanelView`:**
@@ -4007,13 +4642,23 @@ git commit -m "feat(ui): new setup window with languages, voice and the readines
     - `session.title.text` (semibold);
     - "\(appName) · \(elapsed)" (secondary), where `elapsed` comes from `TimelineView(.periodic(from: .now, by: 1))` over `CallSessionModel.elapsedText`, only while visible (NFR-UI-03);
     - a green `lock` mark (help "Everything runs on this Mac");
-    - three square buttons: pause/resume (`pause` / `play`), stop (red, `stop`), expand (`chevron.down` / `chevron.up`);
+    - three square buttons: pause/resume (`pause` / `play`), stop (red, `stop`), expand (`chevron.down` / `chevron.up`, calling `panel.toggleExpanded()`);
   - then two `DirectionRow`s in `CardBox`es, then `PanelNotices`;
-  - width 320, material background (`.background(.regularMaterial)`), corner radius 12;
-  - buttons use `.buttonStyle(.plain)` with explicit hit areas, and every button has a `.help` and an accessibility label.
-- [ ] **Step 4: `PanelPresenter`.** It owns a `StatusPanelController(content: NSHostingView(rootView: StatusPanelView(...)), size: fitting)`. The hosting view uses `sizingOptions = [.intrinsicContentSize]`, and the controller is resized to `hostingView.fittingSize` on each layout change.
-  - It observes `session.$phase`: `.running` together with `UserDefaults.standard.bool(forKey: UISettingsKeys.showStatusPanel)` (registered default `true`) → `show()`; `.idle` → `hide()` (REQ-UI-40/47).
-  - `MainSetupView` adds `.onChange(of: session.phase)`: when `.running` and the setting is on → `dismissWindow(id: MainWindowOpener.windowID)` (`@Environment(\.dismissWindow)`).
+  - width 320 and no background of its own: the controller's `NSVisualEffectView` gives the material and the 12 pt corners (P30);
+  - its size is reported with `.fixedSize(horizontal: false, vertical: true)` and `.onGeometryChange(for: CGSize.self) { $0.size }`, which calls `panel.resize(to:)` (the top edge stays put);
+  - buttons use `.buttonStyle(.plain)` with explicit hit areas, and every button has a `.help` and an accessibility label. They act on the first click because the host is a `PanelHostingView` (P30).
+- [ ] **Step 4: Showing the panel with the session (P25).**
+  - `UIServices.init` builds it last, after `mainSetupModel`:
+    ```swift
+            statusPanel = StatusPanelController(size: NSSize(width: 320, height: 174)) { [callSession, mainSetupModel] panel in
+                PanelHostingView(rootView: StatusPanelView()
+                    .environmentObject(callSession).environmentObject(mainSetupModel).environmentObject(panel))
+            }
+            statusPanel.bind(to: callSession)
+    ```
+    (add the environment objects `StatusPanelView` and its rows read; wrap lines at 120 columns).
+  - `StatusPanelController+Session.swift`, `bind(to:defaults:)`: it observes `session.$phase` (received on the main queue). `.running` together with `defaults.bool(forKey: UISettingsKeys.showStatusPanel)` (registered as on at launch, P31) → `show()`; `.idle` → `hide()` (REQ-UI-40/47). The subscription is kept in a new stored property of the controller, `var sessionSubscription: AnyCancellable?`, added in `StatusPanel.swift` (an extension cannot store it).
+  - `MainSetupView` adds `.onChange(of: session.phase)`: when `.running` and the setting is on → `dismissWindow(id: MainWindowOpener.windowID)` (`@Environment(\.dismissWindow)`). With the setting off the main window stays open (REQ-UI-40 as amended, P22).
   - Stop never reopens the main window.
   - Delete `DebugStatusPanel` and the Debug menu.
 - [ ] **Step 5:** Previews:
@@ -4026,6 +4671,8 @@ git commit -m "feat(ui): new setup window with languages, voice and the readines
   In light and dark. Compare with the frames, the In Context frame included (placement).
 - [ ] **Step 6: Manual check** with a real call (Teams):
   - Start → the panel appears top right and the main window closes;
+  - with "Show the status panel" off (`defaults write` or Task 20's toggle later), Start → no panel, the main window stays;
+  - one click on Pause in the panel acts at once while Teams stays frontmost (first mouse);
   - typing in Teams' chat while the panel updates works (focus);
   - Pause, then Resume;
   - Stop → the panel hides and nothing else opens.
@@ -4054,7 +4701,7 @@ git commit -m "feat(ui): compact status panel shown with the session (M9 UI core
     - skipped entries are dimmed with "Not translated";
   - a trailing "Translating…" capsule with three dots while `coordinator.isOutgoingTranslating || isIncomingTranslating`;
   - auto-scroll to the last id on change, unless the user scrolled up. Track that with `.onScrollGeometryChange(for: Bool.self)`: "within 24 pt of the bottom".
-- [ ] **Step 2:** The expand button toggles `expanded`. Expanded, the body is `TranscriptView` (height 338, width 340) instead of the rows. `PanelPresenter` resizes the panel with `StatusPanelController.resize(to:)`, keeping the top edge.
+- [ ] **Step 2:** The expand button calls `panel.toggleExpanded()`. With `panel.isExpanded`, the body is `TranscriptView` (height 338, width 340) instead of the rows. The size report from Task 17 resizes the panel through `StatusPanelController.resize(to:)`, keeping the top edge; nothing else is needed.
 - [ ] **Step 3:** Previews: the frame's three bubbles plus "Translating…", a skipped entry, 50 entries (scrolling). Light and dark.
 - [ ] **Step 4:** Run `just build && just lint`. Commit:
 ```bash
@@ -4068,7 +4715,12 @@ git commit -m "feat(ui): expanded status panel with the session transcript (M9 U
 
 **Files:**
 - Create: `TranslateCall/Features/Main/AudioViewModel+Start.swift`
-- Modify: `TranslateCall/Features/MenuBar/MenuBarController.swift`, `TranslateCall/Features/MenuBar/MenuBarPopoverView.swift` (rewritten), `TranslateCall/App/TranslateCallApp.swift` (the controller's init arguments)
+- Modify:
+  - `TranslateCall/Features/MenuBar/MenuBarIcon.swift` (`MenuBarStartPolicy`);
+  - `TranslateCall/Features/MenuBar/MenuBarController.swift` (new init, icon with dot; `observeState()` and `updateIcon(state:isCapturing:)` replaced, P18);
+  - `TranslateCall/Features/MenuBar/MenuBarPopoverView.swift` (rewritten);
+  - `TranslateCall/Features/Main/AudioViewModel.swift` (`toggleCapture` reads `needsEdgeConsentBeforeStart`; the file shrinks);
+  - `TranslateCall/App/TranslateCallApp.swift` (the controller's init arguments)
 - Test: `TranslateCallTests/MenuBarStartTests.swift`
 
 **Frames:**
@@ -4076,11 +4728,11 @@ git commit -m "feat(ui): expanded status panel with the session transcript (M9 U
 - Menu Bar — Translating: `eBNlu` / `C2n5j8`.
 
 **Interfaces:**
-- Consumes: `CallSessionModel`, `MainSetupModel`, `MenuBarDot`, `SettingsOpener`.
+- Consumes: `CallSessionModel`, `MainSetupModel`, `StatusPanelController`, `MenuBarDot`, `Readiness.blockingReason`, `SettingsOpener`.
 - Produces:
-  - `extension AudioViewModel { var needsEdgeConsentBeforeStart: Bool }`. It uses the same expression as `toggleCapture`: no system voice for the target locale and no consent given. It lives in a new file, so `AudioViewModel.swift` does not grow;
-  - `nonisolated enum MenuBarStartPolicy { static func needsMainWindow(readiness: Readiness, needsEdgeConsent: Bool) -> Bool }`. It is true when `!readiness.primaryEnabled`, any card is present, or consent is needed (REQ-UI-36);
-  - `MenuBarController.init(viewModel:session:setup:)`.
+  - `extension AudioViewModel { var needsEdgeConsentBeforeStart: Bool }`: no system voice for the target locale and no consent given. It lives in a new file, and `toggleCapture` uses it in place of its inline condition, so the rule exists once and `AudioViewModel.swift` shrinks;
+  - `nonisolated enum MenuBarStartPolicy { static func needsMainWindow(readiness: Readiness, needsEdgeConsent: Bool) -> Bool }`. It is true when `!readiness.primaryEnabled`, any card is present, or consent is needed (REQ-UI-36). A failure nobody can predict (an engine that cannot start) is still covered: `CallSessionModel` brings up the main window for an alert that stays (P27);
+  - `MenuBarController.init(viewModel:session:setup:panel:)`; `TranslateCallApp` passes `container.uiServices.callSession`, `.mainSetupModel` and `.statusPanel`.
 
 - [ ] **Step 1: Failing test** `TranslateCallTests/MenuBarStartTests.swift` (`@Suite("Menu bar start policy")`). Test `startNeedsWindowOnlyWhenSomethingMustBeShown`:
   - ready, no consent needed → `false`;
@@ -4089,16 +4741,16 @@ git commit -m "feat(ui): expanded status panel with the session transcript (M9 U
   - consent needed → `true`.
 
   Run `just test-only MenuBarStartTests`. Expected: FAIL.
-- [ ] **Step 2:** Implement `MenuBarStartPolicy` in `MenuBarIcon.swift` and the extension. Run the test. Expected: PASS.
+- [ ] **Step 2:** Implement `MenuBarStartPolicy` in `MenuBarIcon.swift` and the extension. In `AudioViewModel.toggleCapture`, replace the `targetLocale` / `hasVoice` / `consentGiven` condition with `if needsEdgeConsentBeforeStart {`. Run `just test-only MenuBarStartTests AudioViewModelTests`. Expected: PASS.
 - [ ] **Step 3: Icon.** `MenuBarController.icon(dot: MenuBarDot) -> NSImage`:
   - the template `NSImage(systemSymbolName: MenuBarDot.symbolName)` at 15 pt;
   - for `.green`/`.orange`, draw it into a new 18×18 image with a 6 pt filled circle at the bottom-right (`NSColor.systemGreen`/`systemOrange`) and set `isTemplate = false`;
   - for `.none`, keep the template.
 
-  Observe `session.$phase.combineLatest(session.$title)` → `updateIcon`. The accessibility description is "TranslateCall".
-- [ ] **Step 4: Popover.** `MenuBarPopoverView(session:setup:viewModel:)`, width 280, height fitting (`NSHostingController.sizingOptions = .preferredContentSize`).
+  Observe `session.$phase.combineLatest(session.$title)` → `updateIcon(dot:)`. This replaces `observeState()` and `updateIcon(state:isCapturing:)`, the only callers of `iconName(state:isCapturing:)`; `iconName` itself and its test go in Task 22 (P18). The accessibility description is "TranslateCall".
+- [ ] **Step 4: Popover.** `MenuBarPopoverView(session:setup:viewModel:panel:)`, width 280, height fitting (`NSHostingController.sizingOptions = .preferredContentSize`).
   - **Idle (REQ-UI-60):**
-    - a grey dot and "Ready", or the first blocking reason: the primary title when it is disabled, else the first card's title;
+    - a grey dot and `setup.readiness.blockingReason ?? "Ready"` (P26: informative cards never replace "Ready");
     - "\(app) · \(my language) ↔ \(their language)";
     - the `lock` mark;
     - the primary button: when `MenuBarStartPolicy.needsMainWindow(...)`, `NSApp.showMainWindow()` then `setup.primaryAction()`; otherwise `setup.primaryAction()` directly;
@@ -4107,7 +4759,7 @@ git commit -m "feat(ui): expanded status panel with the session transcript (M9 U
     - the dot, the title and "\(app) · \(pair) · \(elapsed)";
     - two compact rows ("You  ES → DE" + chip text in its tint);
     - "Stop translating" (red tinted, full width);
-    - a divider; "Show status panel" (`PanelPresenter.show()`), "Open TranslateCall", "Settings…", "Quit".
+    - a divider; "Show status panel" (`panel.show()`), "Open TranslateCall", "Settings…", "Quit".
 - [ ] **Step 5: Right-click menu:**
   - "Start Translation" / "Stop Translation" (unchanged rule);
   - "Pause" / "Resume", enabled only when `.running`;
@@ -4116,8 +4768,8 @@ git commit -m "feat(ui): expanded status panel with the session transcript (M9 U
 - [ ] **Step 6:** Previews of both popover states, light and dark, compared with the frames. Manual check: the dot is green while translating and orange while paused; the idle Start from the popover with a missing pack opens the main window.
 - [ ] **Step 7:** Run `just build && just lint && just test-only MenuBarStartTests`. Commit:
 ```bash
-git add TranslateCall/Features/MenuBar TranslateCall/Features/Main/AudioViewModel+Start.swift TranslateCall/App \
-  TranslateCallTests/MenuBarStartTests.swift
+git add TranslateCall/Features/MenuBar TranslateCall/Features/Main/AudioViewModel+Start.swift \
+  TranslateCall/Features/Main/AudioViewModel.swift TranslateCall/App TranslateCallTests/MenuBarStartTests.swift
 git commit -m "feat(ui): menu bar icon with session dot, new popover and Pause/Skip items (M9 UI core T19)"
 ```
 
@@ -4133,7 +4785,7 @@ git commit -m "feat(ui): menu bar icon with session dot, new popover and Pause/S
 **Frames:** Settings — General: `XjnNV` / `m9CFL`.
 
 **Interfaces:**
-- Consumes: `ConversationSettings` (`listeningMode`, `pauseSeconds`, `pauseRange`, `pauseStep`), `AudioViewModel` (devices, `selectInput`, `selectOutput`), `CallSessionModel.latency`, `UISettingsKeys`.
+- Consumes: `ConversationSettings` (`listeningMode`, `pauseSeconds`, `pauseRange`, `pauseStep`), `AudioViewModel` (devices, `selectInput`, `selectOutput`), `CallSessionModel.latency` (injected into the `Settings` scene since Task 16), `UISettingsKeys`.
 - Produces:
   - `GeneralSettingsView`;
   - `nonisolated static func pauseValueLabel(_ seconds: Double) -> String`, giving "0.6 s pause";
@@ -4153,7 +4805,7 @@ git commit -m "feat(ui): menu bar icon with session dot, new popover and Pause/S
     - the footer "In speaker mode your microphone pauses while their translation plays, so it doesn't translate itself.";
   - **Rhythm:** "When to translate", with the subtitle "How long you pause before TranslateCall translates what you said"; a `Slider(value: pauseSeconds, in: pauseRange, step: pauseStep)` with minimum label "Faster replies" and maximum label "Wait for full sentences", and the value `pauseValueLabel` centred under it;
   - **While translating:**
-    - `Toggle("Show the status panel", isOn: @AppStorage(UISettingsKeys.showStatusPanel) = true)`;
+    - `Toggle("Show the status panel", isOn: @AppStorage(UISettingsKeys.showStatusPanel) = true)`. Off: no panel, and the main window stays open after Start (REQ-UI-40, P22);
     - `Toggle("Show latency in the panel", isOn: @AppStorage(UISettingsKeys.showLatency) = true)` with the subtitle "Small grey number next to each direction", **only when** `session.latency.canProvide` (D-3: hidden in this feature);
   - **General:**
     - "Open at login": a `Toggle` over `SMAppService.mainApp`, reading `.status == .enabled` and calling `register()` / `unregister()`, with errors shown inline in red caption text;
@@ -4170,13 +4822,14 @@ git commit -m "feat(ui): Settings General tab (M9 UI core T20)"
 ### Task 21: Settings — Advanced (legacy) (sonnet)
 
 **Files:**
-- Create: `TranslateCall/Features/Settings/LegacyAdvancedSettingsView.swift`, `TranslateCall/Features/Settings/Legacy/` (moved views)
+- Create: `TranslateCall/Features/Settings/LegacyAdvancedSettingsView.swift`, `TranslateCall/Features/Settings/Legacy/`
 - Modify: `TranslateCall/Features/Settings/SettingsView.swift`
-- Move:
-  - `Features/Main/STTMetricsView.swift` and `TTSMetricsView.swift` → `Features/Settings/Legacy/`;
-  - the download sheets from `ContentView+DownloadSheets.swift` → `Features/Settings/Legacy/ModelDownloadSheets.swift`, as `struct ModelDownloadSheets: ViewModifier` with the four `@State` flags and the four `onChange` triggers;
-  - the Kokoro voice list and picker (`LanguagePairView.kokoroVoices`) → `Legacy/KokoroVoicePicker.swift`;
-  - the TTS monitor row from `ContentView` → `Legacy/TTSMonitorRow.swift`.
+- `just build` stays green at the end of this task, while `ContentView` still exists:
+  - **move** (`git mv`, type names unchanged, so `ContentView` keeps compiling): `Features/Main/STTMetricsView.swift` and `TTSMetricsView.swift` → `Features/Settings/Legacy/`;
+  - **copy** into new types, leaving the originals in place for Task 22 to delete:
+    - the download sheets of `ContentView+DownloadSheets.swift` → `Legacy/ModelDownloadSheets.swift`, as `struct ModelDownloadSheets: ViewModifier` with the four `@State` flags and the four `onChange` triggers;
+    - the Kokoro voice list and picker (`LanguagePairView.kokoroVoices`) → `Legacy/KokoroVoicePicker.swift`;
+    - the TTS monitor row of `ContentView` → `Legacy/TTSMonitorRow.swift`.
 - Test: `TranslateCallTests/LegacyAdvancedSettingsTests.swift` (replaces `ConversationSettingsViewTests` in Task 22)
 
 **Interfaces:**
@@ -4192,7 +4845,7 @@ git commit -m "feat(ui): Settings General tab (M9 UI core T20)"
 
   Run `just test-only LegacyAdvancedSettingsTests`. Expected: FAIL.
 - [ ] **Step 2: View** (a grouped `Form`):
-  - **Speech recognition:** `Picker` over `LegacyEngineChoice<STTEngine>` ("Automatic (recommended)", divider, the engines). The setter calls `setAutomatic(true)` or `setPreferredEngine(engine)`; the download indicators follow `LanguagePairView`'s current engine row;
+  - **Speech recognition:** `Picker` over `LegacyEngineChoice<STTEngine>` ("Automatic (recommended)", divider, the engines). The setter calls `setAutomatic(true)` or `setPreferredEngine(engine)`; the download indicators are copied from `LanguagePairView`'s current engine row (the original goes in Task 22);
   - **Voice:** the same for `TTSEngine`, without `edgeTTS` unless `EdgeTTSConsentManager.consentGiven`, plus `KokoroVoicePicker` when the choice is Kokoro;
   - **Diagnostics:** `STTMetricsView()`, `TTSMetricsView()`, `TTSMonitorRow()` and `Text(vadLabel(vadProvider.activeEngine))`;
   - **Other:**
@@ -4200,7 +4853,7 @@ git commit -m "feat(ui): Settings General tab (M9 UI core T20)"
     - "Run setup again…", which opens `SetupWizardView` as a sheet;
     - a "Usage guide" `Link(guideURL)`;
   - attach `.modifier(ModelDownloadSheets())`.
-- [ ] **Step 3:** Run the tests and `just build`. Expected: PASS. Previews: automatic and manual states.
+- [ ] **Step 3:** Run the tests and `just build`. Expected: PASS, with `ContentView` and `LanguagePairView` still in the tree. Previews: automatic and manual states.
 - [ ] **Step 4: Manual check.** Pick Parakeet → "Models: Custom" on the main window; pick "Automatic (recommended)" → "Models: Recommended" (U9).
 - [ ] **Step 5:** Run `just lint`. Commit:
 ```bash
@@ -4214,14 +4867,14 @@ git commit -m "feat(ui): temporary Advanced (legacy) Settings tab with today's t
 
 **Files:**
 - Delete:
-  - `TranslateCall/Features/ContentView.swift`, `ContentView+DownloadSheets.swift`;
-  - `Features/Main/StatusBadgeView.swift`, `LevelMeterView.swift`, `CaptureButtonView.swift`, `TranscriptionView.swift`, `IncomingStatusBanner.swift`, `TTSNoticeLine.swift`, `DeviceSectionView.swift`, `ConversationSettingsView.swift`, `LanguagePairView.swift`.
+  - `TranslateCall/Features/ContentView.swift`, `ContentView+DownloadSheets.swift` (copied in Task 21);
+  - `Features/Main/StatusBadgeView.swift`, `LevelMeterView.swift`, `CaptureButtonView.swift`, `TranscriptionView.swift`, `IncomingStatusBanner.swift`, `TTSNoticeLine.swift`, `DeviceSectionView.swift`, `ConversationSettingsView.swift`, `LanguagePairView.swift` (its `kokoroVoices` was copied in Task 21).
 - Modify:
-  - `MenuBarController.swift`: remove `iconName(state:isCapturing:)`;
+  - `MenuBarController.swift`: remove `iconName(state:isCapturing:)`, which has no caller since Task 19 (P18);
   - `TranslateCallApp.swift`: add the command;
   - `AudioViewModel.swift`: the doc comment that names `LanguagePairView` now names `LanguageSection`.
 - Tests:
-  - delete `IncomingStatusBannerTests.swift` (covered by `UICopyTests.unavailableLines`) and `ConversationSettingsViewTests.swift` (ported in Task 21);
+  - delete `IncomingStatusBannerTests.swift` (every case ported in Task 10: `UICopyTests.incomingLines`, `unavailableLines`) and `ConversationSettingsViewTests.swift` (ported in Task 21);
   - in `AudioCoordinatorEchoGateTests.swift`, remove the `StatusBadgeView.presentation` and `MenuBarController.iconName` cases. Their states are covered by `DirectionStateTests` and `MenuBarDotTests`.
 
 - [ ] **Step 1:** Run `grep -rnw "ContentView\|StatusBadgeView\|LevelMeterView\|CaptureButtonView\|TranscriptionView\|IncomingStatusBanner\|TTSNoticeLine\|DeviceSectionView\|ConversationSettingsView\|LanguagePairView\|iconName" TranslateCall TranslateCallTests`. Every hit is either deleted in this task or updated as listed.
@@ -4281,7 +4934,7 @@ The user runs this on the Mac mini with a real Teams call (headphones), after `j
 - [ ] **U6:** Speakers mode → the "Mic paused" chip and the standing notice.
 - [ ] **U7:** A language not downloaded → the card, then Download, then "Ready".
 - [ ] **U8:** Screen-recording permission revoked → the red card. Start still works for the outgoing side.
-- [ ] **U9:** ⌘, opens Settings. General changes apply. The legacy tab's engine pickers work, and "Automatic" restores "Models: Recommended".
+- [ ] **U9:** ⌘, opens Settings. General changes apply; with "Show the status panel" off, the next Start shows no panel and the main window stays open. The legacy tab's engine pickers work, and "Automatic" restores "Models: Recommended".
 - [ ] **U10:** With everything closed, translation keeps running from the menu bar, and the popover's Stop works.
 - [ ] **U11:** Dark mode on every new screen, compared with the prototype's dark frames.
 

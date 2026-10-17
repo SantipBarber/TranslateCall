@@ -394,3 +394,4 @@ No UI-test target is added, consistent with the repo today. Views are checked th
 16. **Mute Turn** becomes "Skip my next sentence": an app-menu command (⌘⇧M, works while TranslateCall is active) and an item in the status item's right-click menu. It is not in the panel.
 17. **`skipped` entries** mark only translation failures. TTS skips stay transient notices, because `ttsEvents` carry no sentence identity.
 18. **"Ready" checks each direction separately** with `AppleTranslationService.isInstalled` (as `start()` does), not `LanguagePairManager.pairStatus`, which checks one direction only.
+19. **With "Show the status panel" off, the main window stays open after Start** (§7.1). REQ-UI-40 was amended on 2026-10-17 to say so; before, it made the menu bar the only in-call surface.

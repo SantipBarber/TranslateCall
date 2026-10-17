@@ -141,7 +141,7 @@ A missing microphone permission SHALL block Start. A missing screen-recording pe
 
 ### FR-UI.4 — In-call status panel
 
-**REQ-UI-40**: After a successful Start, the main window SHALL close and the status panel SHALL appear, if "Show the status panel" is on (default on). When the setting is off, the panel SHALL not appear and the menu bar remains the only in-call surface.
+**REQ-UI-40**: After a successful Start, if "Show the status panel" is on (default on), the main window SHALL close and the status panel SHALL appear. When the setting is off, the panel SHALL not appear and the main window SHALL stay open, so there is always a visible in-call surface besides the menu bar (amended 2026-10-17 to match design §7.1).
 
 **REQ-UI-41**: The status panel SHALL:
 - be a floating, non-activating panel: it never becomes key or main and never takes focus or keystrokes from the call app;
