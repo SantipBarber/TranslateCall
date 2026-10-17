@@ -8,7 +8,7 @@ from pathlib import Path
 
 from tcbench import baseline, compare, runs
 
-STUBS = ("ingest", "report")
+STUBS = ("ingest",)
 REPO = Path(__file__).resolve().parents[3]
 DEFAULT_MANIFEST = REPO / "bench" / "manifests" / "phase1.json"
 
@@ -163,6 +163,18 @@ def _cmd_baseline(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_report(args: argparse.Namespace) -> int:
+    from . import report
+
+    try:
+        out = report.run(Path(args.run), Path(args.history), last_n=args.last, manifest=_load_json(args.manifest))
+    except (FileNotFoundError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print(f"wrote {out}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="tcbench", description="TranslateCall benchmark tooling")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -184,6 +196,13 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
     a.add_argument("--comet", action="store_true", help="also compute COMET (needs the 'comet' extra)")
     a.set_defaults(func=_cmd_analyze)
+
+    r = sub.add_parser("report", help="write report.html (self-contained) into a run directory")
+    r.add_argument("run", help="Path to the run directory (analyzed: has metrics.json)")
+    r.add_argument("--history", default="build/bench/runs", help="Directory of previous runs for the trend")
+    r.add_argument("--last", type=int, default=10, help="Number of runs in the trend")
+    r.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
+    r.set_defaults(func=_cmd_report)
 
     compare_parser = sub.add_parser("compare")
     compare_parser.add_argument("run", help="Path to a run directory containing metrics.json")

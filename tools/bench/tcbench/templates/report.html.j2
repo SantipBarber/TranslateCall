@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tcbench report - {{ runName }}</title>
+<style>
+:root { --bg:#fafafa; --fg:#1d1d1f; --muted:#6e6e73; --card:#fff; --line:#d8d8dc; --warn-bg:#fff4d6; --warn-fg:#6b4a00; --info-bg:#e8f0fe; }
+@media (prefers-color-scheme: dark) { :root { --bg:#16161a; --fg:#ececf0; --muted:#9a9aa2; --card:#1f1f25; --line:#35353d; --warn-bg:#4a3a10; --warn-fg:#ffdf8a; --info-bg:#1f2a44; } }
+body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:14px/1.45 -apple-system, system-ui, sans-serif; }
+main { max-width:1100px; margin:0 auto; }
+h1 { font-size:22px; margin:0 0 4px; } h2 { font-size:17px; margin:28px 0 8px; } h3 { font-size:14px; margin:16px 0 6px; }
+.muted { color:var(--muted); }
+section, .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 16px; margin:12px 0; }
+.banner { border-radius:8px; padding:10px 14px; margin:10px 0; }
+.banner.warn { background:var(--warn-bg); color:var(--warn-fg); font-weight:600; }
+.banner.info { background:var(--info-bg); }
+dl.meta { display:grid; grid-template-columns:max-content 1fr; gap:2px 14px; margin:8px 0; }
+dl.meta dt { color:var(--muted); } dl.meta dd { margin:0; word-break:break-all; }
+table { border-collapse:collapse; width:100%; } th, td { text-align:left; padding:4px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+.num { text-align:right; font-variant-numeric:tabular-nums; }
+pre { overflow-x:auto; font-size:12px; margin:0; }
+.chart { width:100%; overflow-x:auto; }
+audio { width:100%; max-width:320px; height:32px; }
+.rows { overflow-x:auto; }
+footer { margin:28px 0 8px; color:var(--muted); font-size:12px; }
+footer li { margin:4px 0; }
+</style>
+</head>
+<body>
+<main>
+<h1>tcbench report</h1>
+<div class="muted">{{ runName }}</div>
+
+{% if meta.informative or meta.override %}
+<div class="banner info">Informative run{% if meta.override %} (override: {{ meta.override }}){% endif %}: results are shown for comparison only and are not gated.</div>
+{% endif %}
+{% for b in banners %}
+<div class="banner warn">{{ b.key }}:
+{% if b.fallbacks %}{{ b.fallbacks }} utterance(s) ran on an engine other than the expected STT/TTS (runtime fallback); this line does not measure the configured engines.{% endif %}
+{% if b.unassigned %}{{ b.unassigned }} utterance(s) fell outside every clip window (unassigned).{% endif %}
+</div>
+{% endfor %}
+
+<section>
+<dl class="meta">
+{% for k in ["set", "commit", "dirty", "machine", "macOS", "manifestSha256", "informative", "override"] %}
+<dt>{{ k }}</dt><dd>{{ meta[k] }}</dd>
+{% endfor %}
+</dl>
+</section>
+
+<h2>Summary per line</h2>
+<section class="rows">
+<table>
+<tr><th>profile/runLine</th><th class="num">total p50 ms</th><th class="num">total p90 ms</th><th class="num">WER %</th><th class="num">cut %</th><th class="num">missed</th><th class="num">chrF++ (0..100)</th><th class="num">COMET</th><th class="num">fallbacks</th></tr>
+{% for key, a in aggregates.items() %}
+<tr><td>{{ key }}</td>
+<td class="num">{{ "%.0f"|format(a.latency.total.p50) if a.latency.total.p50 is not none else "n/a" }}</td>
+<td class="num">{{ "%.0f"|format(a.latency.total.p90) if a.latency.total.p90 is not none else "n/a" }}</td>
+<td class="num">{{ "%.1f"|format(a.wer * 100) }}</td>
+<td class="num">{{ "%.1f"|format(a.cutRate * 100) }}</td>
+<td class="num">{{ a.missed }}</td>
+<td class="num">{{ "%.1f"|format(a.chrf.pipeline) if a.chrf.pipeline is not none else "n/a" }}</td>
+<td class="num">{{ "%.3f"|format(a.comet.pipeline) if a.comet and a.comet.pipeline is not none else "n/a" }}</td>
+<td class="num">{{ a.fallbacks }}</td></tr>
+{% endfor %}
+</table>
+</section>
+
+<h2>Latency by stage (p50)</h2>
+<section><div class="chart" id="stages"></div></section>
+<h2>Total latency distribution</h2>
+<section><div class="chart" id="hist"></div></section>
+
+<h2>Baseline comparison</h2>
+<section><pre>{{ comparison }}</pre></section>
+
+<h2>Trend over the last runs</h2>
+<section><div class="chart" id="trendP50"></div><div class="chart" id="trendWer"></div></section>
+
+<h2>Worst utterances</h2>
+{% for kind, title in [("total", "10 worst by total latency"), ("wer", "10 worst by WER")] %}
+<h3>{{ title }}</h3>
+<section class="rows">
+{% for key in aggregates %}
+{% set rows = worst|selectattr("kind", "equalto", kind)|selectattr("key", "equalto", key)|list %}
+{% if rows %}
+<h3>{{ key }}</h3>
+<table>
+<tr><th>#</th><th>clip</th><th class="num">total ms</th><th class="num">WER %</th><th>reference / STT</th><th>translation / reference</th><th>audio</th></tr>
+{% for r in rows %}
+<tr><td>{{ loop.index }}</td><td>{{ r.clip }}</td>
+<td class="num">{{ "%.0f"|format(r.total) if r.total is not none else "n/a" }}</td>
+<td class="num">{{ "%.1f"|format(r.wer * 100) }}</td>
+<td><div class="muted">ref</div>{{ r.reference }}<div class="muted">STT</div>{{ r.stt }}</td>
+<td><div class="muted">translation</div>{{ r.translation }}<div class="muted">reference</div>{{ r.refTranslation }}</td>
+<td>{% if r.srcAudio %}<div class="muted">source</div><audio controls preload="none" src="{{ r.srcAudio }}"></audio>{% endif %}
+{% if r.ttsAudio %}<div class="muted">TTS output</div><audio controls preload="none" src="{{ r.ttsAudio }}"></audio>{% endif %}
+{% if r.audioOmitted %}<span class="muted">audio omitted (size cap)</span>{% endif %}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+{% endfor %}
+</section>
+{% endfor %}
+
+<footer>
+<p><strong>Ground truth.</strong> The ground truth uses Silero (32 ms windows, threshold 0.35) plus a noise-floor-relative, bidirectional edge refinement (&plusmn;300 ms, at least 3 frames). Production runs Silero with 256 ms chunks and threshold 0.85. Clips are levelled to -26 dBFS active RMS before measurement (gainDb in the manifest).</p>
+<p><strong>Scales.</strong> chrF++ is 0..100; WER and cut rate are shown as percentages; COMET is shown and never gated.</p>
+<p><strong>Attributions.</strong></p>
+<ul>
+{% for s in attributions %}
+<li>{{ s.attribution }} ({{ s.name }}, {{ s.licence }}, {{ s.url }})</li>
+{% endfor %}
+</ul>
+</footer>
+</main>
+
+<script>{{ vendor[0]|safe }}</script>
+<script>{{ vendor[1]|safe }}</script>
+<script>{{ vendor[2]|safe }}</script>
+<script type="application/json" id="data">{{ {"stages": stageData, "totals": totals, "trend": trend}|tojson }}</script>
+<script>
+(function () {
+  var data = JSON.parse(document.getElementById("data").textContent);
+  var cfg = { background: null, view: { stroke: null } };
+  var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  var theme = dark ? "dark" : null;
+  function show(id, spec) {
+    spec.$schema = "https://vega.github.io/schema/vega-lite/v5.json";
+    spec.width = "container";
+    vegaEmbed("#" + id, spec, { actions: false, theme: theme, renderer: "svg" }).catch(function (e) {
+      document.getElementById(id).textContent = "chart failed: " + e;
+    });
+  }
+  show("stages", { data: { values: data.stages }, height: { step: 28 },
+    mark: "bar", encoding: {
+      y: { field: "key", type: "nominal", title: null },
+      x: { field: "ms", type: "quantitative", aggregate: "sum", title: "p50 ms" },
+      color: { field: "stage", type: "nominal", sort: ["vad", "stt", "translate", "ttsFirstAudio"] },
+      order: { field: "order", type: "quantitative" },
+      tooltip: [{ field: "key" }, { field: "stage" }, { field: "ms", format: ".0f" }] }, config: cfg });
+  show("hist", { data: { values: data.totals }, height: 220,
+    mark: { type: "bar", opacity: 0.65 }, encoding: {
+      x: { field: "total", bin: { maxbins: 30 }, type: "quantitative", title: "total latency ms" },
+      y: { aggregate: "count", type: "quantitative", stack: null, title: "utterances" },
+      color: { field: "key", type: "nominal" } }, config: cfg });
+  show("trendP50", { data: { values: data.trend }, height: 200,
+    mark: { type: "line", point: true }, encoding: {
+      x: { field: "run", type: "ordinal", title: null, sort: null },
+      y: { field: "p50", type: "quantitative", title: "total p50 ms" },
+      color: { field: "key", type: "nominal" } }, config: cfg });
+  show("trendWer", { data: { values: data.trend }, height: 200,
+    mark: { type: "line", point: true }, encoding: {
+      x: { field: "run", type: "ordinal", title: null, sort: null },
+      y: { field: "wer", type: "quantitative", title: "WER %" },
+      color: { field: "key", type: "nominal" } }, config: cfg });
+})();
+</script>
+</body>
+</html>

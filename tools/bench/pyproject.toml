@@ -30,6 +30,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["tcbench"]
+# templates/ and vendor/ live inside the package, so hatch includes them.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
