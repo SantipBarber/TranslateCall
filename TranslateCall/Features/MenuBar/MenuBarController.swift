@@ -109,7 +109,11 @@ final class MenuBarController: NSObject {
 
     @objc private func toggleCapture() {
         guard !viewModel.isStarting, session.phase != .launching else { return }
-        Task { await viewModel.toggleCapture() }
+        if session.phase == .running {
+            Task { await session.stop() }
+        } else {
+            MenuBarStart.start(setup: setup, viewModel: viewModel)
+        }
     }
 
     @objc private func togglePause() {

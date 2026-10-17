@@ -1,5 +1,19 @@
 import SwiftUI
 
+// MARK: - MenuBarStart
+
+/// Shared start path used by the popover primary button and the status-item context menu.
+@MainActor
+enum MenuBarStart {
+    static func start(setup: MainSetupModel, viewModel: AudioViewModel) {
+        if MenuBarStartPolicy.needsMainWindow(readiness: setup.readiness,
+                                              needsEdgeConsent: viewModel.needsEdgeConsentBeforeStart) {
+            NSApp.showMainWindow()
+        }
+        Task { await setup.primaryAction() }
+    }
+}
+
 // MARK: - MenuBarPopoverContent
 
 /// The popover's layout, fed plain values so previews render from fixtures (REQ-UI-60).
@@ -184,13 +198,7 @@ struct MenuBarPopoverView: View {
             primaryTitle: setup.readiness.primary.title, primaryDisabled: busy,
             outgoing: translating ? row(.outgoing, from: source, to: target, appName: appName) : nil,
             incoming: translating ? row(.incoming, from: target, to: source, appName: appName) : nil,
-            onPrimary: {
-                if MenuBarStartPolicy.needsMainWindow(readiness: setup.readiness,
-                                                      needsEdgeConsent: viewModel.needsEdgeConsentBeforeStart) {
-                    NSApp.showMainWindow()
-                }
-                Task { await setup.primaryAction() }
-            },
+            onPrimary: { MenuBarStart.start(setup: setup, viewModel: viewModel) },
             onStop: { Task { await session.stop() } },
             onShowPanel: { panel.show() },
             onOpenMain: { NSApp.showMainWindow() },
