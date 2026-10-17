@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime
 import json
 import subprocess
 import tempfile
@@ -73,9 +72,10 @@ def _normalize_file(path: Path) -> np.ndarray:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td) / "converted.wav"
             subprocess.run(
-                ["afconvert", "-f", "WAVE", "-d", "LEI16@16000", str(path), str(tmp)],
+                ["afconvert", "-f", "WAVE", "-d", "LEI16@16000", f"./{path.name}", str(tmp)],
                 check=True,
                 capture_output=True,
+                cwd=path.parent,
             )
             return audio_mod.normalize(tmp)
 
@@ -167,7 +167,7 @@ def _process_one(
 
     return {
         "id": clip_id,
-        "source": {"dataset": "own", "revision": datetime.date.today().isoformat(), "originalId": name},
+        "source": {"dataset": "own", "revision": audio_mod.sha256(file), "originalId": name},
         "lang": _source_lang(variant),
         "variant": variant,
         "speaker": "own-user",
@@ -206,16 +206,26 @@ def run(
         cache_dir = Path(cache_dir)
 
     prompts = {r["id"]: r for r in read_sheet(sheet)}
-    files = {
-        p.stem: p
-        for p in folder.iterdir()
-        if p.is_file() and p.suffix.lower() in ACCEPTED_SUFFIXES
-    }
+    files_by_stem: dict[str, list[Path]] = {}
+    for p in folder.iterdir():
+        if p.is_file() and p.suffix.lower() in ACCEPTED_SUFFIXES:
+            files_by_stem.setdefault(p.stem, []).append(p)
 
     problems: list[str] = []
-    entries: list[dict] = []
+    duplicates: set[str] = set()
+    files: dict[str, Path] = {}
+    for stem, paths in files_by_stem.items():
+        if len(paths) > 1:
+            duplicates.add(stem)
+            names = ", ".join(sorted(p.name for p in paths))
+            problems.append(f"duplicate recordings for {stem}: {names}")
+        else:
+            files[stem] = paths[0]
 
+    entries: list[dict] = []
     for prompt_id, prompt in prompts.items():
+        if prompt_id in duplicates:
+            continue
         file = files.pop(prompt_id, None)
         if file is None:
             problems.append(f"no file for prompt {prompt_id}")
@@ -227,14 +237,21 @@ def run(
     for name in sorted(p.name for p in files.values()):
         problems.append(f"no prompt for file {name}")
 
+    if not entries:
+        problems.append("no recordings produced")
+        return problems
+
     entries.sort(key=lambda e: e["id"])
     for e in entries[:8]:
         e["tiers"] = ["pr", "full"]
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {"schema": 1, "clips": [], "mtOnly": []}
-    prefix = f"own-{variant}-"
-    kept = [c for c in manifest.get("clips", []) if not c["id"].startswith(prefix)]
-    manifest["clips"] = kept + entries
+    public = [c for c in manifest.get("clips", []) if not c["id"].startswith("own-")]
+    own = [c for c in manifest.get("clips", []) if c["id"].startswith("own-")]
+    own = [c for c in own if not c["id"].startswith(f"own-{variant}-")]
+    own = own + entries
+    own.sort(key=lambda c: c["id"])
+    manifest["clips"] = public + own
     manifest_mod.dump(manifest, manifest_path)
 
     return problems
