@@ -35,7 +35,7 @@ jobs:
         with:
           version: ${{ steps.uv.outputs.version }}
       - name: Bench tooling tests
-        run: uv run --project tools/bench pytest -q
+        run: uv run --locked --project tools/bench pytest -q
       - name: SwiftLint
         run: |
           source tools/versions.env

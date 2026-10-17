@@ -60,7 +60,7 @@ ok "xcbeautify $XCBEAUTIFY_VERSION"
 xcode=$(xcodebuild -version); xcode=${xcode%%$'\n'*}
 [[ "$xcode" == "Xcode $XCODE_VERSION" ]] || fail "Xcode $XCODE_VERSION required (found: $xcode)"
 ok "Xcode $XCODE_VERSION"
-uv sync --project tools/bench --quiet && ok "tools/bench environment"
+uv sync --locked --project tools/bench --quiet && ok "tools/bench environment"
 # `xcrun -f metal` finds a stub even without the toolchain; only running it proves it is installed.
 if ! xcrun metal --version >/dev/null 2>&1; then
   info "Installing Metal Toolchain (needed by mlx-swift)…"

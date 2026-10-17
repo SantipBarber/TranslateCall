@@ -10,6 +10,7 @@ dependencies = [
     "soxr==1.1.0",
     "sacrebleu==2.6.0",
     "jinja2==3.1.6",
+    "pyarrow==25.0.1",
 ]
 
 [project.optional-dependencies]
@@ -33,3 +34,9 @@ packages = ["tcbench"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# Network/real-model tests are opt-in: pytest -m network
+addopts = "-m 'not network'"
+
+[tool.uv]
+# Supply-chain hygiene: never resolve a release newer than this date (re-lock deliberately to move it).
+exclude-newer = "2026-10-03T00:00:00Z"

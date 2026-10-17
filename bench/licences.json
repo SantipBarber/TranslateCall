@@ -1,0 +1,42 @@
+{
+  "deferred": [
+    {
+      "id": "smart_turn_v3_test",
+      "note": "pipecat-ai/smart-turn-data-v3-test is deferred to project 2 (M9 ruling R1); not fetched, not in the manifest, not allowed here."
+    }
+  ],
+  "sources": [
+    {
+      "id": "fleurs",
+      "name": "FLEURS (google/fleurs)",
+      "licence": "CC-BY-4.0",
+      "url": "https://huggingface.co/datasets/google/fleurs",
+      "evidence": "Dataset card front matter 'license: cc-by-4.0' and 'All datasets are licensed under the Creative Commons license (CC-BY)', at revision 70bb2e84b976b7e960aa89f1c648e09c59f894dd.",
+      "attribution": "FLEURS, Google. Conneau et al., 'FLEURS: Few-shot Learning Evaluation of Universal Representations of Speech', 2022 (arXiv:2205.12446). Licensed under CC BY 4.0. Audio was resampled/normalised; no other changes."
+    },
+    {
+      "id": "voxpopuli",
+      "name": "VoxPopuli (facebook/voxpopuli)",
+      "licence": "CC0-1.0",
+      "url": "https://huggingface.co/datasets/facebook/voxpopuli",
+      "evidence": "Dataset card: 'The dataset is distributet under CC0 license, see also European Parliament's legal notice for the raw data.' (front matter lists cc0-1.0 and other), at revision 42f01879c780b4a2e90ec0b4f616c2ece526e4f1.",
+      "attribution": "VoxPopuli, Meta AI. Wang et al., 'VoxPopuli: A Large-Scale Multilingual Speech Corpus for Representation Learning, Semi-Supervised Learning and Interpretation', ACL 2021. CC0 1.0; underlying recordings (c) European Union / European Parliament, see https://www.europarl.europa.eu/legal-notice/en/."
+    },
+    {
+      "id": "ntrex128",
+      "name": "NTREX-128 (MicrosoftTranslator/NTREX)",
+      "licence": "CC-BY-SA-4.0",
+      "url": "https://github.com/MicrosoftTranslator/NTREX",
+      "evidence": "README: 'The NTREX-128 data set is released under the CC BY-SA 4.0 license'; GitHub licence detection reports CC-BY-SA-4.0, at commit 468c6b69c7f6a75d31d4743d9daba2af566cc18d.",
+      "attribution": "NTREX-128, Microsoft. Federmann, Kocmi and Xin, 'NTREX-128 - News Test References for MT Evaluation of 128 Languages', 2022; based on WMT19 newstest2019 (Barrault et al., 2019). CC BY-SA 4.0. Sentences are used unchanged as MT test data."
+    },
+    {
+      "id": "common_voice",
+      "name": "Mozilla Common Voice (optional, gated)",
+      "licence": "CC0-1.0",
+      "url": "https://commonvoice.mozilla.org/",
+      "evidence": "Common Voice is published under CC0; access to the Hugging Face copy is gated and needs TC_BENCH_CV_TOKEN. Not verified against a card in phase 1 (no token); not selected.",
+      "attribution": "Mozilla Common Voice contributors. CC0 1.0."
+    }
+  ]
+}

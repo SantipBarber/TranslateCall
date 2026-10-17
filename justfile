@@ -45,7 +45,15 @@ test-tooling:
 
 # Python benchmark tooling tests (tools/bench; no network)
 test-bench-tools:
-    uv run --project tools/bench pytest -q
+    uv run --locked --project tools/bench pytest -q
+
+# Download + normalise manifest clips into ~/Library/Caches/TranslateCallBench (override: TC_BENCH_CACHE). set: pr | full
+bench-fetch set="pr":
+    uv run --locked --project tools/bench tcbench fetch --set {{set}}
+
+# Regenerate bench/manifests/phase1.json (needs the optional 'vad' extra: silero-vad)
+bench-manifest:
+    uv run --locked --extra vad --project tools/bench tcbench manifest
 
 # Everything GitHub runs: lint + scan + tooling self-tests + bench tooling tests
 check: lint scan test-tooling test-bench-tools
