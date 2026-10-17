@@ -1,3 +1,5 @@
+import Foundation
+
 /// Waits for a stream-collector task to finish on its own (it breaks on a terminal value) and
 /// cancels it only after `timeout`. Replaces fixed 50 ms sleeps, which flaked when the full suite
 /// kept the MainActor busy and the collector had not run yet.
@@ -23,4 +25,13 @@ func waitUntil(
         try? await Task.sleep(for: .milliseconds(5))
     }
     return await condition()
+}
+
+/// Lets work already queued on the main queue (e.g. a `receive(on: DispatchQueue.main)` sink) run
+/// before asserting that something did *not* happen.
+@MainActor
+func mainQueueHop() async {
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        DispatchQueue.main.async { continuation.resume() }
+    }
 }

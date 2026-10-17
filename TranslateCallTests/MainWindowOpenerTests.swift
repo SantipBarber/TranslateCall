@@ -6,12 +6,15 @@ private final class FakeWindow: MainWindowCandidate {
     let canBecomeMain: Bool
     private(set) var isVisible: Bool
     let isMiniaturized: Bool
+    let sceneIdentifier: String?
     private(set) var raised = false
 
-    init(canBecomeMain: Bool, isVisible: Bool, isMiniaturized: Bool = false) {
+    init(canBecomeMain: Bool, isVisible: Bool, isMiniaturized: Bool = false,
+         sceneIdentifier: String? = "main-AppWindow-1") {
         self.canBecomeMain = canBecomeMain
         self.isVisible = isVisible
         self.isMiniaturized = isMiniaturized
+        self.sceneIdentifier = sceneIdentifier
     }
 
     func raise() { raised = true }
@@ -28,6 +31,16 @@ struct MainWindowOpenerTests {
         var count = 0
         opener.openWindow = { count += 1 }
         return (opener, { count })
+    }
+
+    @Test("a visible Settings window is not the main window: a new one is requested (M9 UI core)")
+    func settingsWindowIsNotMain() {
+        let (opener, opens) = makeOpener()
+        let settings = FakeWindow(canBecomeMain: true, isVisible: true,
+                                  sceneIdentifier: "com_apple_SwiftUI_Settings_window")
+        #expect(opener.show(in: [settings]) == .openRequested)
+        #expect(opens() == 1)
+        #expect(!settings.raised)
     }
 
     @Test("only the invisible-to-main host is on screen: a new main window is requested")

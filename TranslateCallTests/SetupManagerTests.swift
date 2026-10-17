@@ -146,3 +146,39 @@ struct SetupManagerTests {
         #expect(mgr.captureAppsLoaded)
     }
 }
+
+// MARK: - Selection by bundle ID (M9 UI core REQ-UI-80b)
+
+@Suite("SetupManager selection by bundle ID", .serialized) @MainActor
+struct SetupManagerBundleSelectionTests {
+
+    private func makeDefaults() -> UserDefaults {
+        UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+    }
+
+    @Test("an app that is not running can be selected; the target and the published ID follow")
+    func selectNotRunningApp() {
+        let defaults = makeDefaults()
+        let manager = SetupManager(defaults: defaults)
+        manager.selectCaptureApp(bundleID: "us.zoom.xos")
+        #expect(manager.selectedCaptureBundleID == "us.zoom.xos")
+        #expect(manager.captureTarget == .app(bundleID: "us.zoom.xos"))
+        #expect(defaults.string(forKey: "tlk.captureApp.bundleID") == "us.zoom.xos")
+    }
+
+    @Test("nil or empty selects None (outgoing only)")
+    func selectNone() {
+        let manager = SetupManager(defaults: makeDefaults())
+        manager.selectCaptureApp(bundleID: "us.zoom.xos")
+        manager.selectCaptureApp(bundleID: "")
+        #expect(manager.selectedCaptureBundleID == nil)
+        #expect(manager.captureTarget == nil)
+    }
+
+    @Test("the persisted choice is published at init")
+    func restoredAtInit() {
+        let defaults = makeDefaults()
+        defaults.set("com.microsoft.teams2", forKey: "tlk.captureApp.bundleID")
+        #expect(SetupManager(defaults: defaults).selectedCaptureBundleID == "com.microsoft.teams2")
+    }
+}

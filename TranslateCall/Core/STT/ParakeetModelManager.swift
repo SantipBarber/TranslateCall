@@ -55,19 +55,22 @@ actor ParakeetModelManager {
     /// Retained after first load; cleared on `unload()`.
     private var asrManager: (any AsrTranscriber)?
 
-    /// Injected factory — creates a ready `AsrTranscriber` from a `ParakeetConfiguration`.
-    ///
-    /// Default implementation tries the cache first, falls back to download.
+    /// Creates a ready `AsrTranscriber` from a `ParakeetConfiguration`.
+    typealias Factory = @Sendable (ParakeetConfiguration) async throws -> any AsrTranscriber
+
+    /// Injected factory. Default implementation tries the cache first, falls back to download.
     /// Tests inject a factory that returns a mock immediately.
-    private let managerFactory: @Sendable (ParakeetConfiguration) async throws -> any AsrTranscriber
+    private let managerFactory: Factory
+
+    /// Injected cache-only factory used by `loadCached` (M9 UI core D-6); never downloads.
+    private let cachedFactory: Factory
 
     // MARK: - Init
 
-    init(
-        managerFactory: @escaping @Sendable (ParakeetConfiguration) async throws
-            -> any AsrTranscriber = ParakeetModelManager.defaultFactory
-    ) {
+    init(managerFactory: @escaping Factory = ParakeetModelManager.defaultFactory,
+         cachedFactory: @escaping Factory = ParakeetModelManager.cacheOnlyFactory) {
         self.managerFactory = managerFactory
+        self.cachedFactory = cachedFactory
         var cont: AsyncStream<ModelState>.Continuation?
         stateStream = AsyncStream { cont = $0 }
         stateStreamContinuation = cont
@@ -80,30 +83,12 @@ actor ParakeetModelManager {
     /// Concurrent callers share the same in-flight `loadTask` — the model is
     /// downloaded and initialized exactly once per app session.
     func ensureReady(config: ParakeetConfiguration = .default) async throws -> any AsrTranscriber {
-        // Fast path: model already loaded.
-        if let existing = asrManager {
-            return existing
-        }
+        try await load(config: config, using: managerFactory)
+    }
 
-        // Coalesce: if a load is already in progress, await it.
-        if let inflight = loadTask {
-            return try await inflight.value
-        }
-
-        // Start a new load task.
-        let task = Task { [self] in
-            try await self.performLoad(config: config)
-        }
-        loadTask = task
-
-        do {
-            let mgr = try await task.value
-            loadTask = nil
-            return mgr
-        } catch {
-            loadTask = nil
-            throw error
-        }
+    /// Loads the model from the disk cache only; throws instead of downloading (M9 UI core D-6).
+    func loadCached(config: ParakeetConfiguration = .default) async throws {
+        _ = try await load(config: config, using: cachedFactory)
     }
 
     /// Discards the cached model files and re-downloads from scratch.
@@ -132,11 +117,39 @@ actor ParakeetModelManager {
 
     // MARK: - Private
 
-    private func performLoad(config: ParakeetConfiguration) async throws -> any AsrTranscriber {
+    private func load(config: ParakeetConfiguration, using factory: @escaping Factory) async throws
+        -> any AsrTranscriber {
+        // Fast path: model already loaded.
+        if let existing = asrManager {
+            return existing
+        }
+
+        // Coalesce: if a load is already in progress, await it.
+        if let inflight = loadTask {
+            return try await inflight.value
+        }
+
+        // Start a new load task.
+        let task = Task { [self] in
+            try await self.performLoad(config: config, factory: factory)
+        }
+        loadTask = task
+
+        do {
+            let mgr = try await task.value
+            loadTask = nil
+            return mgr
+        } catch {
+            loadTask = nil
+            throw error
+        }
+    }
+
+    private func performLoad(config: ParakeetConfiguration, factory: Factory) async throws -> any AsrTranscriber {
         updateState(.loading)
         modelLogger.info("Loading Parakeet model (version: \(String(describing: config.modelVersion)))…")
         do {
-            let mgr = try await managerFactory(config)
+            let mgr = try await factory(config)
             asrManager = mgr
             updateState(.ready)
             modelLogger.info("Parakeet model ready")
@@ -157,11 +170,8 @@ actor ParakeetModelManager {
     // MARK: - Default factory
 
     /// Tries to load from cache; falls back to download.
-    nonisolated static let defaultFactory: @Sendable (ParakeetConfiguration) async throws
-        -> any AsrTranscriber = { config in
-        let mlConfig = MLModelConfiguration()
-        mlConfig.computeUnits = config.preferANE ? .all : .cpuAndGPU
-
+    nonisolated static let defaultFactory: Factory = { config in
+        let mlConfig = modelConfiguration(for: config)
         let models: AsrModels
         do {
             models = try await AsrModels.loadFromCache(
@@ -177,7 +187,29 @@ actor ParakeetModelManager {
             )
             modelLogger.debug("Downloaded Parakeet model")
         }
+        return try await initializedManager(models)
+    }
 
+    /// Loads from the cache only; a missing or unusable cache throws `ModelCacheError.notCached`
+    /// (M9 UI core D-6). `loadFromCache` alone is not enough: it downloads missing files and, when a
+    /// load fails, deletes the cache and downloads again. `isModelValid` checks every file and loads
+    /// each model once (CPU) without network, so the load that follows finds a complete cache.
+    nonisolated static let cacheOnlyFactory: Factory = { config in
+        guard (try? await AsrModels.isModelValid(version: config.modelVersion)) == true else {
+            throw ModelCacheError.notCached
+        }
+        let models = try await AsrModels.loadFromCache(configuration: modelConfiguration(for: config),
+                                                       version: config.modelVersion)
+        return try await initializedManager(models)
+    }
+
+    nonisolated private static func modelConfiguration(for config: ParakeetConfiguration) -> MLModelConfiguration {
+        let mlConfig = MLModelConfiguration()
+        mlConfig.computeUnits = config.preferANE ? .all : .cpuAndGPU
+        return mlConfig
+    }
+
+    nonisolated private static func initializedManager(_ models: AsrModels) async throws -> any AsrTranscriber {
         let mgr = AsrManager()
         try await mgr.initialize(models: models)
         return mgr
