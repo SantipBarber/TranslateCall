@@ -179,3 +179,21 @@ def test_stats_report_kept_quota_and_pr():
     manifest.build(c)
     st = c.stats["fl/en"]
     assert (st["kept"], st["quota"], st["kept_pr"], st["quota_pr"]) == (12, 12, 3, 3)
+
+
+def test_per_speaker_cap_limits_clips_per_speaker():
+    class Capped(StubAudio):
+        max_per_speaker = 2
+
+        def candidates(self, variant):
+            return [
+                Candidate(f"{variant}/{i}", "es", variant, f"s {i}", 3.0, f"spk{i % 4}", True, {}, [self.dataset])
+                for i in range(40)
+            ]
+
+    m = manifest.build(cfg([Capped("capsrc", ["es-ES"], n=40)]))
+    per = {}
+    for c in m["clips"]:
+        per[c["speaker"]] = per.get(c["speaker"], 0) + 1
+    assert per and max(per.values()) <= 2
+    assert len(m["clips"]) == 8  # 4 speakers x 2

@@ -27,8 +27,6 @@ def _cmd_manifest(args) -> int:
     cache = sources.default_cache_dir()
     audio_sources, text_sources = sources.phase1_sources(cache)
     cfg = manifest.SourcesConfig(audio=audio_sources, text=text_sources)
-    note = sources.CommonVoice.skip_reason()
-    print(note, file=sys.stderr)
     m = manifest.build(cfg, seed=args.seed)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

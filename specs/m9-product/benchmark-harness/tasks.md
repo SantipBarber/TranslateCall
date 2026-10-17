@@ -55,7 +55,7 @@
   - Python: `uv run --project tools/bench pytest -q`.
 - **Missing prerequisites fail, never skip.** Use `requirePrerequisite(_:_:)` from `TranslateCallTests/Integration/Prerequisites.swift`, which is visible from `Bench/` because it is in the same target.
 - **`just pr` precondition (P7).** `EdgeTTSIntegrationTests` (backlog A11) fails on `main` today: Microsoft returns 403 on the WebSocket upgrade. The UI thread's PR is expected to wrap it in `withKnownIssue` (A27). No step below relies on `just pr` being green until that lands; Task 16 checks for it first.
-- **Licences.** The allow-list is FLEURS CC BY 4.0, VoxPopuli CC0, Common Voice CC0 (gated, optional), Smart Turn v3 test CC BY 4.0, NTREX CC BY-SA 4.0 and `Unbabel/wmt22-comet-da` Apache-2.0.
+- **Licences.** The allow-list is FLEURS CC BY 4.0, Common Voice CC0 (local archive, es-ES), Smart Turn v3 test CC BY 4.0, NTREX CC BY-SA 4.0 and `Unbabel/wmt22-comet-da` Apache-2.0.
   - Never commit audio or cache content.
   - Nothing non-commercial or no-derivatives: no CoVoST 2, MuST-C, mTEDx, CometKiwi or XCOMET.
 - **Spanish variants.** `es-ES` and `es-419` are separate variants everywhere, and Smart Turn Spanish is `es-xx`. Never aggregate them together.
@@ -634,10 +634,9 @@ git commit -m "test(bench): run lines × profiles writing raw.json v1 (M9 REQ-BH
   - The per-source selection rules and pinned revisions are those of design §4.1:
     - **FLEURS:** `google/fleurs`, configs `es_419` and `en_us`, test split. Only ids present in both; 2–12 s; 300 full; 8 per run line in PR, chosen ≤ 6 s.
     - **All audio sources:** the span must leave at least 200 ms of file before `speechStartMs` and 300 ms after `speechEndMs`. If a variant cannot reach its quota under the quality filters, the smaller N is accepted and recorded; the filters are not relaxed.
-    - **VoxPopuli:** `facebook/voxpopuli` `es` test → `es-ES`; transcripts must start with a capital letter and end with sentence-final punctuation.
+    - **Common Voice (es-ES):** local archive `cv-corpus-27.0-2026-09-11-es.tar` (`TC_BENCH_CV_ARCHIVE`), `test.tsv` only, exact Spain accents, at most 5 clips per speaker, speaker = salted hash of `client_id`; see design §4.1. VoxPopuli is no longer a source.
     - **Smart Turn v3 test:** deferred to project 2 (controller ruling R1); not fetched and not in the manifest.
     - **NTREX-128:** pinned git commit. 200 sentences per direction in full, **100 in PR (P5)**, seed 1729.
-    - **Common Voice:** only when `TC_BENCH_CV_TOKEN` is set, with a clear skip message otherwise. Selection with a token is a recorded phase-1 deferral.
 
     `huggingface_hub` revisions are pinned in `sources.py` as commit SHAs, resolved once at execution time and written as constants.
 - **Manifest entry fields:** every field of REQ-BH-01, plus `audio`, the cache-relative path `"<dataset>/<variant>/<id>.wav"`.

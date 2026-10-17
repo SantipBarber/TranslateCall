@@ -14,7 +14,7 @@ from .groundtruth import speech_span
 from .sources import ALLOWED_LICENCES, Candidate
 
 SCHEMA = 1
-SHORT = {"fleurs": "fleurs", "voxpopuli": "vp"}
+SHORT = {"fleurs": "fleurs", "voxpopuli": "vp", "common_voice": "cv"}
 
 
 @dataclass
@@ -63,6 +63,8 @@ def _select_variant(src, variant: str, cfg: SourcesConfig, seed: int, claimed: s
     stat = cfg.stats.setdefault(f"{src.dataset}/{variant}", {"candidates": len(ordered), "tried": 0, "dropped": {}, "dropped_dup": 0, "end_offsets_all": [], "end_offsets_kept": []})
     accepted: list[tuple] = []
     tried: set[str] = set()
+    speakers: dict[str, int] = {}
+    speaker_cap = getattr(src, "max_per_speaker", None)
 
     def process(batch: list[Candidate], cap: int, is_pr: bool) -> None:
         """Accept clips from `batch` until `accepted` holds `cap` clips."""
@@ -73,6 +75,8 @@ def _select_variant(src, variant: str, cfg: SourcesConfig, seed: int, claimed: s
         for c in batch:
             if len(accepted) >= cap:
                 return
+            if speaker_cap is not None and speakers.get(c.speaker, 0) >= speaker_cap:
+                continue  # per-speaker cap: a few speakers must not dominate
             tried.add(c.original_id)
             stat["tried"] += 1
             source_samples = audio_mod.normalize(raw[c.original_id])
@@ -106,6 +110,7 @@ def _select_variant(src, variant: str, cfg: SourcesConfig, seed: int, claimed: s
                 stat["dropped_dup"] += 1
                 continue
             claimed.add(sha)
+            speakers[c.speaker] = speakers.get(c.speaker, 0) + 1
             if "silero" in why:
                 stat["end_offsets_kept"].append(why["silero"][1] - why["refined"][1])
             accepted.append((c, sha, span[0], span[1], is_pr, gain))

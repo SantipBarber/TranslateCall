@@ -15,14 +15,6 @@
       "attribution": "FLEURS, Google. Conneau et al., 'FLEURS: Few-shot Learning Evaluation of Universal Representations of Speech', 2022 (arXiv:2205.12446). Licensed under CC BY 4.0. Audio was resampled/normalised; no other changes."
     },
     {
-      "id": "voxpopuli",
-      "name": "VoxPopuli (facebook/voxpopuli)",
-      "licence": "CC0-1.0",
-      "url": "https://huggingface.co/datasets/facebook/voxpopuli",
-      "evidence": "Dataset card: 'The dataset is distributet under CC0 license, see also European Parliament's legal notice for the raw data.' (front matter lists cc0-1.0 and other), at revision 42f01879c780b4a2e90ec0b4f616c2ece526e4f1.",
-      "attribution": "VoxPopuli, Meta AI. Wang et al., 'VoxPopuli: A Large-Scale Multilingual Speech Corpus for Representation Learning, Semi-Supervised Learning and Interpretation', ACL 2021. CC0 1.0; underlying recordings (c) European Union / European Parliament, see https://www.europarl.europa.eu/legal-notice/en/."
-    },
-    {
       "id": "ntrex128",
       "name": "NTREX-128 (MicrosoftTranslator/NTREX)",
       "licence": "CC-BY-SA-4.0",
@@ -32,12 +24,23 @@
     },
     {
       "id": "common_voice",
-      "name": "Mozilla Common Voice (optional, gated)",
+      "name": "Mozilla Common Voice Scripted Speech 27.0 - Spanish (local archive)",
       "licence": "CC0-1.0",
-      "url": "https://commonvoice.mozilla.org/",
-      "evidence": "Common Voice is published under CC0; access to the Hugging Face copy is gated (TC_BENCH_CV_TOKEN). Not verified against a card in phase 1 (no token); not selected.",
-      "attribution": "Mozilla Common Voice contributors. CC0 1.0.",
-      "note": "Phase-1 deferral: with TC_BENCH_CV_TOKEN set, selection from Common Voice is still not implemented; revisit in a later phase."
+      "url": "https://mozilladatacollective.com/datasets/cmu5kitx700pemi073feoiqqu",
+      "evidence": "Dataset page on Mozilla Data Collective: CC0-1.0 (as stated by the user's download; archive cv-corpus-27.0-2026-09-11-es.tar, 55,738,360,832 bytes). Used from the local archive; no API.",
+      "terms": "No re-hosting or re-sharing; no attempt to identify speakers. Nothing leaves the local cache; no audio is committed. Speaker ids in the manifest are salted hashes of client_id.",
+      "attribution": "Mozilla Common Voice contributors. CC0 1.0. Only the test split is used, and only clips whose self-reported accent is a Spain variety."
+    }
+  ],
+  "retired": [
+    {
+      "id": "voxpopuli",
+      "name": "VoxPopuli (facebook/voxpopuli)",
+      "licence": "CC0-1.0",
+      "url": "https://huggingface.co/datasets/facebook/voxpopuli",
+      "evidence": "Dataset card: 'The dataset is distributet under CC0 license, see also European Parliament's legal notice for the raw data.' (front matter lists cc0-1.0 and other), at revision 42f01879c780b4a2e90ec0b4f616c2ece526e4f1.",
+      "attribution": "VoxPopuli, Meta AI. Wang et al., 'VoxPopuli: A Large-Scale Multilingual Speech Corpus for Representation Learning, Semi-Supervised Learning and Interpretation', ACL 2021. CC0 1.0; underlying recordings (c) European Union / European Parliament, see https://www.europarl.europa.eu/legal-notice/en/.",
+      "note": "Retired from phase 1: segments lack the required lead/tail silence (1 usable clip of 712). Not in the allow-list."
     }
   ]
 }
