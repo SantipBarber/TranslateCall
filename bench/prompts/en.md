@@ -26,7 +26,7 @@
 | en-15 | long | If you confirm attendance for Thursday's video call, we can send the final agenda today and everyone can prepare their questions in advance. | Si confirmáis la asistencia a la videollamada del jueves, podemos enviar la agenda definitiva hoy mismo y todos podréis preparar las preguntas con antelación. |
 | en-16 | long | The new project will run for about six months, with milestone deliveries every two weeks and joint reviews each Friday afternoon. | El nuevo proyecto durará unos seis meses, con entregas parciales cada dos semanas y revisiones conjuntas cada viernes por la tarde. |
 | en-17 | hesitation | What I mean is ‖ the budget just won't stretch that far. | Lo que quiero decir es que el presupuesto no da para tanto. |
-| en-18 | hesitation | I think ‖ uh ‖ if we check Pedro's computer ‖ we'll find the file. | Creo que si revisamos el ordenador de Pedro encontraremos el archivo. |
+| en-18 | hesitation | I think ‖ uh ‖ if we check Pedro's computer we'll find the file. | Creo que si revisamos el ordenador de Pedro encontraremos el archivo. |
 | en-19 | hesitation | Let me see ‖ do you think we can meet the client tomorrow? | A ver, ¿crees que podemos quedar mañana con el cliente? |
 | en-20 | hesitation | Friday ‖ or actually Monday ‖ would work better for closing the deal. | El viernes, o mejor el lunes, nos viene mejor para cerrar el acuerdo. |
 | en-21 | hesitation | So ‖ let me see, if I understood correctly ‖ the deadline is December tenth. | Entonces, a ver, si lo he entendido bien, el plazo es el diez de diciembre. |
