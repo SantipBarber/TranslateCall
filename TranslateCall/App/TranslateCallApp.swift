@@ -37,13 +37,6 @@ struct TranslateCallApp: App {
                     openFeedbackURL()
                 }
             }
-            #if DEBUG
-            CommandMenu("Debug") {
-                Button("Toggle Test Status Panel") {
-                    DebugStatusPanel.toggle()
-                }
-            }
-            #endif
         }
         Settings {
             SettingsView()
@@ -109,23 +102,3 @@ struct TranslateCallApp: App {
             ?? "unknown"
     }
 }
-
-#if DEBUG
-/// A test panel for the manual focus check (M9 UI core Task 2 step 6); Task 17 deletes it.
-@MainActor
-enum DebugStatusPanel {
-    static let controller = StatusPanelController(size: NSSize(width: 320, height: 120), autosaveName: nil) { _ in
-        PanelHostingView(rootView: DebugStatusPanelContent())
-    }
-
-    static func toggle() {
-        if controller.isVisible { controller.hide() } else { controller.show() }
-    }
-}
-
-private struct DebugStatusPanelContent: View {
-    var body: some View {
-        Text("Status panel test").padding().frame(width: 320, height: 120)
-    }
-}
-#endif

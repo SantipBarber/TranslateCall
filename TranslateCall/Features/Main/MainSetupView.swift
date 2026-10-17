@@ -83,6 +83,8 @@ struct MainSetupView: View {
     @EnvironmentObject private var model: MainSetupModel
     @EnvironmentObject private var session: CallSessionModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dismissWindow) private var dismissWindow
+    @AppStorage(UISettingsKeys.showStatusPanel) private var showStatusPanel = true
     @State private var showSetupWizard = false
     @State private var showVoiceProfiles = false
 
@@ -122,6 +124,10 @@ struct MainSetupView: View {
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active { setupManager.checkBlackHole() }
+        }
+        .onChange(of: session.phase) { _, phase in
+            // The panel takes over; with it off the window stays (REQ-UI-40, P22).
+            if phase == .running, showStatusPanel { dismissWindow(id: MainWindowOpener.windowID) }
         }
         .onChange(of: languages.sourceLanguage) { _, _ in Task { await model.refresh() } }
         .onChange(of: languages.targetLanguage) { _, _ in Task { await model.refresh() } }

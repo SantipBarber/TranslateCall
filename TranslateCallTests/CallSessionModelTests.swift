@@ -4,7 +4,7 @@ import Testing
 
 /// A CallSessionModel over a mock-backed coordinator and view model (no hardware, no models).
 @MainActor
-private struct SessionHarness {
+struct SessionHarness {
     let mocks = CoordinatorMocks()
     let coordinator: AudioCoordinator
     let viewModel: AudioViewModel

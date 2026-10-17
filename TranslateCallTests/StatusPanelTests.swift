@@ -8,7 +8,7 @@ struct StatusPanelTests {
 
     private func makeController() -> StatusPanelController {
         StatusPanelController(size: NSSize(width: 320, height: 174), autosaveName: nil,
-                              screenFrame: { NSRect(x: 0, y: 0, width: 1440, height: 875) }) { _ in NSView() }
+                              visibleFrames: { [NSRect(x: 0, y: 0, width: 1440, height: 875)] }) { _ in NSView() }
     }
 
     @Test("floating, non-activating, on every Space and over full screen; never key or main")
@@ -80,5 +80,108 @@ struct StatusPanelTests {
         #expect(controller.isExpanded)
         controller.toggleExpanded()
         #expect(!controller.isExpanded)
+    }
+
+    // MARK: Restoring the position
+
+    private let screen = NSRect(x: 0, y: 25, width: 1440, height: 850)
+    private let size = NSSize(width: 320, height: 174)
+
+    @Test("a saved top-left restores the frame hanging from it")
+    func restoresFromTopLeft() {
+        let frame = StatusPanel.restoredFrame(topLeft: NSPoint(x: 500, y: 700), size: size, visibleFrames: [screen])
+        #expect(frame == NSRect(x: 500, y: 700 - 174, width: 320, height: 174))
+    }
+
+    @Test("a point off the screen is clamped inside the visible frame")
+    func clampsToVisibleFrame() {
+        let right = StatusPanel.restoredFrame(topLeft: NSPoint(x: 5000, y: 5000), size: size, visibleFrames: [screen])
+        #expect(right == NSRect(x: 1440 - 320, y: 875 - 174, width: 320, height: 174))
+        let low = StatusPanel.restoredFrame(topLeft: NSPoint(x: -400, y: -50), size: size, visibleFrames: [screen])
+        #expect(low == NSRect(x: 0, y: 25, width: 320, height: 174))
+    }
+
+    @Test("with a second screen the point picks its own screen")
+    func picksTheScreenHoldingThePoint() {
+        let second = NSRect(x: 1440, y: 0, width: 1920, height: 1055)
+        let frame = StatusPanel.restoredFrame(topLeft: NSPoint(x: 1500, y: 900), size: size,
+                                              visibleFrames: [screen, second])
+        #expect(frame == NSRect(x: 1500, y: 900 - 174, width: 320, height: 174))
+    }
+
+    @Test("nothing saved or no screen: no restored frame")
+    func noRestore() {
+        #expect(StatusPanel.restoredFrame(topLeft: nil, size: size, visibleFrames: [screen]) == nil)
+        #expect(StatusPanel.restoredFrame(topLeft: NSPoint(x: 1, y: 1), size: size, visibleFrames: []) == nil)
+    }
+
+    @Test("moving the panel saves its top-left; a new controller restores it, still compact")
+    func persistsTopLeft() throws {
+        let defaults = try #require(UserDefaults(suiteName: "test-\(UUID().uuidString)"))
+        let first = StatusPanelController(size: size, autosaveName: "T", defaults: defaults,
+                                          visibleFrames: { [screen] }) { _ in NSView() }
+        defer { first.panel.close() }
+        first.resize(to: NSSize(width: 320, height: 380))   // expanded when the app quits
+        first.panel.setFrameOrigin(NSPoint(x: 300, y: 200))
+        let second = StatusPanelController(size: size, autosaveName: "T", defaults: defaults,
+                                           visibleFrames: { [screen] }) { _ in NSView() }
+        defer { second.panel.close() }
+        #expect(second.panel.frame.maxY == 580)
+        #expect(second.panel.frame.minX == 300)
+        #expect(second.panel.frame.size == size)
+    }
+
+    @Test("the blur is clipped by a resizable mask image, not a layer radius")
+    func roundedMask() throws {
+        let background = try #require(makeController().panel.contentView as? NSVisualEffectView)
+        let mask = try #require(background.maskImage)
+        #expect(mask.capInsets.top == 12 && mask.capInsets.left == 12)
+        #expect(background.frame.size == size)
+    }
+
+    // MARK: Session binding and copy
+
+    @Test("the panel shows while the session runs and hides when it ends; off, it stays hidden (REQ-UI-40/47)")
+    func followsTheSession() async throws {
+        let on = try #require(UserDefaults(suiteName: "test-\(UUID().uuidString)"))
+        UISettingsKeys.registerDefaults(in: on)
+        let harness = SessionHarness()
+        let controller = makeController()
+        defer { controller.panel.close() }
+        controller.bind(to: harness.session, defaults: on)
+        await harness.coordinator.start(captureTarget: .app(bundleID: "com.test.call"))
+        #expect(await waitUntil { controller.isVisible })
+        await harness.session.stop()
+        #expect(await waitUntil { !controller.isVisible })
+
+        let off = try #require(UserDefaults(suiteName: "test-\(UUID().uuidString)"))
+        off.set(false, forKey: UISettingsKeys.showStatusPanel)
+        let other = makeController()
+        defer { other.panel.close() }
+        other.bind(to: harness.session, defaults: off)
+        await harness.coordinator.start(captureTarget: .app(bundleID: "com.test.call"))
+        #expect(await waitUntil { harness.session.phase == .running })
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(!other.isVisible)
+        await harness.session.stop()
+    }
+
+    @Test("quotes follow the language: «» Spanish, „“ German, “” English")
+    func quotes() {
+        #expect(PanelQuote.wrap("Hola", languageCode: "es") == "«Hola»")
+        #expect(PanelQuote.wrap("Hallo", languageCode: "de") == "„Hallo“")
+        #expect(PanelQuote.wrap("Hi", languageCode: "en") == "“Hi”")
+        #expect(PanelQuote.wrap("Hi", languageCode: nil) == "“Hi”")
+    }
+
+    @Test("every state has the chip icon of the design")
+    func chipIcons() {
+        #expect(DirectionState.speaking.chipStyle.systemImage == "speaker.wave.2")
+        #expect(DirectionState.listening.chipStyle.systemImage == "ear")
+        #expect(DirectionState.hearing.chipStyle.systemImage == "waveform")
+        #expect(DirectionState.translating.chipStyle.systemImage == "ellipsis")
+        #expect(DirectionState.paused.chipStyle.systemImage == "pause")
+        #expect(DirectionState.micPaused.chipStyle.systemImage == "mic.slash")
+        #expect(DirectionState.unavailable(.targetNotFound(bundleID: "x")).chipStyle.systemImage == "speaker.slash")
     }
 }
