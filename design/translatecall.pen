@@ -1187,7 +1187,7 @@
     {
       "type": "frame",
       "id": "i9YcC",
-      "x": 1360,
+      "x": 1380,
       "y": 0,
       "name": "Main Window — Setup (Dark)",
       "theme": {
@@ -2370,8 +2370,8 @@
     {
       "type": "frame",
       "id": "vr2HP",
-      "x": 1860,
-      "y": 0,
+      "x": 880,
+      "y": 845,
       "name": "Status Panel — Compact (Light)",
       "theme": {
         "mode": "light"
@@ -2788,8 +2788,8 @@
     {
       "type": "frame",
       "id": "WiCOt",
-      "x": 2240,
-      "y": 0,
+      "x": 1280,
+      "y": 845,
       "name": "Status Panel — Compact (Dark)",
       "theme": {
         "mode": "dark"
@@ -3206,8 +3206,8 @@
     {
       "type": "frame",
       "id": "BPf5j",
-      "x": 1860,
-      "y": 300,
+      "x": 2100,
+      "y": 845,
       "name": "In Context — Panel over a video call",
       "clip": true,
       "width": 1100,
@@ -3964,8 +3964,8 @@
     {
       "type": "frame",
       "id": "DNobA",
-      "x": 2620,
-      "y": 0,
+      "x": 1680,
+      "y": 845,
       "name": "Status Panel — Expanded (Light)",
       "theme": {
         "mode": "light"
@@ -4407,8 +4407,8 @@
     {
       "type": "frame",
       "id": "yReTP",
-      "x": 1360,
-      "y": 759,
+      "x": 1880,
+      "y": 0,
       "name": "Advanced — Models for ES ↔ DE (Light)",
       "theme": {
         "mode": "light"
@@ -5886,8 +5886,8 @@
     {
       "type": "frame",
       "id": "bQKYO",
-      "x": 3040,
-      "y": 0,
+      "x": 880,
+      "y": 1625,
       "name": "Menu Bar — Idle (Light)",
       "theme": {
         "mode": "light"
@@ -6219,8 +6219,8 @@
     {
       "type": "frame",
       "id": "eBNlu",
-      "x": 3420,
-      "y": 0,
+      "x": 1300,
+      "y": 1625,
       "name": "Menu Bar — Translating (Light)",
       "theme": {
         "mode": "light"
@@ -6710,8 +6710,8 @@
     {
       "type": "frame",
       "id": "x33xYm",
-      "x": 1890,
-      "y": 1053,
+      "x": 880,
+      "y": 2091,
       "name": "Voice Clone — 1 Intro (Light)",
       "theme": {
         "mode": "light"
@@ -7308,8 +7308,8 @@
     {
       "type": "frame",
       "id": "BaQLy",
-      "x": 2488,
-      "y": 1053,
+      "x": 1520,
+      "y": 2091,
       "name": "Voice Clone — 2 Recording (Light)",
       "theme": {
         "mode": "light"
@@ -8348,8 +8348,8 @@
     {
       "type": "frame",
       "id": "rOxoD",
-      "x": 3114,
-      "y": 1053,
+      "x": 2160,
+      "y": 2091,
       "name": "Voice Clone — 3 Listen & Save (Light)",
       "theme": {
         "mode": "light"
@@ -9401,6 +9401,3194 @@
                   "fontFamily": "$font",
                   "fontSize": 13,
                   "fontWeight": "600"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "btiTo",
+      "x": 880,
+      "y": 2786,
+      "name": "Setup — 1 Permissions (Light)",
+      "theme": {
+        "mode": "light"
+      },
+      "clip": true,
+      "width": 680,
+      "height": 480,
+      "fill": "$window-bg",
+      "cornerRadius": 12,
+      "stroke": "$separator",
+      "strokeWidth": 1,
+      "effect": {
+        "type": "shadow",
+        "shadowType": "outer",
+        "color": "#00000030",
+        "offset": {
+          "x": 0,
+          "y": 18
+        },
+        "blur": 48
+      },
+      "children": [
+        {
+          "type": "frame",
+          "id": "m9BnTL",
+          "name": "Sidebar",
+          "width": 210,
+          "height": "fill_container",
+          "fill": "$control-bg",
+          "layout": "vertical",
+          "gap": 4,
+          "padding": [
+            14,
+            12,
+            16,
+            12
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "p7dr9",
+              "name": "Traffic Lights",
+              "gap": 8,
+              "padding": [
+                0,
+                2,
+                18,
+                2
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "ellipse",
+                  "id": "Wc8Px",
+                  "name": "Light",
+                  "fill": "#FF5F57",
+                  "width": 12,
+                  "height": 12
+                },
+                {
+                  "type": "ellipse",
+                  "id": "iZVWF",
+                  "name": "Light",
+                  "fill": "#FEBC2E",
+                  "width": 12,
+                  "height": 12
+                },
+                {
+                  "type": "ellipse",
+                  "id": "uKrbL",
+                  "name": "Light",
+                  "fill": "#28C840",
+                  "width": 12,
+                  "height": 12
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "id": "SV1uY",
+              "name": "Sidebar Title",
+              "fill": "$text-secondary",
+              "content": "Set up TranslateCall",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "700"
+            },
+            {
+              "type": "frame",
+              "id": "vTC4D",
+              "name": "Gap",
+              "width": 1,
+              "height": 6
+            },
+            {
+              "type": "frame",
+              "id": "zOG6i",
+              "name": "Permissions",
+              "width": "fill_container",
+              "fill": "$group-bg",
+              "cornerRadius": 7,
+              "gap": 8,
+              "padding": [
+                7,
+                8
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Syph1",
+                  "name": "Badge",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$accent",
+                  "cornerRadius": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "CY2oG",
+                      "name": "Num",
+                      "fill": "#FFFFFF",
+                      "content": "1",
+                      "fontFamily": "$font",
+                      "fontSize": 10,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "hy8yA",
+                  "name": "Permissions",
+                  "fill": "$text-primary",
+                  "content": "Permissions",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "XlxBq",
+              "name": "Audio driver",
+              "width": "fill_container",
+              "cornerRadius": 7,
+              "gap": 8,
+              "padding": [
+                7,
+                8
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bsgO4",
+                  "name": "Badge",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$separator",
+                  "cornerRadius": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "YaIsG",
+                      "name": "Num",
+                      "fill": "$text-secondary",
+                      "content": "2",
+                      "fontFamily": "$font",
+                      "fontSize": 10,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "cAKXE",
+                  "name": "Audio driver",
+                  "fill": "$text-secondary",
+                  "content": "Audio driver",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "KBL13",
+              "name": "Call app microphone",
+              "width": "fill_container",
+              "cornerRadius": 7,
+              "gap": 8,
+              "padding": [
+                7,
+                8
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "ueJBO",
+                  "name": "Badge",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$separator",
+                  "cornerRadius": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "FSSDB",
+                      "name": "Num",
+                      "fill": "$text-secondary",
+                      "content": "3",
+                      "fontFamily": "$font",
+                      "fontSize": 10,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "U1AYHt",
+                  "name": "Call app microphone",
+                  "fill": "$text-secondary",
+                  "content": "Call app microphone",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "sOGFv",
+              "name": "Test",
+              "width": "fill_container",
+              "cornerRadius": 7,
+              "gap": 8,
+              "padding": [
+                7,
+                8
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "yLiIF",
+                  "name": "Badge",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$separator",
+                  "cornerRadius": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Q6NGy",
+                      "name": "Num",
+                      "fill": "$text-secondary",
+                      "content": "4",
+                      "fontFamily": "$font",
+                      "fontSize": 10,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "g4hzAh",
+                  "name": "Test",
+                  "fill": "$text-secondary",
+                  "content": "Test",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "RfwZx",
+              "name": "Spacer",
+              "width": 1,
+              "height": "fill_container"
+            },
+            {
+              "type": "frame",
+              "id": "Tpnze",
+              "name": "Privacy",
+              "gap": 6,
+              "padding": [
+                0,
+                4
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "Ffsku",
+                  "name": "Lock",
+                  "width": 11,
+                  "height": 11,
+                  "icon": "lock",
+                  "library": "lucide",
+                  "fill": "$green"
+                },
+                {
+                  "type": "text",
+                  "id": "pBJVE",
+                  "name": "Everything stays on this",
+                  "fill": "$text-secondary",
+                  "content": "Everything stays on this Mac",
+                  "fontFamily": "$font",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "oCNjl",
+          "name": "Content",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "children": [
+            {
+              "type": "frame",
+              "id": "a9hir",
+              "name": "Body",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 16,
+              "padding": [
+                44,
+                32,
+                16,
+                32
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Qxf8Z",
+                  "name": "Heading",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 6,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "EkQ9j",
+                      "name": "Title",
+                      "fill": "$text-primary",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Allow TranslateCall to hear the call",
+                      "fontFamily": "$font",
+                      "fontSize": 20,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Styu5",
+                      "name": "Subtitle",
+                      "fill": "$text-secondary",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "macOS asks for two permissions. TranslateCall only listens while you're translating, and nothing is recorded or sent anywhere.",
+                      "lineHeight": 1.45,
+                      "fontFamily": "$font",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "s8S6h",
+                  "name": "Permissions",
+                  "width": "fill_container",
+                  "fill": "$group-bg",
+                  "cornerRadius": 10,
+                  "stroke": "$separator",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "HFNHE",
+                      "name": "Microphone",
+                      "width": "fill_container",
+                      "stroke": "$separator",
+                      "strokeWidth": {
+                        "bottom": 1
+                      },
+                      "gap": 12,
+                      "padding": [
+                        12,
+                        14
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "hm6Qq",
+                          "name": "Icon Box",
+                          "width": 32,
+                          "height": 32,
+                          "fill": "$accent-soft",
+                          "cornerRadius": 8,
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "MXntj",
+                              "name": "Icon",
+                              "width": 16,
+                              "height": 16,
+                              "icon": "mic",
+                              "library": "lucide",
+                              "fill": "$accent"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "d04axg",
+                          "name": "Text",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 2,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "EHL8d",
+                              "name": "Microphone",
+                              "fill": "$text-primary",
+                              "content": "Microphone",
+                              "fontFamily": "$font",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "zCa65",
+                              "name": "Desc",
+                              "fill": "$text-secondary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "To hear what you say and translate it for them.",
+                              "lineHeight": 1.35,
+                              "fontFamily": "$font",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "yQo4g",
+                          "name": "Granted",
+                          "fill": "$green-soft",
+                          "cornerRadius": 10,
+                          "gap": 4,
+                          "padding": [
+                            3,
+                            8
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "PQkT0",
+                              "name": "Icon",
+                              "width": 11,
+                              "height": 11,
+                              "icon": "check",
+                              "library": "lucide",
+                              "fill": "$green"
+                            },
+                            {
+                              "type": "text",
+                              "id": "ahuac",
+                              "name": "Allowed",
+                              "fill": "$green",
+                              "content": "Allowed",
+                              "fontFamily": "$font",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "S9WwQS",
+                      "name": "Screen & System Audio Recording",
+                      "width": "fill_container",
+                      "gap": 12,
+                      "padding": [
+                        12,
+                        14
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "s7gw4n",
+                          "name": "Icon Box",
+                          "width": 32,
+                          "height": 32,
+                          "fill": "$accent-soft",
+                          "cornerRadius": 8,
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "h8nwCN",
+                              "name": "Icon",
+                              "width": 16,
+                              "height": 16,
+                              "icon": "monitor-speaker",
+                              "library": "lucide",
+                              "fill": "$accent"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "bbAVx",
+                          "name": "Text",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 2,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "bHlaJ",
+                              "name": "Screen & System Audio Re",
+                              "fill": "$text-primary",
+                              "content": "Screen & System Audio Recording",
+                              "fontFamily": "$font",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "O8FyAt",
+                              "name": "Desc",
+                              "fill": "$text-secondary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "To hear the other person through your call app. No video is captured.",
+                              "lineHeight": 1.35,
+                              "fontFamily": "$font",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "q92mZp",
+                          "name": "Allow…",
+                          "fill": "$accent",
+                          "cornerRadius": 7,
+                          "padding": [
+                            5,
+                            12
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Dtu9z",
+                              "name": "Allow…",
+                              "fill": "$on-accent",
+                              "content": "Allow…",
+                              "fontFamily": "$font",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "aCkOV",
+                  "name": "Note",
+                  "width": "fill_container",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "d9d6Uk",
+                      "name": "Info",
+                      "width": 13,
+                      "height": 13,
+                      "icon": "info",
+                      "library": "lucide",
+                      "fill": "$text-tertiary"
+                    },
+                    {
+                      "type": "text",
+                      "id": "vcBUL",
+                      "name": "Note Text",
+                      "fill": "$text-secondary",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "After you allow Screen & System Audio Recording, macOS may ask you to reopen TranslateCall.",
+                      "lineHeight": 1.4,
+                      "fontFamily": "$font",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "IrU7S",
+              "name": "Footer",
+              "width": "fill_container",
+              "stroke": "$separator",
+              "strokeWidth": {
+                "top": 1
+              },
+              "gap": 8,
+              "padding": [
+                12,
+                20
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "GxLUx",
+                  "name": "Spacer",
+                  "width": "fill_container",
+                  "height": 1
+                },
+                {
+                  "type": "frame",
+                  "id": "m6hIh",
+                  "name": "Primary",
+                  "opacity": 0.4,
+                  "fill": "$accent",
+                  "cornerRadius": 7,
+                  "padding": [
+                    6,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "iMokw",
+                      "name": "Continue",
+                      "fill": "$on-accent",
+                      "content": "Continue",
+                      "fontFamily": "$font",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "on56i",
+      "x": 1640,
+      "y": 2786,
+      "name": "Setup — 2 Audio driver (Light)",
+      "theme": {
+        "mode": "light"
+      },
+      "clip": true,
+      "width": 680,
+      "height": 480,
+      "fill": "$window-bg",
+      "cornerRadius": 12,
+      "stroke": "$separator",
+      "strokeWidth": 1,
+      "effect": {
+        "type": "shadow",
+        "shadowType": "outer",
+        "color": "#00000030",
+        "offset": {
+          "x": 0,
+          "y": 18
+        },
+        "blur": 48
+      },
+      "children": [
+        {
+          "type": "frame",
+          "id": "XuRyg",
+          "name": "Sidebar",
+          "width": 210,
+          "height": "fill_container",
+          "fill": "$control-bg",
+          "layout": "vertical",
+          "gap": 4,
+          "padding": [
+            14,
+            12,
+            16,
+            12
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "YuOCo",
+              "name": "Traffic Lights",
+              "gap": 8,
+              "padding": [
+                0,
+                2,
+                18,
+                2
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "ellipse",
+                  "id": "CPzY3",
+                  "name": "Light",
+                  "fill": "#FF5F57",
+                  "width": 12,
+                  "height": 12
+                },
+                {
+                  "type": "ellipse",
+                  "id": "DlCD1",
+                  "name": "Light",
+                  "fill": "#FEBC2E",
+                  "width": 12,
+                  "height": 12
+                },
+                {
+                  "type": "ellipse",
+                  "id": "rKkRu",
+                  "name": "Light",
+                  "fill": "#28C840",
+                  "width": 12,
+                  "height": 12
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "id": "csgsv",
+              "name": "Sidebar Title",
+              "fill": "$text-secondary",
+              "content": "Set up TranslateCall",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "700"
+            },
+            {
+              "type": "frame",
+              "id": "KQ6hR",
+              "name": "Gap",
+              "width": 1,
+              "height": 6
+            },
+            {
+              "type": "frame",
+              "id": "kTU7R",
+              "name": "Permissions",
+              "width": "fill_container",
+              "cornerRadius": 7,
+              "gap": 8,
+              "padding": [
+                7,
+                8
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "paRZq",
+                  "name": "Badge",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$green",
+                  "cornerRadius": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "lHCBx",
+                      "name": "Check",
+                      "width": 11,
+                      "height": 11,
+                      "icon": "check",
+                      "library": "lucide",
+                      "fill": "#FFFFFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "T70iV",
+                  "name": "Permissions",
+                  "fill": "$text-primary",
+                  "content": "Permissions",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Ci421",
+              "name": "Audio driver",
+              "width": "fill_container",
+              "fill": "$group-bg",
+              "cornerRadius": 7,
+              "gap": 8,
+              "padding": [
+                7,
+                8
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Mror5",
+                  "name": "Badge",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$accent",
+                  "cornerRadius": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "tBWvP",
+                      "name": "Num",
+                      "fill": "#FFFFFF",
+                      "content": "2",
+                      "fontFamily": "$font",
+                      "fontSize": 10,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "MiRbF",
+                  "name": "Audio driver",
+                  "fill": "$text-primary",
+                  "content": "Audio driver",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "HrPUZ",
+              "name": "Call app microphone",
+              "width": "fill_container",
+              "cornerRadius": 7,
+              "gap": 8,
+              "padding": [
+                7,
+                8
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Cp2hA",
+                  "name": "Badge",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$separator",
+                  "cornerRadius": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "OXItG",
+                      "name": "Num",
+                      "fill": "$text-secondary",
+                      "content": "3",
+                      "fontFamily": "$font",
+                      "fontSize": 10,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "R5njII",
+                  "name": "Call app microphone",
+                  "fill": "$text-secondary",
+                  "content": "Call app microphone",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "BIiBY",
+              "name": "Test",
+              "width": "fill_container",
+              "cornerRadius": 7,
+              "gap": 8,
+              "padding": [
+                7,
+                8
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "sAUp4",
+                  "name": "Badge",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$separator",
+                  "cornerRadius": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "dcsTq",
+                      "name": "Num",
+                      "fill": "$text-secondary",
+                      "content": "4",
+                      "fontFamily": "$font",
+                      "fontSize": 10,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "Rcfz0",
+                  "name": "Test",
+                  "fill": "$text-secondary",
+                  "content": "Test",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bPLJv",
+              "name": "Spacer",
+              "width": 1,
+              "height": "fill_container"
+            },
+            {
+              "type": "frame",
+              "id": "u9Ld3q",
+              "name": "Privacy",
+              "gap": 6,
+              "padding": [
+                0,
+                4
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "AY85k",
+                  "name": "Lock",
+                  "width": 11,
+                  "height": 11,
+                  "icon": "lock",
+                  "library": "lucide",
+                  "fill": "$green"
+                },
+                {
+                  "type": "text",
+                  "id": "J2EpL",
+                  "name": "Everything stays on this",
+                  "fill": "$text-secondary",
+                  "content": "Everything stays on this Mac",
+                  "fontFamily": "$font",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "YfahU",
+          "name": "Content",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "children": [
+            {
+              "type": "frame",
+              "id": "e2qSA6",
+              "name": "Body",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 16,
+              "padding": [
+                44,
+                32,
+                16,
+                32
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "NUqI1",
+                  "name": "Heading",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 6,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "DVs3A",
+                      "name": "Title",
+                      "fill": "$text-primary",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Install the audio cable",
+                      "fontFamily": "$font",
+                      "fontSize": 20,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "OAUQ6",
+                      "name": "Subtitle",
+                      "fill": "$text-secondary",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "TranslateCall uses BlackHole, a free virtual audio cable, to send your translated voice into the call app. You install it once.",
+                      "lineHeight": 1.45,
+                      "fontFamily": "$font",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ExiOl",
+                  "name": "Flow",
+                  "width": "fill_container",
+                  "fill": "$group-bg",
+                  "cornerRadius": 10,
+                  "stroke": "$separator",
+                  "strokeWidth": 1,
+                  "padding": [
+                    14,
+                    12
+                  ],
+                  "justifyContent": "space_between",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "rdtqb",
+                      "name": "Your voice",
+                      "width": 76,
+                      "layout": "vertical",
+                      "gap": 5,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "Foo0n",
+                          "name": "Circle",
+                          "width": 36,
+                          "height": 36,
+                          "fill": "$accent-soft",
+                          "cornerRadius": 18,
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "Ag4OF",
+                              "name": "Icon",
+                              "width": 16,
+                              "height": 16,
+                              "icon": "mic",
+                              "library": "lucide",
+                              "fill": "$accent"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "cqc6v",
+                          "name": "Your voice",
+                          "fill": "$text-secondary",
+                          "content": "Your voice",
+                          "fontFamily": "$font",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "icon",
+                      "id": "F2P677",
+                      "name": "Arrow",
+                      "width": 14,
+                      "height": 14,
+                      "icon": "arrow-right",
+                      "library": "lucide",
+                      "fill": "$text-tertiary"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "UInLH",
+                      "name": "TranslateCall",
+                      "width": 76,
+                      "layout": "vertical",
+                      "gap": 5,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "Jz7RU",
+                          "name": "Circle",
+                          "width": 36,
+                          "height": 36,
+                          "fill": "$accent-soft",
+                          "cornerRadius": 18,
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "xTRrX",
+                              "name": "Icon",
+                              "width": 16,
+                              "height": 16,
+                              "icon": "languages",
+                              "library": "lucide",
+                              "fill": "$accent"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "VqaN8",
+                          "name": "TranslateCall",
+                          "fill": "$text-secondary",
+                          "content": "TranslateCall",
+                          "fontFamily": "$font",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "icon",
+                      "id": "oi8K2",
+                      "name": "Arrow",
+                      "width": 14,
+                      "height": 14,
+                      "icon": "arrow-right",
+                      "library": "lucide",
+                      "fill": "$text-tertiary"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "tz9xc",
+                      "name": "BlackHole",
+                      "width": 76,
+                      "layout": "vertical",
+                      "gap": 5,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "K35tj",
+                          "name": "Circle",
+                          "width": 36,
+                          "height": 36,
+                          "fill": "#FF9F0A22",
+                          "cornerRadius": 18,
+                          "stroke": "$orange",
+                          "strokeWidth": 1.5,
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "paqqo",
+                              "name": "Icon",
+                              "width": 16,
+                              "height": 16,
+                              "icon": "cable",
+                              "library": "lucide",
+                              "fill": "$orange"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "aTjGK",
+                          "name": "BlackHole",
+                          "fill": "$orange",
+                          "content": "BlackHole",
+                          "fontFamily": "$font",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "icon",
+                      "id": "o1miU",
+                      "name": "Arrow",
+                      "width": 14,
+                      "height": 14,
+                      "icon": "arrow-right",
+                      "library": "lucide",
+                      "fill": "$text-tertiary"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "HzV6o",
+                      "name": "Call app",
+                      "width": 76,
+                      "layout": "vertical",
+                      "gap": 5,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "cLS2b",
+                          "name": "Circle",
+                          "width": 36,
+                          "height": 36,
+                          "fill": "$accent-soft",
+                          "cornerRadius": 18,
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "kcDfp",
+                              "name": "Icon",
+                              "width": 16,
+                              "height": 16,
+                              "icon": "video",
+                              "library": "lucide",
+                              "fill": "$accent"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "hwc7x",
+                          "name": "Call app",
+                          "fill": "$text-secondary",
+                          "content": "Call app",
+                          "fontFamily": "$font",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "di1xh",
+                  "name": "Detection",
+                  "width": "fill_container",
+                  "fill": "#FF9F0A14",
+                  "cornerRadius": 10,
+                  "stroke": "#FF9F0A55",
+                  "strokeWidth": 1,
+                  "gap": 10,
+                  "padding": [
+                    12,
+                    14
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "uoMSb",
+                      "name": "Warn",
+                      "width": 16,
+                      "height": 16,
+                      "icon": "circle-alert",
+                      "library": "lucide",
+                      "fill": "$orange"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "BxpIU",
+                      "name": "Text",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "AXHcC",
+                          "name": "BlackHole 2ch not found",
+                          "fill": "$text-primary",
+                          "content": "BlackHole 2ch not found",
+                          "fontFamily": "$font",
+                          "fontSize": 13,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "i3Nbq",
+                          "name": "Desc",
+                          "fill": "$text-secondary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Download the installer, run it, then come back. TranslateCall checks again automatically.",
+                          "lineHeight": 1.35,
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "D8Irx",
+                  "name": "Actions",
+                  "gap": 8,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "cyPg9",
+                      "name": "Download BlackHole 2ch",
+                      "fill": "$accent",
+                      "cornerRadius": 7,
+                      "padding": [
+                        5,
+                        12
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "h8wBV8",
+                          "name": "Download BlackHole 2ch",
+                          "fill": "$on-accent",
+                          "content": "Download BlackHole 2ch",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "a88r3T",
+                      "name": "Check again",
+                      "fill": "$control-bg",
+                      "cornerRadius": 7,
+                      "padding": [
+                        5,
+                        12
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "LPiYv",
+                          "name": "Check again",
+                          "fill": "$text-primary",
+                          "content": "Check again",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "tTrch",
+              "name": "Footer",
+              "width": "fill_container",
+              "stroke": "$separator",
+              "strokeWidth": {
+                "top": 1
+              },
+              "gap": 8,
+              "padding": [
+                12,
+                20
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "opor4",
+                  "name": "Back",
+                  "fill": "$control-bg",
+                  "cornerRadius": 7,
+                  "padding": [
+                    6,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "vWMEk",
+                      "name": "Back",
+                      "fill": "$text-primary",
+                      "content": "Back",
+                      "fontFamily": "$font",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "k9h63u",
+                  "name": "Spacer",
+                  "width": "fill_container",
+                  "height": 1
+                },
+                {
+                  "type": "frame",
+                  "id": "yHsyC",
+                  "name": "Primary",
+                  "opacity": 0.4,
+                  "fill": "$accent",
+                  "cornerRadius": 7,
+                  "padding": [
+                    6,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Dac2d",
+                      "name": "Continue",
+                      "fill": "$on-accent",
+                      "content": "Continue",
+                      "fontFamily": "$font",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "dTLjH",
+      "x": 2400,
+      "y": 2786,
+      "name": "Setup — 3 Call app microphone (Light)",
+      "theme": {
+        "mode": "light"
+      },
+      "clip": true,
+      "width": 680,
+      "height": 480,
+      "fill": "$window-bg",
+      "cornerRadius": 12,
+      "stroke": "$separator",
+      "strokeWidth": 1,
+      "effect": {
+        "type": "shadow",
+        "shadowType": "outer",
+        "color": "#00000030",
+        "offset": {
+          "x": 0,
+          "y": 18
+        },
+        "blur": 48
+      },
+      "children": [
+        {
+          "type": "frame",
+          "id": "cYXDy",
+          "name": "Sidebar",
+          "width": 210,
+          "height": "fill_container",
+          "fill": "$control-bg",
+          "layout": "vertical",
+          "gap": 4,
+          "padding": [
+            14,
+            12,
+            16,
+            12
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "BBbuc",
+              "name": "Traffic Lights",
+              "gap": 8,
+              "padding": [
+                0,
+                2,
+                18,
+                2
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "ellipse",
+                  "id": "j74gqw",
+                  "name": "Light",
+                  "fill": "#FF5F57",
+                  "width": 12,
+                  "height": 12
+                },
+                {
+                  "type": "ellipse",
+                  "id": "y51ig",
+                  "name": "Light",
+                  "fill": "#FEBC2E",
+                  "width": 12,
+                  "height": 12
+                },
+                {
+                  "type": "ellipse",
+                  "id": "iUpHD",
+                  "name": "Light",
+                  "fill": "#28C840",
+                  "width": 12,
+                  "height": 12
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "id": "PZjpx",
+              "name": "Sidebar Title",
+              "fill": "$text-secondary",
+              "content": "Set up TranslateCall",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "700"
+            },
+            {
+              "type": "frame",
+              "id": "mLk7d",
+              "name": "Gap",
+              "width": 1,
+              "height": 6
+            },
+            {
+              "type": "frame",
+              "id": "fFQZ8",
+              "name": "Permissions",
+              "width": "fill_container",
+              "cornerRadius": 7,
+              "gap": 8,
+              "padding": [
+                7,
+                8
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "R32ie",
+                  "name": "Badge",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$green",
+                  "cornerRadius": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "OiXpS",
+                      "name": "Check",
+                      "width": 11,
+                      "height": 11,
+                      "icon": "check",
+                      "library": "lucide",
+                      "fill": "#FFFFFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "gDXAe",
+                  "name": "Permissions",
+                  "fill": "$text-primary",
+                  "content": "Permissions",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "r24xzG",
+              "name": "Audio driver",
+              "width": "fill_container",
+              "cornerRadius": 7,
+              "gap": 8,
+              "padding": [
+                7,
+                8
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "iIF6T",
+                  "name": "Badge",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$green",
+                  "cornerRadius": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "E4RVr",
+                      "name": "Check",
+                      "width": 11,
+                      "height": 11,
+                      "icon": "check",
+                      "library": "lucide",
+                      "fill": "#FFFFFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "WR2Zn",
+                  "name": "Audio driver",
+                  "fill": "$text-primary",
+                  "content": "Audio driver",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "melZi",
+              "name": "Call app microphone",
+              "width": "fill_container",
+              "fill": "$group-bg",
+              "cornerRadius": 7,
+              "gap": 8,
+              "padding": [
+                7,
+                8
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "kwYnS",
+                  "name": "Badge",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$accent",
+                  "cornerRadius": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "q0xGD",
+                      "name": "Num",
+                      "fill": "#FFFFFF",
+                      "content": "3",
+                      "fontFamily": "$font",
+                      "fontSize": 10,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "jHk1E",
+                  "name": "Call app microphone",
+                  "fill": "$text-primary",
+                  "content": "Call app microphone",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "w1l0E",
+              "name": "Test",
+              "width": "fill_container",
+              "cornerRadius": 7,
+              "gap": 8,
+              "padding": [
+                7,
+                8
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "y4VaN",
+                  "name": "Badge",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$separator",
+                  "cornerRadius": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "TkvkT",
+                      "name": "Num",
+                      "fill": "$text-secondary",
+                      "content": "4",
+                      "fontFamily": "$font",
+                      "fontSize": 10,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "PkAzo",
+                  "name": "Test",
+                  "fill": "$text-secondary",
+                  "content": "Test",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "w7Nyv",
+              "name": "Spacer",
+              "width": 1,
+              "height": "fill_container"
+            },
+            {
+              "type": "frame",
+              "id": "dBMG7",
+              "name": "Privacy",
+              "gap": 6,
+              "padding": [
+                0,
+                4
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "s21YzP",
+                  "name": "Lock",
+                  "width": 11,
+                  "height": 11,
+                  "icon": "lock",
+                  "library": "lucide",
+                  "fill": "$green"
+                },
+                {
+                  "type": "text",
+                  "id": "Tnzvl",
+                  "name": "Everything stays on this",
+                  "fill": "$text-secondary",
+                  "content": "Everything stays on this Mac",
+                  "fontFamily": "$font",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "Q5lZb",
+          "name": "Content",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "children": [
+            {
+              "type": "frame",
+              "id": "kUye5",
+              "name": "Body",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 16,
+              "padding": [
+                44,
+                32,
+                16,
+                32
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "H9QuEB",
+                  "name": "Heading",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 6,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Vq6UL",
+                      "name": "Title",
+                      "fill": "$text-primary",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Set BlackHole as the microphone in Teams",
+                      "fontFamily": "$font",
+                      "fontSize": 20,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "q7vXq",
+                      "name": "Subtitle",
+                      "fill": "$text-secondary",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Your call app must listen to BlackHole instead of your real microphone, so the other person hears the translation.",
+                      "lineHeight": 1.45,
+                      "fontFamily": "$font",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "RZvkw",
+                  "name": "App Picker",
+                  "gap": 8,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ft5N2",
+                      "name": "Call app",
+                      "fill": "$text-secondary",
+                      "content": "Call app",
+                      "fontFamily": "$font",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "UXtsE",
+                      "name": "Popup",
+                      "fill": "$group-bg",
+                      "cornerRadius": 7,
+                      "stroke": "$separator",
+                      "strokeWidth": 1,
+                      "gap": 6,
+                      "padding": [
+                        5,
+                        10
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "CBX5H",
+                          "name": "App",
+                          "width": 12,
+                          "height": 12,
+                          "icon": "video",
+                          "library": "lucide",
+                          "fill": "$accent"
+                        },
+                        {
+                          "type": "text",
+                          "id": "Gjutu",
+                          "name": "Microsoft Teams",
+                          "fill": "$text-primary",
+                          "content": "Microsoft Teams",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "IHrM3",
+                          "name": "Chev",
+                          "width": 11,
+                          "height": 11,
+                          "icon": "chevrons-up-down",
+                          "library": "lucide",
+                          "fill": "$text-tertiary"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "olHDp",
+                  "name": "Instructions",
+                  "width": "fill_container",
+                  "fill": "$group-bg",
+                  "cornerRadius": 10,
+                  "stroke": "$separator",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "x03wdn",
+                      "name": "Step 1",
+                      "width": "fill_container",
+                      "stroke": "$separator",
+                      "strokeWidth": {
+                        "bottom": 1
+                      },
+                      "gap": 12,
+                      "padding": [
+                        11,
+                        14
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "lHGqS",
+                          "name": "Num",
+                          "width": 22,
+                          "height": 22,
+                          "fill": "$accent-soft",
+                          "cornerRadius": 11,
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "D1l0Y",
+                              "name": "N",
+                              "fill": "$accent",
+                              "content": "1",
+                              "fontFamily": "$font",
+                              "fontSize": 11,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "Cxien",
+                          "name": "Instruction",
+                          "fill": "$text-primary",
+                          "content": "In Teams, open Settings › Devices",
+                          "fontFamily": "$font",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "gkPzY",
+                      "name": "Step 2",
+                      "width": "fill_container",
+                      "stroke": "$separator",
+                      "strokeWidth": {
+                        "bottom": 1
+                      },
+                      "gap": 12,
+                      "padding": [
+                        11,
+                        14
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "LVcGy",
+                          "name": "Num",
+                          "width": 22,
+                          "height": 22,
+                          "fill": "$accent-soft",
+                          "cornerRadius": 11,
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "SsuRA",
+                              "name": "N",
+                              "fill": "$accent",
+                              "content": "2",
+                              "fontFamily": "$font",
+                              "fontSize": 11,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "wurav",
+                          "name": "Instruction",
+                          "fill": "$text-primary",
+                          "content": "Set Microphone to",
+                          "fontFamily": "$font",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "SFma1",
+                          "name": "Value Chip",
+                          "fill": "$accent-soft",
+                          "cornerRadius": 6,
+                          "padding": [
+                            3,
+                            8
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "SsbY8",
+                              "name": "Value",
+                              "fill": "$accent",
+                              "content": "BlackHole 2ch",
+                              "fontFamily": "$font",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "zvZ6m",
+                      "name": "Step 3",
+                      "width": "fill_container",
+                      "gap": 12,
+                      "padding": [
+                        11,
+                        14
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "a9HIHl",
+                          "name": "Num",
+                          "width": 22,
+                          "height": 22,
+                          "fill": "$accent-soft",
+                          "cornerRadius": 11,
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "a58MW",
+                              "name": "N",
+                              "fill": "$accent",
+                              "content": "3",
+                              "fontFamily": "$font",
+                              "fontSize": 11,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "R39oS",
+                          "name": "Instruction",
+                          "fill": "$text-primary",
+                          "content": "Keep Speaker as your headphones",
+                          "fontFamily": "$font",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "l0jmQw",
+                          "name": "Value Chip",
+                          "fill": "$control-bg",
+                          "cornerRadius": 6,
+                          "padding": [
+                            3,
+                            8
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "G2ApfY",
+                              "name": "Value",
+                              "fill": "$text-secondary",
+                              "content": "Not BlackHole",
+                              "fontFamily": "$font",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "u2aDzU",
+                  "name": "Actions",
+                  "gap": 8,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "U1fTDv",
+                      "name": "Open Teams",
+                      "fill": "$control-bg",
+                      "cornerRadius": 7,
+                      "padding": [
+                        5,
+                        12
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "N05QO4",
+                          "name": "Open Teams",
+                          "fill": "$text-primary",
+                          "content": "Open Teams",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "ZJDcA",
+                      "name": "Hint",
+                      "fill": "$text-secondary",
+                      "content": "We'll check it works in the next step.",
+                      "fontFamily": "$font",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "zsOj8",
+              "name": "Footer",
+              "width": "fill_container",
+              "stroke": "$separator",
+              "strokeWidth": {
+                "top": 1
+              },
+              "gap": 8,
+              "padding": [
+                12,
+                20
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "nVdjP",
+                  "name": "Back",
+                  "fill": "$control-bg",
+                  "cornerRadius": 7,
+                  "padding": [
+                    6,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "diXsq",
+                      "name": "Back",
+                      "fill": "$text-primary",
+                      "content": "Back",
+                      "fontFamily": "$font",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "BOAab",
+                  "name": "Spacer",
+                  "width": "fill_container",
+                  "height": 1
+                },
+                {
+                  "type": "frame",
+                  "id": "d8I32w",
+                  "name": "Primary",
+                  "fill": "$accent",
+                  "cornerRadius": 7,
+                  "padding": [
+                    6,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "gcIzX",
+                      "name": "I've done it",
+                      "fill": "$on-accent",
+                      "content": "I've done it",
+                      "fontFamily": "$font",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "YDVmk",
+      "x": 3160,
+      "y": 2786,
+      "name": "Setup — 4 Test (Light)",
+      "theme": {
+        "mode": "light"
+      },
+      "clip": true,
+      "width": 680,
+      "height": 480,
+      "fill": "$window-bg",
+      "cornerRadius": 12,
+      "stroke": "$separator",
+      "strokeWidth": 1,
+      "effect": {
+        "type": "shadow",
+        "shadowType": "outer",
+        "color": "#00000030",
+        "offset": {
+          "x": 0,
+          "y": 18
+        },
+        "blur": 48
+      },
+      "children": [
+        {
+          "type": "frame",
+          "id": "qyKhG",
+          "name": "Sidebar",
+          "width": 210,
+          "height": "fill_container",
+          "fill": "$control-bg",
+          "layout": "vertical",
+          "gap": 4,
+          "padding": [
+            14,
+            12,
+            16,
+            12
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "RjdQJ",
+              "name": "Traffic Lights",
+              "gap": 8,
+              "padding": [
+                0,
+                2,
+                18,
+                2
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "ellipse",
+                  "id": "YfmqG",
+                  "name": "Light",
+                  "fill": "#FF5F57",
+                  "width": 12,
+                  "height": 12
+                },
+                {
+                  "type": "ellipse",
+                  "id": "lh9N6",
+                  "name": "Light",
+                  "fill": "#FEBC2E",
+                  "width": 12,
+                  "height": 12
+                },
+                {
+                  "type": "ellipse",
+                  "id": "oorSh",
+                  "name": "Light",
+                  "fill": "#28C840",
+                  "width": 12,
+                  "height": 12
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "id": "yaEo0",
+              "name": "Sidebar Title",
+              "fill": "$text-secondary",
+              "content": "Set up TranslateCall",
+              "fontFamily": "$font",
+              "fontSize": 12,
+              "fontWeight": "700"
+            },
+            {
+              "type": "frame",
+              "id": "LeC0v",
+              "name": "Gap",
+              "width": 1,
+              "height": 6
+            },
+            {
+              "type": "frame",
+              "id": "j3v7G3",
+              "name": "Permissions",
+              "width": "fill_container",
+              "cornerRadius": 7,
+              "gap": 8,
+              "padding": [
+                7,
+                8
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "iDKmu",
+                  "name": "Badge",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$green",
+                  "cornerRadius": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "MEo9e",
+                      "name": "Check",
+                      "width": 11,
+                      "height": 11,
+                      "icon": "check",
+                      "library": "lucide",
+                      "fill": "#FFFFFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "s71Yjc",
+                  "name": "Permissions",
+                  "fill": "$text-primary",
+                  "content": "Permissions",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "f6Beyq",
+              "name": "Audio driver",
+              "width": "fill_container",
+              "cornerRadius": 7,
+              "gap": 8,
+              "padding": [
+                7,
+                8
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "HgwKr",
+                  "name": "Badge",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$green",
+                  "cornerRadius": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "j5fcy",
+                      "name": "Check",
+                      "width": 11,
+                      "height": 11,
+                      "icon": "check",
+                      "library": "lucide",
+                      "fill": "#FFFFFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "HJEjO",
+                  "name": "Audio driver",
+                  "fill": "$text-primary",
+                  "content": "Audio driver",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "V4mYip",
+              "name": "Call app microphone",
+              "width": "fill_container",
+              "cornerRadius": 7,
+              "gap": 8,
+              "padding": [
+                7,
+                8
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Lstnx",
+                  "name": "Badge",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$green",
+                  "cornerRadius": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "f3dvU0",
+                      "name": "Check",
+                      "width": 11,
+                      "height": 11,
+                      "icon": "check",
+                      "library": "lucide",
+                      "fill": "#FFFFFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "if9qx",
+                  "name": "Call app microphone",
+                  "fill": "$text-primary",
+                  "content": "Call app microphone",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "x8NQPX",
+              "name": "Test",
+              "width": "fill_container",
+              "fill": "$group-bg",
+              "cornerRadius": 7,
+              "gap": 8,
+              "padding": [
+                7,
+                8
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "RzuOW",
+                  "name": "Badge",
+                  "width": 20,
+                  "height": 20,
+                  "fill": "$accent",
+                  "cornerRadius": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "KjRQj",
+                      "name": "Num",
+                      "fill": "#FFFFFF",
+                      "content": "4",
+                      "fontFamily": "$font",
+                      "fontSize": 10,
+                      "fontWeight": "700"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "OKE33",
+                  "name": "Test",
+                  "fill": "$text-primary",
+                  "content": "Test",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "R58Hz",
+              "name": "Spacer",
+              "width": 1,
+              "height": "fill_container"
+            },
+            {
+              "type": "frame",
+              "id": "ZrM6z",
+              "name": "Privacy",
+              "gap": 6,
+              "padding": [
+                0,
+                4
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "DOlMu",
+                  "name": "Lock",
+                  "width": 11,
+                  "height": 11,
+                  "icon": "lock",
+                  "library": "lucide",
+                  "fill": "$green"
+                },
+                {
+                  "type": "text",
+                  "id": "v0RaxI",
+                  "name": "Everything stays on this",
+                  "fill": "$text-secondary",
+                  "content": "Everything stays on this Mac",
+                  "fontFamily": "$font",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "ujueW",
+          "name": "Content",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "children": [
+            {
+              "type": "frame",
+              "id": "r3m1GJ",
+              "name": "Body",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 16,
+              "padding": [
+                44,
+                32,
+                16,
+                32
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "v9XjCq",
+                  "name": "Heading",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 6,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "DsiQ0",
+                      "name": "Title",
+                      "fill": "$text-primary",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Let's check it works",
+                      "fontFamily": "$font",
+                      "fontSize": 20,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Z9eya",
+                      "name": "Subtitle",
+                      "fill": "$text-secondary",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Say something in Español. You'll see what TranslateCall understood and what Teams will receive.",
+                      "lineHeight": 1.45,
+                      "fontFamily": "$font",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "L4o1E",
+                  "name": "Test Card",
+                  "width": "fill_container",
+                  "fill": "$group-bg",
+                  "cornerRadius": 10,
+                  "stroke": "$separator",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": 14,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "TZgw7",
+                      "name": "Listening",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "ellipse",
+                          "id": "FLXJZ",
+                          "name": "Dot",
+                          "fill": "$green",
+                          "width": 8,
+                          "height": 8
+                        },
+                        {
+                          "type": "text",
+                          "id": "TfqQc",
+                          "name": "Listening…",
+                          "fill": "$green",
+                          "content": "Listening…",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "QMJQ7",
+                          "name": "Level",
+                          "width": "fill_container",
+                          "height": 16,
+                          "gap": 2,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "unnTP",
+                              "name": "Bar",
+                              "width": "fill_container",
+                              "height": 4,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "Y4xFz",
+                              "name": "Bar",
+                              "width": "fill_container",
+                              "height": 7,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "iHwbs",
+                              "name": "Bar",
+                              "width": "fill_container",
+                              "height": 11,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "x5s8n",
+                              "name": "Bar",
+                              "width": "fill_container",
+                              "height": 14,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "C89TVg",
+                              "name": "Bar",
+                              "width": "fill_container",
+                              "height": 9,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "tKqiE",
+                              "name": "Bar",
+                              "width": "fill_container",
+                              "height": 12,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "U3kDIB",
+                              "name": "Bar",
+                              "width": "fill_container",
+                              "height": 15,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "Z2GCxu",
+                              "name": "Bar",
+                              "width": "fill_container",
+                              "height": 8,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "u6aww",
+                              "name": "Bar",
+                              "width": "fill_container",
+                              "height": 5,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "cXQm0",
+                              "name": "Bar",
+                              "width": "fill_container",
+                              "height": 10,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "We2Mb",
+                              "name": "Bar",
+                              "width": "fill_container",
+                              "height": 13,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "ulHE6",
+                              "name": "Bar",
+                              "width": "fill_container",
+                              "height": 7,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "tN9vu",
+                              "name": "Bar",
+                              "width": "fill_container",
+                              "height": 4,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "taCTN",
+                              "name": "Bar",
+                              "width": "fill_container",
+                              "height": 9,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "L8SEi",
+                              "name": "Bar",
+                              "width": "fill_container",
+                              "height": 12,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "oDetz",
+                              "name": "Bar",
+                              "width": "fill_container",
+                              "height": 6,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "vq0XH",
+                              "name": "Bar",
+                              "opacity": 0.3,
+                              "width": "fill_container",
+                              "height": 3,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "JVLLV",
+                              "name": "Bar",
+                              "opacity": 0.3,
+                              "width": "fill_container",
+                              "height": 6,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "rzDgl",
+                              "name": "Bar",
+                              "opacity": 0.3,
+                              "width": "fill_container",
+                              "height": 9,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "pDGCp",
+                              "name": "Bar",
+                              "opacity": 0.3,
+                              "width": "fill_container",
+                              "height": 5,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "Uybos",
+                              "name": "Bar",
+                              "opacity": 0.3,
+                              "width": "fill_container",
+                              "height": 3,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "f2hjtx",
+                              "name": "Bar",
+                              "opacity": 0.3,
+                              "width": "fill_container",
+                              "height": 4,
+                              "fill": "$green",
+                              "cornerRadius": 1
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Z3e7A",
+                      "name": "Heard",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Z4vfHu",
+                          "name": "Label",
+                          "fill": "$text-tertiary",
+                          "content": "You said",
+                          "fontFamily": "$font",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "PWy1U",
+                          "name": "Quote",
+                          "fill": "$text-primary",
+                          "content": "«Hola, ¿me oyes bien?»",
+                          "fontFamily": "$font",
+                          "fontSize": 15,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "SzIWH",
+                      "name": "Sent",
+                      "width": "fill_container",
+                      "stroke": "$separator",
+                      "strokeWidth": {
+                        "top": 1
+                      },
+                      "layout": "vertical",
+                      "gap": 2,
+                      "padding": [
+                        10,
+                        0,
+                        0,
+                        0
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "MAiRp",
+                          "name": "Label",
+                          "fill": "$text-tertiary",
+                          "content": "Teams receives",
+                          "fontFamily": "$font",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "R5Vcj",
+                          "name": "Quote",
+                          "fill": "$accent",
+                          "content": "„Hallo, hörst du mich gut?“",
+                          "fontFamily": "$font",
+                          "fontSize": 15,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "hSxco",
+                  "name": "Checks",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 6,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "yiXs1",
+                      "name": "Your microphone works",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "MyNbr",
+                          "name": "Icon",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "circle-check",
+                          "library": "lucide",
+                          "fill": "$green"
+                        },
+                        {
+                          "type": "text",
+                          "id": "tIyIQ",
+                          "name": "Label",
+                          "fill": "$text-primary",
+                          "content": "Your microphone works",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "SitnK",
+                      "name": "Translated voice reaches BlackHole",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "RNXVM",
+                          "name": "Icon",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "circle-check",
+                          "library": "lucide",
+                          "fill": "$green"
+                        },
+                        {
+                          "type": "text",
+                          "id": "v6XsIy",
+                          "name": "Label",
+                          "fill": "$text-primary",
+                          "content": "Translated voice reaches BlackHole",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "jjG8v",
+                      "name": "Incoming audio from Teams — checked in your first call",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "KAXvT",
+                          "name": "Icon",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "hourglass",
+                          "library": "lucide",
+                          "fill": "$text-tertiary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "SNeqd",
+                          "name": "Label",
+                          "fill": "$text-secondary",
+                          "content": "Incoming audio from Teams — checked in your first call",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "P6GmH4",
+              "name": "Footer",
+              "width": "fill_container",
+              "stroke": "$separator",
+              "strokeWidth": {
+                "top": 1
+              },
+              "gap": 8,
+              "padding": [
+                12,
+                20
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "hDZ93",
+                  "name": "Back",
+                  "fill": "$control-bg",
+                  "cornerRadius": 7,
+                  "padding": [
+                    6,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ej8zH",
+                      "name": "Back",
+                      "fill": "$text-primary",
+                      "content": "Back",
+                      "fontFamily": "$font",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "jJiz3",
+                  "name": "Spacer",
+                  "width": "fill_container",
+                  "height": 1
+                },
+                {
+                  "type": "frame",
+                  "id": "QT52G",
+                  "name": "Primary",
+                  "fill": "$accent",
+                  "cornerRadius": 7,
+                  "padding": [
+                    6,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "QadVn",
+                      "name": "Finish",
+                      "fill": "$on-accent",
+                      "content": "Finish",
+                      "fontFamily": "$font",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    }
+                  ]
                 }
               ]
             }
