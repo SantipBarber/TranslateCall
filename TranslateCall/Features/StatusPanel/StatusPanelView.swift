@@ -14,6 +14,10 @@ struct StatusPanelContent: View {
     let outgoing: DirectionRow
     let incoming: DirectionRow
     let notices: [String]
+    var transcript: [TranscriptEntry] = []
+    var isTranslating = false
+    var sessionActive = true
+    var showsLatency = true
     var onTogglePause: () -> Void = {}
     var onStop: () -> Void = {}
     var onToggleExpanded: () -> Void = {}
@@ -21,15 +25,26 @@ struct StatusPanelContent: View {
     static let width: CGFloat = 320
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-            header
-            outgoing
-            incoming
-            PanelNotices(notices: notices)
+        if isExpanded {
+            VStack(alignment: .leading, spacing: 0) {
+                header.padding(Theme.Spacing.medium)
+                Divider()
+                TranscriptView(entries: transcript, isTranslating: isTranslating, sessionActive: sessionActive,
+                               showsLatency: showsLatency)
+            }
+            .frame(width: TranscriptView.width)
+            .fixedSize(horizontal: false, vertical: true)
+        } else {
+            VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+                header
+                outgoing
+                incoming
+                PanelNotices(notices: notices)
+            }
+            .padding(Theme.Spacing.medium)
+            .frame(width: Self.width)
+            .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(Theme.Spacing.medium)
-        .frame(width: Self.width)
-        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var header: some View {
@@ -107,8 +122,7 @@ private struct PanelButton: View {
 
 // MARK: - StatusPanelView
 
-/// The compact panel hosted by `StatusPanelController` (Task 18 adds the expanded body, which reads
-/// `panel.isExpanded`).
+/// The panel hosted by `StatusPanelController`: direction rows, or the transcript when `panel.isExpanded`.
 struct StatusPanelView: View {
     @EnvironmentObject private var session: CallSessionModel
     @EnvironmentObject private var model: MainSetupModel
@@ -125,7 +139,9 @@ struct StatusPanelView: View {
             isPaused: session.isPaused, isExpanded: panel.isExpanded,
             outgoing: row(.outgoing, from: source, to: target, appName: appName),
             incoming: row(.incoming, from: target, to: source, appName: appName),
-            notices: session.notices,
+            notices: session.notices, transcript: session.transcript,
+            isTranslating: session.coordinator.isOutgoingTranslating || session.coordinator.isIncomingTranslating,
+            sessionActive: TranscriptRules.isSessionActive(session.phase), showsLatency: showLatency,
             onTogglePause: { Task { await session.togglePause() } },
             onStop: { Task { await session.stop() } },
             onToggleExpanded: { panel.toggleExpanded() }
