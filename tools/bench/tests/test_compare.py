@@ -179,9 +179,25 @@ def test_missing_from_run_fails():
     assert code == 1
 
 
+def test_missing_from_run_does_not_gate_informative():
+    baseline_metrics = {"old/profile": _make_entry(), "basic/outgoing es-ES>en": _make_entry()}
+    run = _make_metrics()
+    table, code = compare.run(run, _make_baseline(baseline_metrics), THRESHOLDS, _make_run_meta(informative=True))
+    assert "missing from run" in table
+    assert code == 0
+
+
 def test_none_metric_no_verdict():
     baseline_metrics = {"basic/outgoing es-ES>en": _make_entry(chrf_pipeline=50.0)}
     run = {"basic/outgoing es-ES>en": {**_make_entry(), "chrf": {"pipeline": None, "mtOnly": 52.0}}}
+    table, code = compare.run(run, _make_baseline(baseline_metrics), THRESHOLDS, _make_run_meta())
+    assert "n/a" in table
+    assert code == 0
+
+
+def test_none_wer_and_cut_rate_no_crash():
+    baseline_metrics = {"basic/outgoing es-ES>en": _make_entry(wer=0.05, cut_rate=0.01)}
+    run = {"basic/outgoing es-ES>en": {**_make_entry(), "wer": None, "cutRate": None}}
     table, code = compare.run(run, _make_baseline(baseline_metrics), THRESHOLDS, _make_run_meta())
     assert "n/a" in table
     assert code == 0

@@ -45,3 +45,12 @@ def test_repo_is_dirty_smoke(tmp_path):
 
     (repo / "file.txt").write_text("dirty\n")
     assert _repo_is_dirty(repo) is True
+
+
+def test_repo_is_dirty_fails_closed(capsys, monkeypatch):
+    def _boom(*args, **kwargs):
+        raise subprocess.CalledProcessError(1, ["git", "status"])
+
+    monkeypatch.setattr(subprocess, "run", _boom)
+    assert _repo_is_dirty("/any/path") is True
+    assert "cannot check git status" in capsys.readouterr().err

@@ -50,8 +50,10 @@ def _latency_gate(
     return None, fail
 
 
-def _wer_gate(baseline: float, value: float, thresholds: dict[str, Any]) -> bool:
+def _wer_gate(baseline: float | None, value: float | None, thresholds: dict[str, Any]) -> bool:
     """WER is stored as a fraction; thresholds are in percentage points."""
+    if baseline is None or value is None:
+        return False
     return _round((value - baseline) * 100.0) > thresholds["werIncreasePts"]
 
 
@@ -61,8 +63,10 @@ def _chrf_gate(baseline: float | None, value: float | None, thresholds: dict[str
     return _round(baseline - value) > thresholds["chrfDropPts"]
 
 
-def _cut_rate_gate(baseline: float, value: float, thresholds: dict[str, Any]) -> bool:
+def _cut_rate_gate(baseline: float | None, value: float | None, thresholds: dict[str, Any]) -> bool:
     """cutRate is stored as a fraction; thresholds are in percentage points."""
+    if baseline is None or value is None:
+        return False
     max_allowed = max(
         thresholds["cutRateMaxPct"],
         baseline * 100.0 + thresholds["cutRateIncreasePts"],
@@ -100,13 +104,11 @@ def run(
     # Manifest / macOS checks.
     if run_meta.get("manifestSha256") != baseline.get("manifestSha256"):
         msg = "manifest changed — re-baseline with `just bench-baseline`"
-        print(msg, file=sys.stderr)
         lines.append(msg)
         return "\n".join(lines), 3
 
     if run_meta.get("macOS") != baseline.get("macOS"):
         msg = f"macOS changed: baseline={baseline.get('macOS')} run={run_meta.get('macOS')}"
-        print(msg, file=sys.stderr)
         lines.append(msg)
 
     if informative or override:
@@ -123,7 +125,8 @@ def run(
     for key in all_keys:
         if key not in run_metrics:
             lines.append(f"[{key}] missing from run")
-            gated_fail = True
+            if gated:
+                gated_fail = True
             continue
         if key not in base_aggs:
             lines.append(f"[{key}] new line, no baseline")
@@ -161,10 +164,12 @@ def run(
             )
 
         # WER
-        b_wer = base_entry.get("wer", 0.0)
-        v_wer = run_entry.get("wer", 0.0)
+        b_wer = base_entry.get("wer")
+        v_wer = run_entry.get("wer")
         wer_fail = _wer_gate(b_wer, v_wer, thresholds)
-        if wer_fail and gated:
+        if b_wer is None or v_wer is None:
+            verdict = "·"
+        elif wer_fail and gated:
             verdict = "❌"
             gated_fail = True
         else:
@@ -172,18 +177,20 @@ def run(
         lines.append(
             _row(
                 "  WER",
-                f"{_fmt(b_wer * 100.0)}%",
-                f"{_fmt(v_wer * 100.0)}%",
-                f"{_fmt(_round((v_wer - b_wer) * 100.0))} pts",
+                f"{_fmt(b_wer * 100.0 if b_wer is not None else None)}%",
+                f"{_fmt(v_wer * 100.0 if v_wer is not None else None)}%",
+                f"{_fmt(_round((v_wer - b_wer) * 100.0 if b_wer is not None and v_wer is not None else None))} pts",
                 verdict,
             )
         )
 
         # Cut rate
-        b_cut = base_entry.get("cutRate", 0.0)
-        v_cut = run_entry.get("cutRate", 0.0)
+        b_cut = base_entry.get("cutRate")
+        v_cut = run_entry.get("cutRate")
         cut_fail = _cut_rate_gate(b_cut, v_cut, thresholds)
-        if cut_fail and gated:
+        if b_cut is None or v_cut is None:
+            verdict = "·"
+        elif cut_fail and gated:
             verdict = "❌"
             gated_fail = True
         else:
@@ -191,9 +198,9 @@ def run(
         lines.append(
             _row(
                 "  cut rate",
-                f"{_fmt(b_cut * 100.0)}%",
-                f"{_fmt(v_cut * 100.0)}%",
-                f"{_fmt(_round((v_cut - b_cut) * 100.0))} pts",
+                f"{_fmt(b_cut * 100.0 if b_cut is not None else None)}%",
+                f"{_fmt(v_cut * 100.0 if v_cut is not None else None)}%",
+                f"{_fmt(_round((v_cut - b_cut) * 100.0 if b_cut is not None and v_cut is not None else None))} pts",
                 verdict,
             )
         )

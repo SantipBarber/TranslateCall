@@ -18,7 +18,9 @@ def _load_json(path: str) -> dict:
 def _repo_is_dirty(repo_dir: Path | str | None = None) -> bool:
     """Return True if the git working tree under ``repo_dir`` has changes.
 
-    Defaults to the repository root (three parents above this file).
+    Defaults to the repository root (three parents above this file).  Fails
+    closed: if git is missing or ``git status`` errors, print a stderr warning
+    and treat the tree as dirty so the baseline gate does not accept it.
     """
     if repo_dir is None:
         repo_dir = Path(__file__).resolve().parents[3]
@@ -30,9 +32,9 @@ def _repo_is_dirty(repo_dir: Path | str | None = None) -> bool:
             check=True,
             cwd=repo_dir,
         )
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        # git unavailable or not a repo: assume clean to avoid blocking.
-        return False
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        print("cannot check git status — refusing", file=sys.stderr)
+        return True
     return bool(result.stdout.strip())
 
 
