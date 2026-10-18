@@ -15,7 +15,17 @@ struct PairModelsSheet: View {
     @MainActor
     static func makeModel(languages: LanguagePairManager, choices: PairModelChoices, cloud: CloudPolicy,
                           downloads: ModelDownloads, tts: TTSEngineSelector) -> PairModelsModel {
-        PairModelsModel(source: languages.sourceLanguage, target: languages.targetLanguage,
+        makeModel(source: languages.sourceLanguage, target: languages.targetLanguage, languages: languages,
+                  choices: choices, cloud: cloud, downloads: downloads, tts: tts)
+    }
+
+    /// The model for any pair, in the given "mine, theirs" order (the pairs list of Settings › Advanced, P13).
+    @MainActor
+    // swiftlint:disable:next function_parameter_count
+    static func makeModel(source: Locale.Language, target: Locale.Language, languages: LanguagePairManager,
+                          choices: PairModelChoices, cloud: CloudPolicy, downloads: ModelDownloads,
+                          tts: TTSEngineSelector) -> PairModelsModel {
+        PairModelsModel(source: source, target: target,
                         displayName: { languages.displayName(for: $0) }, choices: choices, cloud: cloud,
                         downloads: downloads, voiceCloneOn: tts.voiceCloningEnabled)
     }

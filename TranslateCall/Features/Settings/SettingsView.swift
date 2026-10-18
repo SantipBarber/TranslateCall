@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The Settings window (REQ-UI-70). General and Voices for now; M9 UI settings Task 14 adds Advanced.
+/// The Settings window (REQ-UI-70). General, Voices and Advanced.
 struct SettingsView: View {
     @AppStorage(SettingsOpener.tabKey) private var tab = SettingsTab.general
 
@@ -12,6 +12,9 @@ struct SettingsView: View {
             VoicesSettingsView()
                 .tabItem { Label("Voices", systemImage: "waveform") }
                 .tag(SettingsTab.voices)
+            AdvancedSettingsView()
+                .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
+                .tag(SettingsTab.advanced)
         }
         .frame(width: 560)
     }
