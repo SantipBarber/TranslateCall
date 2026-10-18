@@ -5,7 +5,7 @@ import Testing
 /// `AVSpeechSynthesizer.write` renders offline: no audio device is opened (NFR-T-03).
 @Suite("AVSpeechUtteranceSynthesizer", .serialized)
 struct AVSpeechUtteranceSynthesizerTests {
-    private let synthesizer = AVSpeechUtteranceSynthesizer()
+    private let synthesizer = AVSpeechUtteranceSynthesizer(preferredVoice: { _ in nil })
 
     @Test("an English sentence yields audio and the stream finishes (REQ-T-03)")
     func yieldsAndFinishes() async throws {

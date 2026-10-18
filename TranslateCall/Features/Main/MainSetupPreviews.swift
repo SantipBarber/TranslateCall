@@ -51,9 +51,10 @@ struct MainSetupFixture {
                                          app: teams, phase: .idle)
         return MainSetupContent(
             readiness: readiness, pair: pair, isLocked: false, monitor: monitor,
-            selectedBundleID: teams?.bundleID, languages: languages, sttSelector: STTEngineSelector(defaults: defaults),
-            ttsSelector: selector, conversationSettings: ConversationSettings(defaults: defaults),
-            profile: profile, actions: MainSetupActions()
+            selectedBundleID: teams?.bundleID, languages: languages, modelsLabel: "Models: Recommended",
+            ttsSelector: selector, voiceCloneDownload: .notOnDisk,
+            conversationSettings: ConversationSettings(defaults: defaults), profile: profile,
+            actions: MainSetupActions()
         )
         .background(Color(.windowBackgroundColor))
     }

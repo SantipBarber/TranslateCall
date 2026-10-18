@@ -7,7 +7,13 @@ struct VoiceSection: View {
     let profile: VoiceProfileHeader?
     let targetLocale: Locale
     let targetName: String
+    /// The voice model's download state (`ModelDownloads`, S-4).
+    let download: DownloadState
+    /// A call runs: the toggle waits until it ends, like the languages (S-7).
+    let isLocked: Bool
     let onOpenProfiles: () -> Void
+    /// "Try again" after a failed voice model download; goes through `enableVoiceCloning()`.
+    var onRetryDownload: () -> Void = {}
 
     private var supported: Bool { QwenCloneConfiguration.supportsLocale(targetLocale) }
 
@@ -19,13 +25,17 @@ struct VoiceSection: View {
                     header
                     if !supported {
                         detail { Text("Your voice isn't available in \(targetName) yet") }
-                    } else if ttsSelector.isVoiceCloneDownloading {
+                    } else if isLocked, !ttsSelector.voiceCloningEnabled {
+                        detail { Text("Available after the call") }
+                    } else if download.isDownloading {
                         detail {
                             HStack(spacing: 6) {
                                 ProgressView().controlSize(.small)
                                 Text("Downloading your voice model… (one time)")
                             }
                         }
+                    } else if case .failed = download, ttsSelector.voiceCloningEnabled {
+                        detail { failedLine }
                     }
                     if let profile { profileLine(profile) }
                 }
@@ -46,9 +56,18 @@ struct VoiceSection: View {
             }
             Spacer(minLength: Theme.Spacing.small)
             Toggle("Use my voice", isOn: toggleBinding).labelsHidden().toggleStyle(.switch)
-                .disabled(!supported)
+                .disabled(!supported || isLocked)
         }
         .padding(Theme.Spacing.medium)
+    }
+
+    /// The download failed: retry here, not by toggling off and on; the button waits for the call to end.
+    private var failedLine: some View {
+        HStack {
+            Text("Download failed").foregroundStyle(Theme.Status.red)
+            Spacer(minLength: Theme.Spacing.small)
+            Button("Try again", action: onRetryDownload).controlSize(.small).disabled(isLocked)
+        }
     }
 
     private var toggleBinding: Binding<Bool> {

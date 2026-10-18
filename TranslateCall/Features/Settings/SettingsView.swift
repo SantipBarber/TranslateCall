@@ -1,18 +1,20 @@
 import SwiftUI
 
-/// The Settings window (REQ-UI-70). The tab contents are filled in by later M9 UI core tasks.
+/// The Settings window (REQ-UI-70). General, Voices and Advanced.
 struct SettingsView: View {
-    @AppStorage(SettingsOpener.tabKey) private var tab = SettingsTab.general.rawValue
-    @EnvironmentObject private var viewModel: AudioViewModel
+    @AppStorage(SettingsOpener.tabKey) private var tab = SettingsTab.general
 
     var body: some View {
         TabView(selection: $tab) {
             GeneralSettingsView()
                 .tabItem { Label("General", systemImage: "gearshape") }
-                .tag(SettingsTab.general.rawValue)
-            LegacyAdvancedSettingsView(vadProvider: viewModel.vadProvider)
-                .tabItem { Label("Advanced (legacy)", systemImage: "slider.horizontal.3") }
-                .tag(SettingsTab.advancedLegacy.rawValue)
+                .tag(SettingsTab.general)
+            VoicesSettingsView()
+                .tabItem { Label("Voices", systemImage: "waveform") }
+                .tag(SettingsTab.voices)
+            AdvancedSettingsView()
+                .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
+                .tag(SettingsTab.advanced)
         }
         .frame(width: 560)
     }

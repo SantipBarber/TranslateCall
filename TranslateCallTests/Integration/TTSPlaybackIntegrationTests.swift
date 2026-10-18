@@ -26,7 +26,8 @@ extension IntegrationTests {
             defer { log.cancel(); manager.stopCapture() }
 
             let output = RecordingOutput(wrapping: try TTSOutput(deviceID: blackHole.id))
-            let service = TTSPlaybackService(primary: AVSpeechUtteranceSynthesizer(), output: output)
+            let synthesizer = AVSpeechUtteranceSynthesizer(preferredVoice: { _ in nil })
+            let service = TTSPlaybackService(primary: synthesizer, output: output)
             let speaking = StreamRecorder(service.isSpeakingStream)
             let start = ContinuousClock.now
             await service.speak(text: sentence, locale: english)

@@ -1,14 +1,19 @@
+import Combine
 import Foundation
 import Synchronization
 import Testing
 @testable import TranslateCall
 
-/// Records load/unload calls in order.
+/// Records load/unload calls in order; models in `failing` fail to load.
 private final class LoaderLog: Sendable {
     private let calls = Mutex<[String]>([])
+    let failing = Mutex<Set<PreloadModel>>([])
     var entries: [String] { calls.withLock { $0 } }
     var loaders: ModelLoaders {
-        ModelLoaders(load: { model in self.calls.withLock { $0.append("load \(model)") } },
+        ModelLoaders(load: { model in
+                         self.calls.withLock { $0.append("load \(model)") }
+                         return !self.failing.withLock { $0.contains(model) }
+                     },
                      unload: { model in self.calls.withLock { $0.append("unload \(model)") } })
     }
 }
@@ -27,7 +32,7 @@ private struct Harness {
         defaults.removePersistentDomain(forName: name)
         defaults.set(source, forKey: "tlk.source.language")
         defaults.set(target, forKey: "tlk.target.language")
-        stt = STTEngineSelector(defaults: defaults, appleSpeechFactory: { MockSpeechRecognizerService(locale: $0) },
+        stt = STTEngineSelector(appleSpeechFactory: { MockSpeechRecognizerService(locale: $0) },
                                 parakeetFactory: { MockSpeechRecognizerService(locale: $0) },
                                 whisperFactory: { MockSpeechRecognizerService(locale: $0) })
         tts = TTSEngineSelector(defaults: defaults)
@@ -72,6 +77,7 @@ struct ModelPreloaderTests {
     func voiceCloneWhenOutgoingChoice() {
         let harness = Harness(source: "es", target: "en", probe: cachedAll)
         #expect(!harness.preloader().wantedModels().contains(.voiceClone), "Use my voice is off")
+        harness.tts.setProfileStore(MockVoiceProfileStore())
         harness.tts.voiceCloningEnabled = true
         harness.tts.activeVoiceProfileId = UUID()
         #expect(harness.preloader().wantedModels() == [.whisper, .voiceClone])
@@ -90,30 +96,101 @@ struct ModelPreloaderTests {
         #expect(preloader.loaded == [.whisper])
     }
 
-    @Test("manual mode preloads nothing; a session in progress blocks any change")
-    func manualAndSession() async {
+    @Test("a session in progress blocks any change")
+    func sessionBlocks() async {
         let harness = Harness(source: "en", target: "es", probe: cachedAll)
-        harness.stt.setAutomatic(false)
-        #expect(harness.preloader().wantedModels().isEmpty)
-
-        harness.stt.setAutomatic(true)
         let busy = harness.preloader(sessionActive: { true })
         await busy.preload()
         #expect(harness.log.entries.isEmpty)
     }
 
-    @Test("switching to manual keeps what automatic mode loaded: no unloads on a later preload (R27)")
-    func manualKeepsLoadedModels() async {
-        let harness = Harness(source: "en", target: "es", probe: cachedAll)
+    @Test("the pair's choice drives the picks: Apple Speech chosen → Whisper unloaded (REQ-ST-61)")
+    func pairChoiceDrivesPicks() async {
+        let harness = Harness(source: "es", target: "en", probe: cachedAll)
         let preloader = harness.preloader()
         await preloader.preload()
-        #expect(preloader.loaded == [.parakeet, .whisper])
-
-        harness.stt.setAutomatic(false)
-        await harness.pair.setSourceLanguage(Locale.Language(identifier: "de"))
+        #expect(preloader.loaded == [.whisper])
+        harness.stt.pairChoice = { PairModelChoice(stt: .appleSpeech) }
         await preloader.preload()
-        #expect(!harness.log.entries.contains { $0.hasPrefix("unload") })
-        #expect(preloader.loaded == [.parakeet, .whisper])
+        #expect(harness.log.entries.last == "unload whisper")
+        #expect(preloader.loaded.isEmpty)
+    }
+
+    @Test("a failed load is not recorded as loaded and is retried at the next preload (UI-B4)")
+    func failedLoadIsRetried() async {
+        let harness = Harness(source: "es", target: "en", probe: cachedAll)
+        harness.log.failing.withLock { $0 = [.whisper] }
+        let preloader = harness.preloader()
+        await preloader.preload()
+        #expect(preloader.loaded.isEmpty)
+        harness.log.failing.withLock { $0 = [] }
+        await preloader.preload()
+        #expect(harness.log.entries == ["load whisper", "load whisper"])
+        #expect(preloader.loaded == [.whisper])
+    }
+
+    @Test("a preload skipped during a call runs when the session-end trigger fires")
+    func runsAfterSession() async {
+        let harness = Harness(source: "es", target: "en", probe: cachedAll)
+        var inSession = true
+        var checks = 0
+        let preloader = harness.preloader(sessionActive: { checks += 1; return inSession })
+        let ended = PassthroughSubject<Void, Never>()
+        preloader.start(triggers: [ended.eraseToAnyPublisher()])
+        #expect(await waitUntil { checks >= 1 })
+        #expect(harness.log.entries.isEmpty)
+        inSession = false
+        ended.send()
+        #expect(await waitUntil { preloader.loaded == [.whisper] })
+    }
+
+    @Test("every trigger re-runs the preloader, debounced (REQ-ST-61)")
+    func triggersRerun() async {
+        let harness = Harness(source: "es", target: "en", probe: cachedAll)
+        let preloader = harness.preloader()
+        let trigger = PassthroughSubject<Void, Never>()
+        preloader.start(triggers: [trigger.eraseToAnyPublisher()])
+        #expect(await waitUntil { preloader.loaded == [.whisper] })
+        harness.stt.pairChoice = { PairModelChoice(stt: .appleSpeech) }
+        trigger.send()
+        trigger.send()
+        #expect(await waitUntil { preloader.loaded.isEmpty })
+        #expect(harness.log.entries.filter { $0 == "unload whisper" }.count == 1)
+    }
+
+    @Test("turning \"Use my voice\" on loads a voice clone already on disk (preloadTriggers)")
+    func useMyVoiceTriggerLoadsClone() async {
+        let harness = Harness(source: "es", target: "en", probe: cachedAll)
+        let defaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        let models = ModelServices(choices: PairModelChoices(defaults: defaults),
+                                   cloud: CloudPolicy(defaults: defaults, edgeConsentGiven: { false },
+                                                      grantEdgeConsent: {}),
+                                   downloads: ModelDownloads(probe: cachedAll, managers: DownloadManagers(
+                                       download: { _ in }, cancel: { _ in })),
+                                   stt: harness.stt, tts: harness.tts, languagePairManager: harness.pair)
+        harness.tts.setProfileStore(MockVoiceProfileStore())
+        harness.tts.activeVoiceProfileId = UUID()
+        let preloader = harness.preloader()
+        preloader.start(triggers: models.preloadTriggers(tts: harness.tts))
+        #expect(await waitUntil { preloader.loaded == [.whisper] })
+        harness.tts.enableVoiceCloning()
+        #expect(await waitUntil { preloader.loaded == [.whisper, .voiceClone] })
+        #expect(harness.log.entries.filter { $0 == "load voiceClone" }.count == 1)
+    }
+
+    @Test("a speech model a download left loaded is unloaded when the pair does not want it (design §11)")
+    func downloadedUnwantedModelIsUnloaded() async {
+        let harness = Harness(source: "es", target: "de", probe: cachedAll)   // wants Whisper only
+        let preloader = harness.preloader()
+        let finished = PassthroughSubject<DownloadableModel, Never>()
+        preloader.trackDownloads(finished.eraseToAnyPublisher())
+        finished.send(.parakeet)
+        finished.send(.kokoro)
+        finished.send(.voiceClone)
+        #expect(preloader.loaded == [.parakeet], "only the speech models a download loads are recorded")
+        await preloader.preload()
+        #expect(preloader.loaded == [.whisper])
+        #expect(harness.log.entries == ["unload parakeet", "load whisper"])
     }
 }
 

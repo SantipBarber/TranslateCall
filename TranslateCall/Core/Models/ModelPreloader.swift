@@ -10,10 +10,10 @@ nonisolated enum PreloadModel: Hashable, Sendable {
     case parakeet, whisper, voiceClone
 }
 
-/// Loads and unloads one model; `live` uses the shared managers' load-only paths, which throw
-/// instead of downloading (D-6, P20).
+/// Loads and unloads one model; `load` returns true when the model is loaded. `live` uses the shared
+/// managers' load-only paths, which throw instead of downloading (D-6, P20).
 nonisolated struct ModelLoaders: Sendable {
-    var load: @Sendable (PreloadModel) async -> Void
+    var load: @Sendable (PreloadModel) async -> Bool
     var unload: @Sendable (PreloadModel) async -> Void
 
     static let live = ModelLoaders(
@@ -24,8 +24,10 @@ nonisolated struct ModelLoaders: Sendable {
                 case .whisper: try await WhisperModelManager.shared.loadCached()
                 case .voiceClone: try await QwenCloneModelManager.shared.loadCached()
                 }
+                return true
             } catch {
                 logger.info("Preload of \(String(describing: model)) skipped: \(error.localizedDescription)")
+                return false
             }
         },
         unload: { model in
@@ -40,10 +42,12 @@ nonisolated struct ModelLoaders: Sendable {
 
 // MARK: - ModelPreloader
 
-/// Preloads the cached models the catalog picks for the current pair, at launch and on every
-/// pair change, so Start is fast (M9 UI core D-6, REQ-UI-21a, design §3.3). Never downloads,
-/// never runs during a session. The voice clone is preloaded when it is the outgoing choice; the
-/// catalog never picks Kokoro then, so one MLX TTS model at a time holds (NF-04).
+/// Preloads the cached models resolved for the current pair (its choice, else the catalog), at launch,
+/// on every pair change and on every trigger `start(triggers:)` is given (a choice, the cloud policy, a
+/// finished download, "Use my voice", its profile, the end of a session), so Start is fast (M9 UI core
+/// D-6, REQ-UI-21a, design §3.3; M9 UI settings REQ-ST-61). Never downloads, never runs during a session;
+/// a load that fails is retried at the next run (UI-B4). The voice clone is preloaded when it is the
+/// outgoing choice; the catalog never picks Kokoro then, so one MLX TTS model at a time holds (NF-04).
 /// `AppContainer` does not start it in the test host.
 @MainActor
 final class ModelPreloader {
@@ -65,28 +69,46 @@ final class ModelPreloader {
         self.isSessionActive = isSessionActive
     }
 
-    /// Preloads now and after every language change.
-    func start() {
-        languagePairManager.$sourceLanguage.combineLatest(languagePairManager.$targetLanguage)
+    /// Preloads now, then after every language change and every `triggers` event, debounced 300 ms so a
+    /// burst of changes runs one preload (REQ-ST-61).
+    func start(triggers: [AnyPublisher<Void, Never>] = []) {
+        let pairChanges = languagePairManager.$sourceLanguage.combineLatest(languagePairManager.$targetLanguage)
             .removeDuplicates { $0 == $1 }
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.schedule() }
+            .map { _ in () }
+            .eraseToAnyPublisher()
+        Publishers.MergeMany([pairChanges] + triggers)
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+            .sink { [weak self] in self?.schedule() }
             .store(in: &cancellables)
     }
 
-    /// The models the next session would load, given the pair and what is on disk.
+    /// Records a model loaded outside the preloader, so the next run unloads it if the pair does not want
+    /// it (a sheet download of Parakeet or Whisper leaves the model loaded; design §11).
+    func markLoaded(_ model: PreloadModel) {
+        loaded.insert(model)
+    }
+
+    /// Marks the speech models a download leaves loaded (`ModelDownloads.didFinish`). Kokoro is unloaded
+    /// by its download, and the voice clone belongs to "Use my voice".
+    func trackDownloads(_ finished: AnyPublisher<DownloadableModel, Never>) {
+        finished.sink { [weak self] model in
+            switch model {
+            case .parakeet: self?.markLoaded(.parakeet)
+            case .whisper: self?.markLoaded(.whisper)
+            case .kokoro, .voiceClone: break
+            }
+        }
+        .store(in: &cancellables)
+    }
+
+    /// The models the next session would load, given the pair, its choice and what is on disk.
     func wantedModels() -> Set<PreloadModel> {
-        guard stt.isAutomatic else { return [] }
         let source = Locale(identifier: languagePairManager.sourceLanguage.minimalIdentifier)
         let target = Locale(identifier: languagePairManager.targetLanguage.minimalIdentifier)
-        let sttAvailable = stt.availability
-        let sttPicks = [
-            ModelChoice.stt(for: source, direction: .outgoing, catalog: stt.catalog, availability: sttAvailable),
-            ModelChoice.stt(for: target, direction: .incoming, catalog: stt.catalog, availability: sttAvailable)
-        ]
+        let sttPicks = [stt.resolvedEngine(for: source, direction: .outgoing),
+                        stt.resolvedEngine(for: target, direction: .incoming)]
         // My voice, spoken in their language.
-        let outgoingVoice = ModelChoice.tts(for: target, direction: .outgoing, catalog: tts.catalog,
-                                            availability: tts.availability)
+        let outgoingVoice = tts.resolvedEngine(for: target, direction: .outgoing)
         var wanted: Set<PreloadModel> = []
         if sttPicks.contains(.parakeet) { wanted.insert(.parakeet) }
         if sttPicks.contains(.whisper) { wanted.insert(.whisper) }
@@ -94,14 +116,19 @@ final class ModelPreloader {
         return wanted
     }
 
-    /// Loads what the pair needs and unloads what it no longer needs; a no-op during a session and in
-    /// manual mode, where the user's picks own the models and `loaded` is left as it is (R27).
+    /// Loads what the pair needs and unloads what it no longer needs; a no-op during a session. Only a
+    /// model that did load is recorded, so a failed one is tried again next time (UI-B4).
     func preload() async {
-        guard stt.isAutomatic, !isSessionActive() else { return }
+        guard !isSessionActive() else { return }
         let wanted = wantedModels()
-        for model in loaded.subtracting(wanted) { await loaders.unload(model) }
-        for model in wanted.subtracting(loaded) { await loaders.load(model) }
-        loaded = wanted
+        for model in loaded.subtracting(wanted) {
+            await loaders.unload(model)
+            loaded.remove(model)
+        }
+        for model in wanted.subtracting(loaded) {
+            let didLoad = await loaders.load(model)
+            if didLoad { loaded.insert(model) }
+        }
     }
 
     private func schedule() {

@@ -10,7 +10,11 @@ private struct SetupHarness {
     let monitor: CallAppMonitor
     let setupManager: SetupManager
     let languages: LanguagePairManager
+    let tts = TTSEngineSelector(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+    let models: ModelServices
     let model: MainSetupModel
+    /// Holds every model download until opened.
+    let downloadGate = AsyncGate()
 
     init(installed: @escaping (Locale.Language, Locale.Language) async -> Bool = { _, _ in true },
          permissions: @escaping () -> PermissionState = { .allGranted }) {
@@ -41,8 +45,20 @@ private struct SetupHarness {
             conversationSettings: ConversationSettings(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
         )
         let session = CallSessionModel(coordinator: coordinator, viewModel: viewModel)
+        tts.cacheProbe = .none
+        tts.edgeConsentGiven = { true }
+        tts.catalog = ModelCatalog(version: 2, stt: [:], ttsOutgoing: [:], ttsIncoming: [:])   // Edge available
+        let modelDefaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        models = ModelServices(choices: PairModelChoices(defaults: modelDefaults),
+                               cloud: CloudPolicy(defaults: modelDefaults, edgeConsentGiven: { true },
+                                                  grantEdgeConsent: {}),
+                               downloads: ModelDownloads(probe: .none, managers: DownloadManagers(
+                                   download: { [downloadGate] _ in await downloadGate.wait() }, cancel: { _ in })),
+                               stt: STTEngineSelector(), tts: tts, languagePairManager: languages)
+        models.cloud.allowed = false
         model = MainSetupModel(monitor: monitor, setupManager: setupManager, languagePairManager: languages,
-                               session: session, isInstalled: installed, permissions: permissions)
+                               session: session, models: models, tts: tts,
+                               isInstalled: installed, permissions: permissions)
     }
 
     var zoom: CallAppRow { monitor.rows.first { $0.bundleID == "us.zoom.xos" }! }
@@ -95,6 +111,20 @@ struct MainSetupModelTests {
         #expect(harness.model.readiness.primary == .openAppAndStart("Zoom"))
     }
 
+    @Test("a model download in flight blocks Start with its reason; finishing it unblocks Start (S-7)")
+    func downloadInFlightBlocksStart() async {
+        let harness = SetupHarness()
+        await harness.model.refresh()
+        #expect(harness.model.readiness.primary == .start && harness.model.readiness.primaryEnabled)
+        harness.models.downloads.start(.whisper)
+        #expect(harness.model.readiness.primary == .waitingForDownload)
+        #expect(!harness.model.readiness.primaryEnabled)
+        #expect(harness.model.readiness.blockingReason == "Wait for the model download to finish")
+        harness.downloadGate.open()
+        #expect(await waitUntil { harness.model.readiness.primary == .start })
+        #expect(harness.model.readiness.primaryEnabled)
+    }
+
     @Test("a denied microphone blocks Start")
     func deniedMicBlocksStart() async {
         let harness = SetupHarness(permissions: { PermissionState(microphone: .denied, screenRecording: .granted) })
@@ -118,5 +148,29 @@ struct MainSetupModelTests {
         #expect(changes.value > 0)
         subscription.cancel()
     }
-}
 
+    @Test("the models line: Recommended; Custom with a pair choice; · Cloud when Edge will speak (REQ-ST-05, 40)")
+    func modelsLabel() async {
+        let harness = SetupHarness()
+        #expect(harness.model.modelsLabel == "Models: Recommended")
+        harness.models.choices.set(PairModelChoice(stt: .appleSpeech), for: PairKey("en", "de"))
+        #expect(await waitUntil { harness.model.modelsLabel == "Models: Custom" })
+        harness.tts.hasSystemVoice = { _ in false }
+        harness.models.cloud.allowed = true
+        #expect(await waitUntil { harness.model.modelsLabel == "Models: Custom · Cloud" })
+        #expect(ModelsLabel.text(hasChoice: false, usesCloud: true) == "Models: Recommended · Cloud")
+    }
+
+    @Test("a session tick does not recompute the models line (no disk or voice probes mid-call)")
+    func sessionTickSkipsModelsLabel() async {
+        let harness = SetupHarness()
+        await mainQueueHop()
+        let probes = CallCounter()
+        harness.tts.hasSystemVoice = { _ in probes.increment(); return true }
+        harness.model.session.objectWillChange.send()
+        await mainQueueHop()
+        #expect(probes.value == 0)
+        harness.models.cloud.allowed = true
+        #expect(await waitUntil { probes.value > 0 }, "its own inputs still recompute it")
+    }
+}

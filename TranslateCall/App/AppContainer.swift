@@ -93,6 +93,8 @@ final class AppContainer: ObservableObject {
 /// The M9 UI core services, built after the view model.
 @MainActor
 struct UIServices {
+    /// Per-pair model choices and the cloud policy, wired into the selectors (M9 UI settings).
+    let models: ModelServices
     let modelPreloader: ModelPreloader
     let callAppMonitor: CallAppMonitor
     let callSession: CallSessionModel
@@ -100,17 +102,29 @@ struct UIServices {
     /// The one status panel and its presenter, shown with the session (P25).
     let statusPanel: StatusPanelController
 
-    /// The preloader never runs in the test host (REQ-UI-21a).
+    /// The preloader never runs in the test host (REQ-UI-21a); outside it, it re-runs on the model
+    /// triggers and when a session ends (REQ-ST-61, P11).
     init(coordinator: AudioCoordinator, viewModel: AudioViewModel, stt: STTEngineSelector, tts: TTSEngineSelector) {
         UISettingsKeys.registerDefaults()
+        let inSession = { coordinator.isOutgoingActive || coordinator.isStarting }
+        let sessionActive = coordinator.$isOutgoingActive.combineLatest(coordinator.$isStarting)
+            .map { $0 || $1 }.eraseToAnyPublisher()
+        models = ModelServices(stt: stt, tts: tts, languagePairManager: viewModel.languagePairManager,
+                               sessionActive: sessionActive)
         modelPreloader = ModelPreloader(stt: stt, tts: tts, languagePairManager: viewModel.languagePairManager,
-                                        isSessionActive: { coordinator.isOutgoingActive || coordinator.isStarting })
-        if !AppContainer.isTestHost { modelPreloader.start() }
+                                        isSessionActive: inSession)
+        modelPreloader.trackDownloads(models.downloads.didFinish.eraseToAnyPublisher())
+        if !AppContainer.isTestHost {
+            let sessionEnded = coordinator.$isOutgoingActive.removeDuplicates().filter { !$0 }
+                .map { _ in () }.eraseToAnyPublisher()
+            modelPreloader.start(triggers: models.preloadTriggers(tts: tts) + [sessionEnded])
+        }
         callAppMonitor = CallAppMonitor(workspace: LiveWorkspace(),
                                         selectedBundleID: viewModel.setupManager.selectedCaptureBundleID)
         callSession = CallSessionModel(coordinator: coordinator, viewModel: viewModel)
         mainSetupModel = MainSetupModel(monitor: callAppMonitor, setupManager: viewModel.setupManager,
-                                        languagePairManager: viewModel.languagePairManager, session: callSession)
+                                        languagePairManager: viewModel.languagePairManager, session: callSession,
+                                        models: models, tts: tts)
         let (session, setup) = (callSession, mainSetupModel)
         statusPanel = StatusPanelController(size: NSSize(width: 320, height: 174)) { panel in
             PanelHostingView(rootView: StatusPanelView()

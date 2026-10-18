@@ -1,10 +1,21 @@
 import AppKit
 
-/// The Settings tabs (REQ-UI-70). `advancedLegacy` is replaced by feature 2.
+/// The Settings tabs (M9 UI settings REQ-ST-51).
 enum SettingsTab: String, CaseIterable, Identifiable {
     case general
-    case advancedLegacy
+    case voices
+    case advanced
     var id: String { rawValue }
+
+    /// The feature-1 value `"advancedLegacy"` still stored on upgraded Macs opens Advanced.
+    init?(rawValue: String) {
+        switch rawValue {
+        case "general": self = .general
+        case "voices": self = .voices
+        case "advanced", "advancedLegacy": self = .advanced
+        default: return nil
+        }
+    }
 }
 
 /// Opens Settings on a given tab from anywhere, AppKit contexts included (status item, NSPanel).

@@ -76,7 +76,7 @@ struct BenchModelPresence: Sendable {
                 FileManager.default.fileExists(atPath: folder.appendingPathComponent($0.fileName).path)
             }
         },
-        voiceClone: { await QwenCloneModelManager.shared.isModelCached() }
+        voiceClone: { QwenCloneModelManager.shared.isModelCached() }
     )
 }
 
@@ -190,7 +190,7 @@ enum BenchPipelineFactory {
     /// The user's real voice-clone choice: read, never written (NFR-BH-03).
     private static let activeProfileKey = "tlk.voiceCloning.activeProfileId"
 
-    static func make(_ line: BenchRunLine, options: BenchOptions, vadProvider: VADProvider = VADProvider()) async throws
+    static func make(_ line: BenchRunLine, options: BenchOptions, vadProvider: VADProvider = VADProvider(preferred: { .silero })) async throws
         -> BenchSession {
         let suiteName = "bench-\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
@@ -199,14 +199,12 @@ enum BenchPipelineFactory {
         // LanguagePairManager's keys (private there): the pair this session translates.
         defaults.set(line.userLanguage, forKey: "tlk.source.language")
         defaults.set(line.otherLanguage, forKey: "tlk.target.language")
-        // Engines are pinned per profile: the selectors must never pick their own (M9 UI core automatic mode).
-        ModelChoice.setAutomatic(false, in: defaults)
         let pair = LanguagePairManager(defaults: defaults, languageLoader: { [] })
         let (outBridge, inBridge) = (TranslationBridgeModel(), TranslationBridgeModel())
         let host = TranslationHostWindow(outgoing: outBridge, incoming: inBridge)
         host.show()
         let translation = TranslationEngineSelector(outgoingBridge: outBridge, incomingBridge: inBridge, defaults: defaults)
-        let stt = STTEngineSelector(defaults: defaults)
+        let stt = STTEngineSelector()
         let tts = TTSEngineSelector(defaults: defaults)
         do {
             try await configureEngines(stt: stt, tts: tts, line: line, options: options)
@@ -223,6 +221,7 @@ enum BenchPipelineFactory {
         let inTracer = PipelineTracer(direction: .incoming, sink: sink, trailingSilence: trailing)
         let output = BenchOutput()
         let built = BuiltEngines()
+        let voices = ttsEngines(options)
         let vads = vadProvider
         let mic = BenchAudioSource()
         let system = BenchSystemAudioCapture()
@@ -236,10 +235,14 @@ enum BenchPipelineFactory {
             outgoingTranslationService: outTracer.tracing(translation.makeOutgoingService()),
             incomingTranslationService: inTracer.tracing(translation.makeIncomingService()),
             outgoingTTSFactory: { locale, device in
-                try traced(tts, outTracer, output: output, built: built) { try tts.makeOutgoingService(for: locale, deviceID: device) }
+                try traced(tts, outTracer, voice: voices.outgoing, output: output, built: built) {
+                    try tts.makeOutgoingService(for: locale, deviceID: device)
+                }
             },
             incomingTTSFactory: { locale, device in
-                try traced(tts, inTracer, output: output, built: built) { try tts.makeIncomingService(for: locale, deviceID: device) }
+                try traced(tts, inTracer, voice: voices.incoming, output: output, built: built) {
+                    try tts.makeIncomingService(for: locale, deviceID: device)
+                }
             },
             languagePairManager: pair,
             isTranslationPairInstalled: AppleTranslationService.isInstalled
@@ -289,21 +292,16 @@ enum BenchPipelineFactory {
         let line = session.line
         let engine = sttEngine(for: line, options: options)
         let locale = recognizedLocale(line)
-        let usable: Bool
-        switch engine {
-        case .appleSpeech: usable = true
-        case .parakeet: usable = session.stt.parakeetAvailable && !line.incoming && locale.isEnglish
-        case .whisper: usable = session.stt.whisperAvailable && engine.supports(locale: locale)
-        }
-        try requirePrerequisite(session.stt.preferredEngine == engine && usable,
+        let direction: TranscriptDirection = line.incoming ? .incoming : .outgoing
+        // The resolver returns the pinned engine only when it serves this locale and direction and is on disk.
+        try requirePrerequisite(session.stt.resolvedEngine(for: locale, direction: direction) == engine,
                                 "STT engine \(engine.rawValue) usable on \(line) (\(locale.identifier)) without falling back to Apple Speech")
     }
 
     /// Each direction's TTS was built with the engine asked for (no silent AVSpeech).
     private static func requireTTS(_ session: BenchSession, options: BenchOptions) throws {
-        let clone = options.profile == .best && !options.edge && options.overrideTTS == nil
-        let outgoing: TTSEngine = options.edge ? .edgeTTS : options.overrideTTS ?? (clone ? .voiceClone : .avSpeech)
-        let incoming: TTSEngine = options.edge ? .edgeTTS : .avSpeech
+        let (outgoing, incoming) = ttsEngines(options)
+        let clone = outgoing == .voiceClone
         // The incoming TTS exists only on an incoming line; the outgoing one always does.
         var expectations = [(TraceDirection.outgoing, outgoing)]
         if session.line.incoming { expectations.append((.incoming, incoming)) }
@@ -313,8 +311,18 @@ enum BenchPipelineFactory {
                                     "\(direction) TTS built with \(expected.rawValue), got \(built?.rawValue ?? "none")")
         }
         if clone {
-            try requirePrerequisite(session.tts.voiceCloningActive, "voice cloning active (profile, model and toggle)")
+            let tts = session.tts
+            let active = tts.voiceCloningEnabled && tts.voiceCloneAvailable && tts.activeVoiceProfileId != nil
+            try requirePrerequisite(active, "voice cloning active (profile, model and toggle)")
         }
+    }
+
+    /// The voice each direction's TTS is built with (REQ-BH-32…34): Edge on both sides with `edge`,
+    /// else the override or Best's voice clone outgoing and the system voice incoming.
+    static func ttsEngines(_ options: BenchOptions) -> (outgoing: TTSEngine, incoming: TTSEngine) {
+        if options.edge { return (.edgeTTS, .edgeTTS) }
+        let clone = options.profile == .best && options.overrideTTS == nil
+        return (options.overrideTTS ?? (clone ? .voiceClone : .avSpeech), .avSpeech)
     }
 
     // MARK: - Engines
@@ -333,29 +341,34 @@ enum BenchPipelineFactory {
             try requirePrerequisite(await options.presence.whisper(),
                                     "Whisper model — download it in the app first (M5)")
         }
-        stt.setPreferredEngine(engine)
+        // Pinned through the pair's choice: the resolver keeps it wherever it is usable (M9 UI settings P5).
+        stt.pairChoice = { PairModelChoice(stt: engine) }
+        // Load-only paths: they throw instead of downloading (D-6).
         if engine == .parakeet {
-            let ready = await waitUntil(timeout: .seconds(120)) { stt.parakeetAvailable }
-            try requirePrerequisite(ready, "Parakeet model (download it in the app: STT → Parakeet)")
+            let loaded = (try? await ParakeetModelManager.shared.loadCached()) != nil
+            try requirePrerequisite(loaded, "Parakeet model (download it in the app: STT → Parakeet)")
         } else if engine == .whisper {
-            let ready = await waitUntil(timeout: .seconds(300)) { stt.whisperAvailable }
-            try requirePrerequisite(ready, "Whisper model (download it in the app: STT → Whisper)")
+            let loaded = (try? await WhisperModelManager.shared.loadCached()) != nil
+            try requirePrerequisite(loaded, "Whisper model (download it in the app: STT → Whisper)")
         }
 
+        // The voice is pinned per direction when each TTS service is built (`traced`).
         if options.edge {
-            tts.setPreferredEngine(.edgeTTS)
-        } else if let override = options.overrideTTS {
-            if override == .kokoro {
-                try requirePrerequisite(await options.presence.kokoro(),
-                                        "Kokoro model — download it in the app first (M5)")
-                tts.setPreferredEngine(override)
-                _ = try await KokoroModelManager.shared.ensureReady()
-                let ready = await waitUntil(timeout: .seconds(120)) { tts.kokoroAvailable }
-                try requirePrerequisite(ready, "Kokoro model (download it in the app: TTS → Kokoro)")
-            } else {
-                tts.setPreferredEngine(override)
-            }
-        } else if options.profile == .best {
+            // Explicit Edge, as the bench always ran it: cloud allowed, consented and not marked
+            // unavailable, whatever the bundled catalog (S-3) and this Mac's consent say.
+            var catalog = tts.catalog
+            catalog.engines[TTSEngine.edgeTTS.rawValue] = EngineInfo(unavailable: false)
+            tts.catalog = catalog
+            tts.cloudAllowed = { true }
+            tts.edgeConsentGiven = { true }
+        } else if options.overrideTTS == .kokoro {
+            try requirePrerequisite(await options.presence.kokoro(),
+                                    "Kokoro model — download it in the app first (M5)")
+            // Kokoro has no load-only path (P20); its presence check above keeps this from downloading.
+            _ = try await KokoroModelManager.shared.ensureReady()
+            await tts.refreshModelAvailability()
+            try requirePrerequisite(tts.kokoroAvailable, "Kokoro model (download it in the app: TTS → Kokoro)")
+        } else if options.overrideTTS == nil, options.profile == .best {
             let raw = UserDefaults.standard.string(forKey: activeProfileKey)
             try requirePrerequisite(raw.flatMap(UUID.init(uuidString:)) != nil, "an active voice-clone profile (M5)")
             guard let raw, let id = UUID(uuidString: raw) else { return }
@@ -364,24 +377,29 @@ enum BenchPipelineFactory {
             tts.activeVoiceProfileId = id
             tts.setProfileStore(VoiceProfileStore())
             tts.voiceCloningEnabled = true   // the selector's own (throwaway) suite
-            try await QwenCloneModelManager.shared.ensureReady()
-            let ready = await waitUntil(timeout: .seconds(120)) { tts.voiceCloneAvailable }
-            try requirePrerequisite(ready, "Qwen3-TTS voice-clone model (enable voice cloning in the app)")
+            let loaded = (try? await QwenCloneModelManager.shared.loadCached()) != nil
+            try requirePrerequisite(loaded, "Qwen3-TTS voice-clone model — download it in the app first (M5)")
+            await tts.refreshModelAvailability()
+            try requirePrerequisite(tts.voiceCloneAvailable, "Qwen3-TTS voice-clone model (enable voice cloning in the app)")
         }
     }
 
     /// Builds one direction's TTS service with every synthesizer and the output device traced, then
     /// puts the selector's factories back (P4). The service itself is traced too.
     private static func traced(
-        _ tts: TTSEngineSelector, _ tracer: PipelineTracer, output: BenchOutput, built: BuiltEngines,
-        build: () throws -> TTSPlaybackService
+        _ tts: TTSEngineSelector, _ tracer: PipelineTracer, voice: TTSEngine, output: BenchOutput,
+        built: BuiltEngines, build: () throws -> TTSPlaybackService
     ) throws -> any SynthesisService {
-        let (savedOutput, savedAV, savedKokoro, savedClone, savedEdge) =
-            (tts.outputFactory, tts.avSpeechFactory, tts.kokoroFactory, tts.voiceCloneFactory, tts.edgeFactory)
+        let (savedOutput, savedAV, savedKokoro, savedClone, savedEdge, savedChoice) =
+            (tts.outputFactory, tts.avSpeechFactory, tts.kokoroFactory, tts.voiceCloneFactory, tts.edgeFactory,
+             tts.pairChoice)
         defer {
-            (tts.outputFactory, tts.avSpeechFactory, tts.kokoroFactory, tts.voiceCloneFactory, tts.edgeFactory) =
-                (savedOutput, savedAV, savedKokoro, savedClone, savedEdge)
+            (tts.outputFactory, tts.avSpeechFactory, tts.kokoroFactory, tts.voiceCloneFactory, tts.edgeFactory,
+             tts.pairChoice) = (savedOutput, savedAV, savedKokoro, savedClone, savedEdge, savedChoice)
         }
+        // This direction's voice, pinned through the pair's choice (the voice clone wins outgoing when ready;
+        // `PairModelChoice` drops `.voiceClone`, so Best pins nothing there).
+        tts.pairChoice = { PairModelChoice(voice: voice) }
         // The first synthesizer a build asks for is the primary (the fallback is built after it).
         let primary = Mutex<TTSEngine?>(nil)
         func wrap(_ synthesizer: any UtteranceSynthesizer) -> any UtteranceSynthesizer {

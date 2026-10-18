@@ -9,7 +9,11 @@ struct MainSetupActions {
     var selectOther: (String?) -> Void = { _ in }
     var setUpDriver: () -> Void = {}
     var openVoiceProfiles: () -> Void = {}
+    /// "Try again" after the voice model download failed (blocked during a call).
+    var retryVoiceDownload: () -> Void = {}
     var download: (TranslationSession) async -> Void = { _ in }
+    /// "Advanced…" next to the models line: opens the pair's models sheet (P10).
+    var openModels: () -> Void = {}
     var primary: () -> Void = {}
 }
 
@@ -22,8 +26,9 @@ struct MainSetupContent: View {
     @ObservedObject var monitor: CallAppMonitor
     let selectedBundleID: String?
     @ObservedObject var languages: LanguagePairManager
-    @ObservedObject var sttSelector: STTEngineSelector
+    let modelsLabel: String
     @ObservedObject var ttsSelector: TTSEngineSelector
+    let voiceCloneDownload: DownloadState
     @ObservedObject var conversationSettings: ConversationSettings
     let profile: VoiceProfileHeader?
     let actions: MainSetupActions
@@ -40,12 +45,13 @@ struct MainSetupContent: View {
                     CallAppNotOpenCard(card: card)
                 }
             }
-            LanguageSection(manager: languages, sttSelector: sttSelector, ttsSelector: ttsSelector, pair: pair,
+            LanguageSection(manager: languages, pair: pair, modelsLabel: modelsLabel, onAdvanced: actions.openModels,
                             isLocked: isLocked, onDownload: actions.download)
             VoiceSection(ttsSelector: ttsSelector, profile: profile,
                          targetLocale: Locale(identifier: languages.targetLanguage.minimalIdentifier),
                          targetName: languages.displayName(for: languages.targetLanguage),
-                         onOpenProfiles: actions.openVoiceProfiles)
+                         download: voiceCloneDownload, isLocked: isLocked,
+                         onOpenProfiles: actions.openVoiceProfiles, onRetryDownload: actions.retryVoiceDownload)
             primaryButton
             SetupFooter(settings: conversationSettings)
         }
@@ -77,22 +83,26 @@ struct MainSetupView: View {
     @EnvironmentObject private var viewModel: AudioViewModel
     @EnvironmentObject private var setupManager: SetupManager
     @EnvironmentObject private var voiceProfileManager: VoiceProfileManager
-    @EnvironmentObject private var sttSelector: STTEngineSelector
     @EnvironmentObject private var ttsSelector: TTSEngineSelector
     @EnvironmentObject private var languages: LanguagePairManager
     @EnvironmentObject private var model: MainSetupModel
     @EnvironmentObject private var session: CallSessionModel
+    @EnvironmentObject private var downloads: ModelDownloads
+    @EnvironmentObject private var choices: PairModelChoices
+    @EnvironmentObject private var cloud: CloudPolicy
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismissWindow) private var dismissWindow
     @AppStorage(UISettingsKeys.showStatusPanel) private var showStatusPanel = true
     @State private var showSetupWizard = false
     @State private var showVoiceProfiles = false
+    @State private var modelsSheet: PairModelsModel?
 
     var body: some View {
         MainSetupContent(
             readiness: model.readiness, pair: model.pair, isLocked: session.phase != .idle,
             monitor: model.monitor, selectedBundleID: setupManager.selectedCaptureBundleID,
-            languages: languages, sttSelector: sttSelector, ttsSelector: ttsSelector,
+            languages: languages, modelsLabel: model.modelsLabel, ttsSelector: ttsSelector,
+            voiceCloneDownload: downloads.state(.voiceClone),
             conversationSettings: viewModel.conversationSettings, profile: voiceProfileManager.activeProfile,
             actions: actions
         )
@@ -114,6 +124,9 @@ struct MainSetupView: View {
             SetupWizardView(setupManager: setupManager, isPresented: $showSetupWizard)
         }
         .sheet(isPresented: $showVoiceProfiles) { voiceProfilesSheet }
+        .sheet(item: $modelsSheet) { sheet in
+            PairModelsSheet(model: sheet, onClose: { modelsSheet = nil })
+        }
         .task {
             setupManager.checkBlackHole()
             if !setupManager.isSetupCompleted { showSetupWizard = true }
@@ -138,12 +151,19 @@ struct MainSetupView: View {
             select: model.select, open: { row in Task { await model.open(row) } },
             selectOther: model.selectOther(bundleID:), setUpDriver: { showSetupWizard = true },
             openVoiceProfiles: { showVoiceProfiles = true },
+            retryVoiceDownload: { ttsSelector.enableVoiceCloning() },
             download: { session in
                 await viewModel.downloadLanguages(using: session)
                 await model.refresh()
             },
+            openModels: openModels,
             primary: { Task { await model.primaryAction() } }
         )
+    }
+
+    private func openModels() {
+        modelsSheet = PairModelsSheet.makeModel(languages: languages, choices: choices, cloud: cloud,
+                                                downloads: downloads, tts: ttsSelector)
     }
 
     /// Only with no session (P14, REQ-UI-82): a start-time failure waits for the outcome, and a mid-call

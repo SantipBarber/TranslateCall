@@ -10,8 +10,9 @@ private func row(running: Bool, installed: Bool = true) -> CallAppRow {
 
 private func derive(_ permissions: PermissionState = .allGranted, blackHole: Bool = true,
                     pair: PairReadiness = .ready, app: CallAppRow? = row(running: true),
-                    phase: SessionPhase = .idle) -> Readiness {
-    Readiness.derive(permissions: permissions, blackHolePresent: blackHole, pair: pair, app: app, phase: phase)
+                    phase: SessionPhase = .idle, downloading: Bool = false) -> Readiness {
+    Readiness.derive(permissions: permissions, blackHolePresent: blackHole, pair: pair, app: app, phase: phase,
+                     modelDownloading: downloading)
 }
 
 @Suite("Readiness (M9 UI core REQ-UI-33)")
@@ -21,6 +22,16 @@ struct ReadinessTests {
     func ready() {
         #expect(derive() == Readiness(primary: .start, primaryEnabled: true, cards: []))
         #expect(Readiness.Primary.start.title == "Start translating")
+    }
+
+    @Test("a model download in flight → Start waits for it (M9 UI settings S-7)")
+    func modelDownloading() {
+        let result = derive(app: row(running: false), downloading: true)
+        #expect(result.primary == .waitingForDownload && !result.primaryEnabled)
+        #expect(result.cards == [.callAppNotOpen("Zoom")])
+        #expect(result.blockingReason == "Wait for the model download to finish")
+        #expect(derive(pair: .missing(language: "Deutsch"), downloading: true).primary == .download("Deutsch"))
+        #expect(derive(phase: .running, downloading: true).primary == .stop)
     }
 
     @Test("microphone denied → card at the top and Start disabled (REQ-UI-32/33)")

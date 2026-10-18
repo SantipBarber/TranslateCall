@@ -14,6 +14,7 @@ nonisolated private let logger = Logger(subsystem: "com.spbarber.TranslateCall",
 @MainActor
 final class VADProvider: ObservableObject {
     typealias SileroLoader = @Sendable (VADConfiguration) async throws -> any VADService
+    typealias PreferredProvider = () -> VADEngine
 
     private enum Warmup { case idle, warming, ready, failed }
 
@@ -21,13 +22,16 @@ final class VADProvider: ObservableObject {
     @Published private(set) var activeEngine: VADEngine?
 
     private let loadSilero: SileroLoader
+    private let preferred: PreferredProvider
     private var warmup = Warmup.idle
 
     /// True while a background Silero load is running (sessions then get Energy).
     var isWarmingUp: Bool { warmup == .warming }
 
-    init(loadSilero: @escaping SileroLoader = { try await SileroVADService(config: $0) }) {
+    init(loadSilero: @escaping SileroLoader = { try await SileroVADService(config: $0) },
+         preferred: @escaping PreferredProvider = { VADPreference.engine() }) {
         self.loadSilero = loadSilero
+        self.preferred = preferred
     }
 
     /// Starts warming the Silero model in the background; a no-op after the first call (REQ-V-02).
@@ -39,6 +43,7 @@ final class VADProvider: ObservableObject {
     /// A VAD for one direction of the next session, on a validated copy of `config` (REQ-V-06).
     func makeVAD(config: VADConfiguration) async -> any VADService {
         let config = config.validated()
+        if preferred() == .energy { return energy(config) }
         switch warmup {
         case .warming:
             logger.info("Silero VAD still loading — using energy VAD for this session")
