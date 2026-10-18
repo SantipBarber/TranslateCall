@@ -69,6 +69,8 @@ final class TTSEngineSelector: ObservableObject {
     var cloudAllowed: () -> Bool = { false }
     /// Starts the voice clone download; `ModelServices` wires it to `ModelDownloads` (S-4). Default: no-op.
     var startVoiceCloneDownload: () -> Void = {}
+    /// Cancels a running voice clone download (best effort, S-4); `ModelServices` wires it. Default: no-op.
+    var cancelVoiceCloneDownload: () -> Void = {}
     /// Downloads are blocked while a session runs (S-7); `ModelServices` wires it. Default: never blocked.
     var downloadsBlocked: () -> Bool = { false }
 
@@ -179,9 +181,11 @@ final class TTSEngineSelector: ObservableObject {
         startVoiceCloneDownload()
     }
 
-    /// Disables voice cloning and unloads Qwen3-TTS model.
+    /// Disables voice cloning, cancels a running download (so Start isn't left waiting for it) and
+    /// unloads Qwen3-TTS model.
     func disableVoiceCloning() {
         voiceCloningEnabled = false
+        cancelVoiceCloneDownload()
         Task { await QwenCloneModelManager.shared.unload() }
     }
 

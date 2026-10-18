@@ -166,6 +166,16 @@ struct TTSEngineSelectorTests {
         #expect(started == 0)
     }
 
+    @Test("turning \"Use my voice\" off cancels its download, so Start isn't left waiting")
+    func disableVoiceCloningCancelsDownload() {
+        let selector = makeSelector()
+        var cancelled = 0
+        selector.cancelVoiceCloneDownload = { cancelled += 1 }
+        selector.disableVoiceCloning()
+        #expect(!selector.voiceCloningEnabled)
+        #expect(cancelled == 1)
+    }
+
     @Test("Voice Clone supports Spanish, French, and other languages")
     func voiceCloneSupportsMultipleLanguages() {
         for code in ["es-ES", "fr-FR", "de-DE", "it-IT", "pt-BR", "ru-RU", "zh-Hans", "ja-JP", "ko-KR"] {
