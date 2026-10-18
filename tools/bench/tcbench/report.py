@@ -106,7 +106,8 @@ def _worst(rows: list[dict]) -> list[dict]:
     return out
 
 
-def _trend(run_dir: Path, history_dir: Path, last_n: int, aggregates: dict) -> list[dict]:
+def _trend(run_dir: Path, history_dir: Path, last_n: int, aggregates: dict, set_type: str | None = None) -> list[dict]:
+    """Latency trend over the last runs of the same set: PR (8 clips) and full runs are not comparable."""
     here = run_dir.resolve()
     entries: list[tuple[str, dict]] = []
     if history_dir.is_dir():
@@ -115,7 +116,10 @@ def _trend(run_dir: Path, history_dir: Path, last_n: int, aggregates: dict) -> l
                     or not (d / "metrics.json").is_file()):
                 continue
             try:
-                entries.append((d.name, json.loads((d / "metrics.json").read_text())["aggregates"]))
+                payload = json.loads((d / "metrics.json").read_text())
+                if set_type is not None and payload.get("meta", {}).get("set") != set_type:
+                    continue
+                entries.append((d.name, payload["aggregates"]))
             except (ValueError, KeyError, OSError):
                 continue
     entries = entries[-max(last_n - 1, 0):] + [(run_dir.name, aggregates)]
@@ -209,7 +213,7 @@ def run(
         ),
         "stageData": _stage_data(aggregates),
         "totals": totals,
-        "trend": _trend(run_dir, history_dir, last_n, aggregates),
+        "trend": _trend(run_dir, history_dir, last_n, aggregates, meta.get("set")),
         "worst": worst,
         "attributions": _attributions([raw for _, raw in lines.values()], manifest),
         "vendor": vendor,

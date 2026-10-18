@@ -20,7 +20,7 @@ def _make_run_meta(**kwargs):
     return defaults
 
 
-def _make_baseline(aggregates, **kwargs):
+def _make_baseline(aggregates, pr_aggregates=None, **kwargs):
     defaults = {
         "reason": "initial",
         "date": "2024-01-01T00:00:00",
@@ -32,6 +32,8 @@ def _make_baseline(aggregates, **kwargs):
     }
     defaults.update(kwargs)
     defaults["aggregates"] = aggregates
+    if pr_aggregates is not None:
+        defaults["prAggregates"] = pr_aggregates
     return defaults
 
 
@@ -77,6 +79,13 @@ THRESHOLDS = {
     "cutRateIncreasePts": 2.0,
 }
 
+THRESHOLDS_WITH_PER_SET = {
+    **THRESHOLDS,
+    "perSet": {
+        "pr": {"werIncreasePts": 5.0, "chrfDropPts": 4.0, "cutRateMaxPct": 12.5}
+    },
+}
+
 
 def test_compare_pass_and_fail_verdicts():
     baseline_metrics = _make_metrics(wer=0.05)
@@ -95,16 +104,26 @@ def test_latency_not_gated_on_pr():
     baseline_metrics = _make_metrics(latency_total_p50=100.0, latency_total_p90=200.0)
     # Severe latency regression; on a PR it must not gate.
     run = _make_metrics(latency_total_p50=500.0, latency_total_p90=900.0, wer=0.05)
-    table, code = compare.run(run, _make_baseline(baseline_metrics), THRESHOLDS, _make_run_meta(set="pr"))
+    table, code = compare.run(
+        run,
+        _make_baseline(baseline_metrics, pr_aggregates=baseline_metrics),
+        THRESHOLDS,
+        _make_run_meta(set="pr"),
+    )
     assert "·" in table
     assert code == 0
 
 
 def test_quality_is_gated_on_pr():
-    # WER regression on a PR must still fail.
+    # WER regression on a PR must still fail (above the PR-specific threshold).
     baseline_metrics = _make_metrics(wer=0.05)
-    run = _make_metrics(wer=0.071)
-    table, code = compare.run(run, _make_baseline(baseline_metrics), THRESHOLDS, _make_run_meta(set="pr"))
+    run = _make_metrics(wer=0.12)  # +7 pp > 5 pp PR threshold
+    table, code = compare.run(
+        run,
+        _make_baseline(baseline_metrics, pr_aggregates=baseline_metrics),
+        THRESHOLDS_WITH_PER_SET,
+        _make_run_meta(set="pr"),
+    )
     assert "❌" in table
     assert code == 1
 
@@ -223,3 +242,51 @@ def test_override_run_no_gating():
     table, code = compare.run(run, _make_baseline(baseline_metrics), THRESHOLDS, _make_run_meta(override="debug"))
     assert "overridden" in table
     assert code == 0
+
+
+def test_pr_run_uses_pr_aggregates():
+    # Regression that fails against full aggregates (+5 pp > 2 pp threshold)
+    # but passes against PR aggregates (+2 pp <= 5 pp PR threshold).
+    base_full = _make_metrics(wer=0.05)
+    base_pr = _make_metrics(wer=0.08)
+    run = _make_metrics(wer=0.10)
+    table, code = compare.run(
+        run,
+        _make_baseline(base_full, pr_aggregates=base_pr),
+        THRESHOLDS_WITH_PER_SET,
+        _make_run_meta(set="pr"),
+    )
+    assert code == 0
+    assert "✅" in table
+
+
+def test_pr_run_missing_pr_aggregates_returns_three():
+    baseline_metrics = _make_metrics(wer=0.05)
+    run = _make_metrics(wer=0.10)
+    table, code = compare.run(
+        run,
+        _make_baseline(baseline_metrics),
+        THRESHOLDS,
+        _make_run_meta(set="pr"),
+    )
+    assert "baseline has no PR aggregates" in table
+    assert code == 3
+
+
+def test_per_set_thresholds_apply_only_to_pr():
+    # WER +4.0 pp: above full threshold (2.0), within PR threshold (5.0).
+    baseline_metrics = _make_metrics(wer=0.05)
+    run = _make_metrics(wer=0.09)
+
+    table, code = compare.run(run, _make_baseline(baseline_metrics), THRESHOLDS_WITH_PER_SET, _make_run_meta(set="full"))
+    assert code == 1
+    assert "❌" in table
+
+    table, code = compare.run(
+        run,
+        _make_baseline(baseline_metrics, pr_aggregates=baseline_metrics),
+        THRESHOLDS_WITH_PER_SET,
+        _make_run_meta(set="pr"),
+    )
+    assert code == 0
+    assert "✅" in table

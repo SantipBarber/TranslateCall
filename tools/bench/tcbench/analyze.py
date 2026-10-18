@@ -114,16 +114,22 @@ def _joined(utts: list[dict], stage: str) -> str:
     return " ".join(t for t in texts if t)
 
 
-def analyze_line(raw: dict, manifest: dict, comet: bool = False) -> dict[str, Any]:
+def analyze_line(raw: dict, manifest: dict, comet: bool = False, tier: str | None = None) -> dict[str, Any]:
     clips = sorted(raw["clips"], key=lambda c: c["feedStartNs"])
     by_id = {c["id"]: c for c in manifest["clips"]}
     unknown = [c["id"] for c in clips if c["id"] not in by_id]
     if unknown:
         raise ValueError(f"clips not in the manifest: {unknown[:5]}")
+
+    if tier is None:
+        included_clip_ids = {c["id"] for c in clips}
+    else:
+        included_clip_ids = {c["id"] for c in clips if tier in by_id[c["id"]].get("tiers", [])}
+
     assigned = assign(raw)
     target = target_lang(raw.get("runLine", ""))
     first_seq = min((u["seq"] for u in raw["utterances"] if not _dropped(u)), default=None)
-    unassigned = len(raw["utterances"]) - sum(len(v) for v in assigned.values())
+    unassigned = 0 if tier is not None else len(raw["utterances"]) - sum(len(v) for v in assigned.values())
 
     lat: dict[str, list[float]] = {s: [] for s in STAGES}
     cold: dict[str, list[float]] = {s: [] for s in STAGES}
@@ -135,6 +141,8 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False) -> dict[str, An
         utts = assigned[clip["id"]]
         mclip = by_id[clip["id"]]
         next_clip = clips[i + 1] if i + 1 < len(clips) else None
+        if tier is not None and clip["id"] not in included_clip_ids:
+            continue
         merges += sum(_is_merge(u, next_clip) for u in utts)
         if not utts:
             missed += 1
@@ -151,8 +159,12 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False) -> dict[str, An
             for stage, value in _latencies(last, clip["speechEndNs"]).items():
                 bucket[stage].append(value)
 
+    included_utts = raw["utterances"] if tier is None else [
+        u for cid in included_clip_ids for u in assigned[cid]
+    ]
+
     dropped: dict[str, int] = {}
-    for u in raw["utterances"]:
+    for u in included_utts:
         reason = u.get("detail", {}).get("dropped", {}).get("reason")
         if reason is not None:
             dropped[reason] = dropped.get(reason, 0) + 1
@@ -160,7 +172,7 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False) -> dict[str, An
     engines = raw["meta"].get("engines", {})
     exp_stt, exp_tts = engines.get("expectedSTT"), engines.get("expectedTTS")
     fallbacks = 0
-    for u in raw["utterances"]:
+    for u in included_utts:
         d = u.get("detail", {})
         stt_engine = d.get("sttFinal", {}).get("engine")
         tts_engine = d.get("ttsFirstBuffer", {}).get("engine")
@@ -170,6 +182,8 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False) -> dict[str, An
             fallbacks += 1
 
     mt_refs = {s["id"]: s for s in manifest.get("mtOnly", [])}
+    if tier is not None:
+        mt_refs = {sid: s for sid, s in mt_refs.items() if tier in s.get("tiers", [])}
     mt_triples = [
         {"src": mt_refs[r["id"]].get("src", ""), "mt": r["hyp"], "ref": mt_refs[r["id"]]["ref"]}
         for r in raw.get("mtOnly", [])
@@ -190,7 +204,7 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False) -> dict[str, An
             "mtOnly": comet_score(mt_triples) if mt_triples else None,
         }
 
-    n = len(clips)
+    n = len(clips) if tier is None else len(included_clip_ids)
     return {
         "latency": {s: summary(lat[s]) for s in STAGES},
         "latencyCold": {s: summary(cold[s]) for s in STAGES},
@@ -239,12 +253,15 @@ def run(run_dir: Path | str, manifest: dict, comet: bool = False) -> dict[str, A
     raws = [(p, json.loads(p.read_text())) for p in paths]
     meta = _run_meta(raws)
     aggregates: dict[str, Any] = {}
+    pr_aggs: dict[str, Any] = {}
     for path, raw in raws:
         key = f"{raw['profile']}/{raw['runLine']}"
         if key in aggregates:
             raise ValueError(f"two raw.json files for {key}: {path}")
         agg = analyze_line(raw, manifest, comet=comet)
         aggregates[key] = agg
+        if meta.get("set") == "full":
+            pr_aggs[key] = analyze_line(raw, manifest, comet=False, tier="pr")
         (path.parent / "metrics.json").write_text(
             json.dumps({"meta": meta, "key": key, "aggregate": agg}, indent=2, sort_keys=True) + "\n"
         )
@@ -259,6 +276,8 @@ def run(run_dir: Path | str, manifest: dict, comet: bool = False) -> dict[str, A
                 f"STT/TTS (runtime fallback); this run does not measure the configured engines",
                 file=sys.stderr,
             )
-    result = {"meta": meta, "aggregates": aggregates}
+    result: dict[str, Any] = {"meta": meta, "aggregates": aggregates}
+    if pr_aggs:
+        result["prAggregates"] = pr_aggs
     (run_dir / "metrics.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     return result

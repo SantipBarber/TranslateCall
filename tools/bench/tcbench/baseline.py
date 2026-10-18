@@ -27,8 +27,8 @@ def run(
     """Promote ``run_dir`` to the official baseline.
 
     Raises ``BaselineRefusal`` with a human-readable message if the repository
-    is dirty, the run is not full, the run itself was produced from a dirty
-    tree, or the run is informative/overridden.
+    is dirty, the run is not full, the run lacks PR-subset aggregates, the run
+    itself was produced from a dirty tree, or the run is informative/overridden.
     """
     run_dir = Path(run_dir)
     if output is None:
@@ -42,9 +42,15 @@ def run(
         )
 
     meta, aggregates = runs.load_run(run_dir)
+    pr_aggregates = runs.load_pr_aggregates(run_dir)
 
     if meta.get("set") != "full":
         raise BaselineRefusal("baseline needs a full run")
+
+    if pr_aggregates is None:
+        raise BaselineRefusal(
+            "Refusing to update baseline: the run has no PR-subset aggregates (prAggregates) — re-run `tcbench analyze` on it first."
+        )
 
     if meta.get("dirty"):
         raise BaselineRefusal(
@@ -70,6 +76,7 @@ def run(
         "machine": meta.get("machine"),
         "set": meta.get("set"),
         "aggregates": aggregates,
+        "prAggregates": pr_aggregates,
     }
 
     output.parent.mkdir(parents=True, exist_ok=True)

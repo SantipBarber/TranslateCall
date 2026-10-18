@@ -67,6 +67,17 @@ def load_run(run_dir: Path | str) -> tuple[dict[str, Any], dict[str, Any]]:
     return meta, aggregates
 
 
+def load_pr_aggregates(run_dir: Path | str) -> dict[str, Any] | None:
+    """Load the PR-subset aggregates from a run directory, if present."""
+    run_dir = Path(run_dir)
+    metrics_path = run_dir / "metrics.json"
+    if not metrics_path.exists():
+        raise FileNotFoundError(f"No metrics.json found in {run_dir}")
+
+    payload = json.loads(metrics_path.read_text())
+    return payload.get("prAggregates")
+
+
 def target_lang(run_line: str) -> str | None:
     """Base target language of a runLine ``"<direction> <src>><tgt>"``: ``"outgoing es-ES>en"`` -> ``"en"``."""
     if ">" not in run_line:

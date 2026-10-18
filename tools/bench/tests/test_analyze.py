@@ -60,6 +60,13 @@ def _manifest(*clips, mt=()):
     ], "mtOnly": list(mt)}
 
 
+def _manifest_with_tiers(*clips, mt=()):
+    return {"schema": 1, "clips": [
+        {"id": cid, "transcript": tr, "translations": ({"en": ref} if ref else {}), "tiers": tiers}
+        for cid, tr, ref, tiers in clips
+    ], "mtOnly": list(mt)}
+
+
 def _agg(raw, manifest, comet=False):
     return analyze.analyze_line(raw, manifest, comet=comet)
 
@@ -218,7 +225,12 @@ def test_run_roundtrip_with_compare(tmp_path):
     assert set(result["aggregates"]) == {"basic/es-ES>en", "stress/es-ES>en"}
     meta, aggs = runs.load_run(tmp_path)
     assert meta["informative"] is True and meta["override"] == "why" and meta["set"] == "pr"
-    baseline = {"manifestSha256": meta["manifestSha256"], "macOS": meta["macOS"], "aggregates": aggs}
+    baseline = {
+        "manifestSha256": meta["manifestSha256"],
+        "macOS": meta["macOS"],
+        "aggregates": aggs,
+        "prAggregates": aggs,
+    }
     thresholds = json.loads((Path(__file__).parents[3] / "bench" / "thresholds.json").read_text())
     _, code = compare.run(aggs, baseline, thresholds, meta)
     assert code == 0
@@ -295,3 +307,67 @@ def test_target_lang():
     assert runs.target_lang("outgoing es-ES>en") == "en"
     assert runs.target_lang("incoming en>es-419") == "es"
     assert runs.target_lang("nonsense") is None
+
+
+def test_tier_pr_filters_clips_but_assignment_uses_all_windows():
+    # Three clips; only the middle one belongs to the PR tier.
+    clips = [
+        _clip("a", 0, 2 * S, 0.5 * S, 1.5 * S),
+        _clip("b", 2 * S, 4 * S, 2.5 * S, 3.5 * S),
+        _clip("c", 4 * S, 6 * S, 4.5 * S, 5.5 * S),
+    ]
+    manifest = _manifest_with_tiers(
+        ("a", "hola", "hello", ["full"]),
+        ("b", "mundo", "world", ["pr", "full"]),
+        ("c", "adios", "bye", ["full"]),
+        mt=[
+            {"id": "mt1", "src": "x", "ref": "y", "srcLang": "es", "tgtLang": "en", "tiers": ["full"]},
+            {"id": "mt2", "src": "a", "ref": "b", "srcLang": "es", "tgtLang": "en", "tiers": ["pr", "full"]},
+        ],
+    )
+    utts = [
+        _utt(0, 0.5 * S + 1, vad_end=1.5 * S, stt=1.5 * S, text="hola"),
+        _utt(1, 2.5 * S + 1, vad_end=3.5 * S, stt=3.5 * S, text="mundo"),
+        # Exactly at clip c's feedStart -> clip c, must not leak into clip b.
+        _utt(2, 4 * S, vad_end=5 * S, stt=5 * S, text="adios typo", translated="bye typo"),
+    ]
+    raw = _raw(clips, utts, mt_only=[{"id": "mt1", "hyp": "y2", "ms": 1}, {"id": "mt2", "hyp": "b", "ms": 1}])
+
+    agg_pr = analyze.analyze_line(raw, manifest, tier="pr")
+    agg_full = analyze.analyze_line(raw, manifest)
+
+    # PR aggregate uses clip b only.
+    assert agg_pr["wer"] == 0.0
+    assert agg_pr["cutRate"] == 0.0
+    assert agg_pr["missed"] == 0
+    assert agg_pr["unassigned"] == 0
+    assert agg_pr["mergeRate"] == 0.0
+    assert agg_pr["dropped"] == {}
+    assert agg_pr["fallbacks"] == 0
+
+    # MT-only triples filtered by tier: only mt2 is included in PR.
+    assert agg_pr["chrf"]["mtOnly"] == 100.0
+    assert agg_full["chrf"]["mtOnly"] < 100.0
+
+    # Full aggregate includes the typo in clip c.
+    assert agg_full["wer"] > 0
+
+
+def test_run_writes_pr_aggregates_for_full_set_only(tmp_path):
+    raw = json.loads((FIXTURES / "raw-v1-sample.json").read_text())
+    manifest = json.loads((FIXTURES / "manifest-v1-sample.json").read_text())
+    raw["set"] = "full"
+
+    _write_line(tmp_path, raw, "basic/l1")
+    result_full = analyze.run(tmp_path, manifest, comet=False)
+    assert "prAggregates" in result_full
+    assert "prAggregates" in json.loads((tmp_path / "metrics.json").read_text())
+    assert result_full["prAggregates"].keys() == result_full["aggregates"].keys()
+
+    pr_dir = tmp_path / "prrun"
+    raw_pr = copy.deepcopy(raw)
+    raw_pr["set"] = "pr"
+    _write_line(pr_dir, raw_pr, "basic/l1")
+    result_pr = analyze.run(pr_dir, manifest, comet=False)
+    assert "prAggregates" not in result_pr
+    assert "prAggregates" not in json.loads((pr_dir / "metrics.json").read_text())

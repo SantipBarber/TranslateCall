@@ -194,6 +194,18 @@ The total is about 10 min, which is tight. **Measure-first gate (task 1 of the p
 
 **Decision (user, 2026-10-17):** option (a). `just pr` runs the PR set for the Basic profile only (`just bench pr basic`, about 9 min). Best local is measured with `just bench` (pr or full) and before each latency change. `bench.sh` warns when a PR estimate exceeds 10 min.
 
+**Measured (2026-10-17/18, T16, commit 70d08d7, Basic, Mac mini):**
+
+| | PR run 1 → 2 | Full run 1 → 2 |
+|---|---|---|
+| Wall time | 8.2 min each | 3 h 27 min each (estimate said 5 h 13 min) |
+| total p50 Δ | −3.9 … +3.4 % | −0.1 … +1.3 % |
+| total p90 Δ | −5.4 … +2.5 % | −0.4 … +0.8 % |
+| WER Δ | up to 2.8 pts | up to 0.4 pts |
+| chrF++ Δ | up to 1.7 pts | up to 0.2 pts |
+
+NFR-BH-01 holds for latency. The engines are **not deterministic**: Apple Speech changes 1–2 words per line between runs of the same audio ("the"/"a", "el mar"/"al mar"). On the full set (~2,500 words per line) that is noise below 0.5 points, so the REQ-BH-52 starting values stay for full runs. On the PR set (~75 words per line) one word is about 1.3 WER points, so the PR set gets its own tolerances (§4.3). The full-run estimate is pessimistic (the 2.0 factor was fitted on PR lines with more pause per clip). It errs on the safe side and is left as is.
+
 ## 4. Python tooling (`tools/bench/`)
 
 - `pyproject.toml` + `uv.lock`. Python 3.12. Package `tcbench`, CLI `tcbench <cmd>`.
@@ -260,6 +272,8 @@ The total is about 10 min, which is tight. **Measure-first gate (task 1 of the p
 - `compare` refuses a run whose `manifestSha256` differs from the baseline's. The message says to re-baseline after a manifest change.
 - Output: a fixed-width table with ANSI colours when the output is a TTY.
 - Exit code 1 on any ❌ in a gated metric. Latency rows are gated only when `set == full`.
+- **PR runs compare against the PR subset of the baseline (T16).** The baseline is promoted from a full run only (REQ-BH-54). A full run also plays the 8 PR clips per line, so `analyze` writes a second set of aggregates restricted to the clips and MT-only sentences whose `tiers` include `pr` (`prAggregates`). Utterance assignment still uses every clip window. `baseline` copies it, and `compare` uses it when `set == pr`. Comparing 8 clips against 300 was meaningless (chrF++ 43–46 vs 48–54 for the same engines), and a baseline without `prAggregates` makes `compare` exit 3 (re-baseline).
+- **Per-set thresholds (NFR-BH-01 non-determinism clause).** `thresholds.json` keeps the REQ-BH-52 values for full runs. `perSet.pr` overrides them for PR runs: WER +5.0 points (about 4 words of 75; the largest change seen between two identical runs was 2.8), chrF++ −4.0 (seen: 1.7), and cut rate max 12.5 % (one cut clip out of 8 passes, two fail).
 
 ### 4.4 Report (`tcbench report`)
 

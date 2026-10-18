@@ -8,7 +8,7 @@ import pytest
 from tcbench import baseline
 
 
-def _make_run_dir(tmp_path: Path, dirty=False, informative=False, override=None, set_type="full"):
+def _make_run_dir(tmp_path: Path, dirty=False, informative=False, override=None, set_type="full", pr_aggregates=None):
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     meta = {
@@ -22,19 +22,22 @@ def _make_run_dir(tmp_path: Path, dirty=False, informative=False, override=None,
         "override": override,
     }
     aggregates = {"basic/outgoing es-ES>en": {"wer": 0.05}}
-    (run_dir / "metrics.json").write_text(json.dumps({"meta": meta, "aggregates": aggregates}))
+    payload = {"meta": meta, "aggregates": aggregates}
+    if pr_aggregates is not None:
+        payload["prAggregates"] = pr_aggregates
+    (run_dir / "metrics.json").write_text(json.dumps(payload))
     return run_dir
 
 
 def test_baseline_refuses_repo_dirty(tmp_path):
-    run_dir = _make_run_dir(tmp_path)
+    run_dir = _make_run_dir(tmp_path, pr_aggregates={"basic/outgoing es-ES>en": {"wer": 0.05}})
     with pytest.raises(baseline.BaselineRefusal) as exc:
         baseline.run(run_dir, "reason", repo_dirty=True)
     assert "uncommitted" in str(exc.value).lower()
 
 
 def test_baseline_refuses_run_dirty(tmp_path):
-    run_dir = _make_run_dir(tmp_path, dirty=True)
+    run_dir = _make_run_dir(tmp_path, dirty=True, pr_aggregates={"basic/outgoing es-ES>en": {"wer": 0.05}})
     with pytest.raises(baseline.BaselineRefusal) as exc:
         baseline.run(run_dir, "reason", repo_dirty=False)
     assert "dirty" in str(exc.value).lower()
@@ -48,22 +51,30 @@ def test_baseline_refuses_non_full_run(tmp_path):
 
 
 def test_baseline_refuses_informative(tmp_path):
-    run_dir = _make_run_dir(tmp_path, informative=True)
+    run_dir = _make_run_dir(tmp_path, informative=True, pr_aggregates={"basic/outgoing es-ES>en": {"wer": 0.05}})
     with pytest.raises(baseline.BaselineRefusal) as exc:
         baseline.run(run_dir, "reason", repo_dirty=False)
     assert "informative" in str(exc.value).lower()
 
 
 def test_baseline_refuses_override(tmp_path):
-    run_dir = _make_run_dir(tmp_path, override="custom")
+    run_dir = _make_run_dir(tmp_path, override="custom", pr_aggregates={"basic/outgoing es-ES>en": {"wer": 0.05}})
     with pytest.raises(baseline.BaselineRefusal) as exc:
         baseline.run(run_dir, "reason", repo_dirty=False)
     assert "override" in str(exc.value).lower()
 
 
-def test_baseline_roundtrip(tmp_path, monkeypatch):
-    monkeypatch.setattr(baseline, "_today", lambda: "2024-01-15T00:00:00")
+def test_baseline_refuses_missing_pr_aggregates(tmp_path):
     run_dir = _make_run_dir(tmp_path)
+    with pytest.raises(baseline.BaselineRefusal) as exc:
+        baseline.run(run_dir, "reason", repo_dirty=False)
+    assert "praggregates" in str(exc.value).lower()
+
+
+def test_baseline_roundtrip(tmp_path, monkeypatch):
+    pr_aggregates = {"basic/outgoing es-ES>en": {"wer": 0.04}}
+    monkeypatch.setattr(baseline, "_today", lambda: "2024-01-15T00:00:00")
+    run_dir = _make_run_dir(tmp_path, pr_aggregates=pr_aggregates)
     out = tmp_path / "baseline.json"
     baseline.run(run_dir, "weekly baseline", repo_dirty=False, output=out)
 
@@ -76,3 +87,4 @@ def test_baseline_roundtrip(tmp_path, monkeypatch):
     assert data["machine"] == "test-machine"
     assert data["set"] == "full"
     assert "basic/outgoing es-ES>en" in data["aggregates"]
+    assert data["prAggregates"] == pr_aggregates

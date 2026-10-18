@@ -119,7 +119,17 @@ def run(
     lines.append(_row("metric", "baseline", "value", "delta", "verdict"))
     lines.append("-" * 64)
 
-    base_aggs = baseline.get("aggregates", {})
+    if set_type == "pr":
+        base_aggs = baseline.get("prAggregates")
+        if base_aggs is None:
+            msg = "baseline has no PR aggregates — re-baseline with `just bench-baseline`"
+            lines.append(msg)
+            return "\n".join(lines), 3
+    else:
+        base_aggs = baseline.get("aggregates", {})
+
+    effective_thresholds = {k: v for k, v in thresholds.items() if k != "perSet"}
+    effective_thresholds.update(thresholds.get("perSet", {}).get(set_type, {}))
 
     all_keys = sorted(set(run_metrics) | set(base_aggs))
     for key in all_keys:
@@ -142,7 +152,7 @@ def run(
         for stage, metric in [("total", "p50"), ("total", "p90")]:
             b = latency_b.get(stage, {}).get(metric)
             v = latency_v.get(stage, {}).get(metric)
-            delta, fail = _latency_gate(b, v, thresholds, set_type, metric)
+            delta, fail = _latency_gate(b, v, effective_thresholds, set_type, metric)
             if delta == "·":
                 verdict = "·"
             elif b is None or v is None:
@@ -166,7 +176,7 @@ def run(
         # WER
         b_wer = base_entry.get("wer")
         v_wer = run_entry.get("wer")
-        wer_fail = _wer_gate(b_wer, v_wer, thresholds)
+        wer_fail = _wer_gate(b_wer, v_wer, effective_thresholds)
         if b_wer is None or v_wer is None:
             verdict = "·"
         elif wer_fail and gated:
@@ -187,7 +197,7 @@ def run(
         # Cut rate
         b_cut = base_entry.get("cutRate")
         v_cut = run_entry.get("cutRate")
-        cut_fail = _cut_rate_gate(b_cut, v_cut, thresholds)
+        cut_fail = _cut_rate_gate(b_cut, v_cut, effective_thresholds)
         if b_cut is None or v_cut is None:
             verdict = "·"
         elif cut_fail and gated:
@@ -211,7 +221,7 @@ def run(
         for sub in ("pipeline", "mtOnly"):
             b = b_chrf.get(sub)
             v = v_chrf.get(sub)
-            chrf_fail = _chrf_gate(b, v, thresholds)
+            chrf_fail = _chrf_gate(b, v, effective_thresholds)
             if b is None or v is None:
                 verdict = "·"
             elif chrf_fail and gated:

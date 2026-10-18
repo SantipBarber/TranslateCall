@@ -4,5 +4,12 @@
   "werIncreasePts": 2.0,
   "chrfDropPts": 2.0,
   "cutRateMaxPct": 5,
-  "cutRateIncreasePts": 2.0
+  "cutRateIncreasePts": 2.0,
+  "perSet": {
+    "pr": {
+      "werIncreasePts": 5.0,
+      "chrfDropPts": 4.0,
+      "cutRateMaxPct": 12.5
+    }
+  }
 }
