@@ -17,10 +17,11 @@ struct TranslateCallApp: App {
             .environmentObject(container.languagePairManager)
             .environmentObject(container.setupManager)
             .environmentObject(container.voiceProfileManager)
-            .environmentObject(container.audioViewModel.engineSelector)
             .environmentObject(container.audioViewModel.ttsEngineSelector)
             .environmentObject(container.uiServices.callSession)
             .environmentObject(container.uiServices.mainSetupModel)
+            .environmentObject(container.uiServices.models.choices)
+            .environmentObject(container.uiServices.models.cloud)
             .onAppear {
                 // Only now: a host on screen before this point stops SwiftUI opening this window (A26).
                 container.translationHost.show()
@@ -34,6 +35,9 @@ struct TranslateCallApp: App {
         }
         .windowResizability(.contentSize)
         .commands {
+            CommandGroup(replacing: .help) {
+                Button("TranslateCall Help") { NSWorkspace.shared.open(HelpLinks.usageGuide) }
+            }
             CommandGroup(after: .help) {
                 Button("Send Feedback…") {
                     openFeedbackURL()
@@ -49,10 +53,11 @@ struct TranslateCallApp: App {
                 .environmentObject(container.languagePairManager)
                 .environmentObject(container.setupManager)
                 .environmentObject(container.voiceProfileManager)
-                .environmentObject(container.audioViewModel.engineSelector)
                 .environmentObject(container.audioViewModel.ttsEngineSelector)
                 .environmentObject(container.uiServices.callSession)
                 .environmentObject(container.uiServices.mainSetupModel)
+                .environmentObject(container.uiServices.models.choices)
+                .environmentObject(container.uiServices.models.cloud)
         }
     }
 

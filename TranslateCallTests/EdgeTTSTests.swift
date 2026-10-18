@@ -1,5 +1,3 @@
-import AVFoundation
-import CoreAudio
 import Foundation
 import Testing
 @testable import TranslateCall
@@ -122,71 +120,55 @@ struct TTSEngineEdgeTTSTests {
 
 // MARK: - TTSEngineSelector Edge TTS Routing Tests
 
-@Suite("TTSEngineSelector Edge TTS routing")
+@Suite("TTSEngineSelector Edge TTS routing (M9 UI settings REQ-ST-32)")
 @MainActor
 struct TTSEngineSelectorEdgeTTSTests {
 
-    private static let suiteName = "TTSEngineSelectorEdgeTTSTests"
-
-    private func freshDefaults() -> UserDefaults {
-        let suite = "\(Self.suiteName).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        return defaults
-    }
-
-    private func makeSelector(
-        defaults: UserDefaults? = nil
-    ) -> TTSEngineSelector {
-        let defs = defaults ?? freshDefaults()
-        defs.set(false, forKey: ModelChoice.automaticKey)   // these tests cover manual mode (M9 UI core)
-        let selector = TTSEngineSelector(defaults: defs)
+    /// Every language except Ukrainian has a system voice; consent and the cloud switch are injected,
+    /// so no test touches `UserDefaults.standard`.
+    private func makeSelector(allowed: Bool, consent: Bool) -> TTSEngineSelector {
+        let selector = TTSEngineSelector(defaults: UserDefaults(suiteName: "EdgeTTSTests.\(UUID())")!)
+        selector.catalog = ModelCatalog(version: 2, stt: [:], ttsOutgoing: ["default": ["avSpeech"]],
+                                        ttsIncoming: ["default": ["avSpeech"]])
+        selector.cacheProbe = .none
         selector.outputFactory = { _ in FakeOutput() }
         selector.avSpeechFactory = { FakeSynthesizer(engine: .avSpeech) }
-        selector.kokoroFactory = { _ in FakeSynthesizer(engine: .kokoro) }
         selector.edgeFactory = { FakeSynthesizer(engine: .edgeTTS) }
-        // Deterministic voice availability: every language except Ukrainian has a system voice.
         selector.hasSystemVoice = { $0.language.languageCode?.identifier != "uk" }
+        selector.cloudAllowed = { allowed }
+        selector.edgeConsentGiven = { consent }
         return selector
     }
 
-    @Test("needsEdgeTTSConsent is true for Ukrainian without consent")
-    func needsEdgeTTSConsentForUkrainian() throws {
-        let defaults = freshDefaults()
-        // Ensure consent is NOT given in .standard
-        EdgeTTSConsentManager.revokeConsent()
-        let selector = makeSelector(defaults: defaults)
-        _ = try selector.makeOutgoingService(
-            for: Locale(identifier: "uk"), deviceID: nil
-        )
-        #expect(selector.needsEdgeTTSConsent)
-        // Clean up .standard
-        EdgeTTSConsentManager.revokeConsent()
+    @Test("Ukrainian with the cloud allowed and no consent needs the consent prompt before Start")
+    func needsConsentForUkrainian() {
+        let uk = Locale(identifier: "uk")
+        #expect(makeSelector(allowed: true, consent: false).needsEdgeConsent(for: uk))
+        #expect(!makeSelector(allowed: false, consent: false).needsEdgeConsent(for: uk), "cloud off: no prompt")
+        #expect(!makeSelector(allowed: true, consent: true).needsEdgeConsent(for: uk))
+        #expect(!makeSelector(allowed: true, consent: false).needsEdgeConsent(for: Locale(identifier: "en")))
     }
 
-    @Test("needsEdgeTTSConsent is false for English (AVSpeech has voices)")
-    func noConsentNeededForEnglish() throws {
-        let defaults = freshDefaults()
-        EdgeTTSConsentManager.revokeConsent()
-        let selector = makeSelector(defaults: defaults)
-        _ = try selector.makeOutgoingService(
-            for: Locale(identifier: "en"), deviceID: nil
-        )
-        #expect(!selector.needsEdgeTTSConsent)
-        EdgeTTSConsentManager.revokeConsent()
-    }
-
-    @Test("isUsingEdgeTTS is true for Ukrainian with consent granted")
-    func isUsingEdgeTTSWhenConsented() throws {
-        let defaults = freshDefaults()
-        EdgeTTSConsentManager.grantConsent()
-        let selector = makeSelector(defaults: defaults)
-        let service = try selector.makeOutgoingService(
-            for: Locale(identifier: "uk"), deviceID: nil
-        )
-        #expect(selector.isUsingEdgeTTS)
+    @Test("the no-system-voice fallback uses Edge only with the cloud allowed and consent")
+    func fallbackNeedsCloud() throws {
+        let consented = makeSelector(allowed: true, consent: true)
+        let service = try consented.makeOutgoingService(for: Locale(identifier: "uk"), deviceID: nil)
+        #expect(consented.isUsingEdgeTTS)
         #expect(service.primaryEngine == .edgeTTS)
         #expect(service.fallbackEngine == nil)   // no Ukrainian system voice to fall back to
-        // Clean up .standard
-        EdgeTTSConsentManager.revokeConsent()
+
+        let off = makeSelector(allowed: false, consent: true)
+        #expect(try off.makeOutgoingService(for: Locale(identifier: "uk"), deviceID: nil).primaryEngine == .avSpeech)
+        #expect(!off.isUsingEdgeTTS)
+    }
+
+    @Test("Edge marked unavailable blocks the fallback and the prompt (S-3)")
+    func unavailableBlocksFallback() throws {
+        let selector = makeSelector(allowed: true, consent: true)
+        selector.catalog = .builtIn   // marks Edge unavailable
+        #expect(try selector.makeOutgoingService(for: Locale(identifier: "uk"), deviceID: nil).primaryEngine
+                == .avSpeech)
+        selector.edgeConsentGiven = { false }
+        #expect(!selector.needsEdgeConsent(for: Locale(identifier: "uk")))
     }
 }

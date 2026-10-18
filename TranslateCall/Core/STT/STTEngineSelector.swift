@@ -1,4 +1,3 @@
-import Combine
 import Foundation
 import OSLog
 
@@ -9,64 +8,16 @@ private let selectorLogger = Logger(
 
 // MARK: - STTEngineSelector
 
-/// Manages which `SpeechRecognizerService` is used for outgoing and incoming pipelines.
-///
-/// Responsibilities:
-/// - Persist and restore the user's preferred `STTEngine` via `UserDefaults`.
-/// - Observe `ParakeetModelManager` state to track model availability.
-/// - Implement engine-selection logic: Parakeet for English outgoing, Apple Speech otherwise.
-/// - Expose `@Published` state so SwiftUI views can react to preference and availability changes.
+/// Builds the `SpeechRecognizerService` of each pipeline from one resolution (M9 UI settings REQ-ST-02,
+/// P5): the pair's choice where it is usable, else the catalog's first engine on disk, else Apple Speech.
 @MainActor
-final class STTEngineSelector: ObservableObject {
+final class STTEngineSelector {
 
-    // MARK: - Published state
-
-    /// The engine the user has selected. Persisted in `UserDefaults`.
-    @Published private(set) var preferredEngine: STTEngine
-
-    /// `true` when the Parakeet CoreML model is loaded and ready.
-    ///
-    /// Setter is internal (not private) to allow test-only mutation via an extension
-    /// in the test target. Reads and writes only happen on @MainActor.
-    @Published var parakeetAvailable: Bool = false
-
-    /// `true` while the Parakeet model is being downloaded or loaded from cache.
-    @Published private(set) var isDownloading: Bool = false
-
-    /// The source locale most recently passed to `makeOutgoingService(for:)`.
-    ///
-    /// Drives the `usingFallback` computed property without requiring a dedicated
-    /// `@Published` flag that could get out of sync.
-    @Published private(set) var currentSourceLocale: Locale = Locale(identifier: "en-US")
-
-    /// `true` when the Whisper CoreML model is loaded and ready.
-    @Published var whisperAvailable: Bool = false
-
-    /// `true` while the Whisper model is being downloaded or loaded.
-    @Published private(set) var isWhisperDownloading: Bool = false
-
-    /// `true` when the preferred engine is not usable for the current locale,
-    /// causing a fallback to Apple Speech.
-    var usingFallback: Bool {
-        switch preferredEngine {
-        case .parakeet:
-            return !parakeetAvailable || !currentSourceLocale.isEnglish
-        case .whisper:
-            return !whisperAvailable
-                || !STTEngine.whisper.supports(locale: currentSourceLocale)
-        case .appleSpeech:
-            return false
-        }
-    }
-
-    // MARK: - Private
-
-    /// Automatic choice inputs (M9 UI core §3.3); injectable for tests.
+    /// Resolution inputs; injectable for tests.
     var catalog: ModelCatalog = .bundled
     var cacheProbe: ModelCacheProbe = .live
-
-    let defaults: UserDefaults
-    private static let defaultsKey = "tlk.stt.engine"
+    /// The current pair's stored choice; `ModelServices` wires it (P1). Default: no choice.
+    var pairChoice: () -> PairModelChoice = { PairModelChoice() }
 
     /// Creates an `AppleSpeechService` for the given locale.
     let appleSpeechFactory: (Locale) -> any SpeechRecognizerService
@@ -75,180 +26,46 @@ final class STTEngineSelector: ObservableObject {
     /// Creates a `WhisperSpeechService` for the given locale.
     let whisperFactory: (Locale) -> any SpeechRecognizerService
 
-    /// Observes `ParakeetModelManager.stateStream` to update `parakeetAvailable`.
-    private var stateObservationTask: Task<Void, Never>?
-
-    // MARK: - Init
-
-    /// `whisperAutoLoad` replaces the launch-time Whisper load (manual mode only, D-6); nil = the real one.
     init(
-        defaults: UserDefaults = .standard,
         appleSpeechFactory: @escaping (Locale) -> any SpeechRecognizerService = { AppleSpeechService(locale: $0) },
         parakeetFactory: @escaping (Locale) -> any SpeechRecognizerService = { ParakeetSpeechService(locale: $0) },
-        whisperFactory: @escaping (Locale) -> any SpeechRecognizerService = { WhisperSpeechService(locale: $0) },
-        whisperAutoLoad: (() async throws -> Void)? = nil
+        whisperFactory: @escaping (Locale) -> any SpeechRecognizerService = { WhisperSpeechService(locale: $0) }
     ) {
-        self.defaults = defaults
         self.appleSpeechFactory = appleSpeechFactory
         self.parakeetFactory = parakeetFactory
         self.whisperFactory = whisperFactory
-
-        let raw = defaults.string(forKey: STTEngineSelector.defaultsKey) ?? ""
-        self.preferredEngine = STTEngine(rawValue: raw) ?? .appleSpeech
-
-        // Start observing model state so the UI can show download progress
-        // and so makeOutgoingService knows when Parakeet is ready.
-        let stream = ParakeetModelManager.shared.stateStream
-        stateObservationTask = Task { @MainActor [weak self] in
-            for await state in stream {
-                guard let self else { return }
-                switch state {
-                case .ready:
-                    self.parakeetAvailable = true
-                    self.isDownloading = false
-                    selectorLogger.info("Parakeet model ready — engine selector updated")
-                case .loading:
-                    self.parakeetAvailable = false
-                    self.isDownloading = true
-                case .idle, .failed:
-                    self.parakeetAvailable = false
-                    self.isDownloading = false
-                }
-            }
-        }
-
-        // Auto-load Whisper model on relaunch if previously selected — manual mode only: automatic mode
-        // never downloads at launch (D-6); the preloader loads what is on disk ahead of Start.
-        if preferredEngine == .whisper, !ModelChoice.isAutomatic(in: defaults) {
-            isWhisperDownloading = true
-            Task { @MainActor [weak self] in
-                do {
-                    if let whisperAutoLoad {
-                        try await whisperAutoLoad()
-                    } else {
-                        try await WhisperModelManager.shared.loadIfNeeded()
-                    }
-                    self?.whisperAvailable = true
-                    self?.isWhisperDownloading = false
-                } catch {
-                    self?.isWhisperDownloading = false
-                    selectorLogger.info(
-                        "Whisper auto-load skipped: \(error.localizedDescription)"
-                    )
-                }
-            }
-        }
     }
 
-    deinit {
-        stateObservationTask?.cancel()
+    /// What is on disk now (D-6: "ready" = downloaded).
+    var availability: ModelAvailability {
+        ModelAvailability(parakeetCached: cacheProbe.parakeet(), whisperCached: cacheProbe.whisper())
+    }
+
+    /// The engine the next session uses for `locale` in `direction`; also what the preloader loads.
+    func resolvedEngine(for locale: Locale, direction: TranscriptDirection) -> STTEngine {
+        ModelChoice.stt(for: locale, direction: direction, pairChoice: pairChoice().stt,
+                        catalog: catalog, availability: availability)
     }
 
     // MARK: - Service factories
 
-    /// Returns the appropriate `SpeechRecognizerService` for the outgoing pipeline.
-    ///
-    /// Uses Parakeet when:
-    /// - `preferredEngine == .parakeet`
-    /// - AND `parakeetAvailable == true`
-    /// - AND `locale` is an English locale
-    ///
-    /// Otherwise falls back to Apple Speech. Updates `currentSourceLocale` as a side effect.
+    /// The outgoing pipeline's recognizer (my speech).
     func makeOutgoingService(for locale: Locale) -> any SpeechRecognizerService {
-        currentSourceLocale = locale
-        if isAutomatic { return automaticService(for: locale, direction: .outgoing) }
-        // Whisper: 99+ languages, both directions
-        if preferredEngine == .whisper, whisperAvailable,
-           STTEngine.whisper.supports(locale: locale) {
-            selectorLogger.debug("Outgoing: using Whisper for \(locale.identifier)")
-            return whisperFactory(locale)
-        }
-        // Parakeet: English only
-        if preferredEngine == .parakeet, parakeetAvailable, locale.isEnglish {
-            selectorLogger.debug("Outgoing: using Parakeet for \(locale.identifier)")
-            return parakeetFactory(locale)
-        }
-        return appleSpeechFactory(locale)
+        makeService(for: locale, direction: .outgoing)
     }
 
-    /// Returns the appropriate STT service for the incoming pipeline.
-    ///
-    /// Unlike Parakeet (English-only outgoing), Whisper can serve incoming too.
+    /// The incoming pipeline's recognizer (their speech).
     func makeIncomingService(for locale: Locale) -> any SpeechRecognizerService {
-        if isAutomatic { return automaticService(for: locale, direction: .incoming) }
-        if preferredEngine == .whisper, whisperAvailable,
-           STTEngine.whisper.supports(locale: locale) {
-            selectorLogger.debug("Incoming: using Whisper for \(locale.identifier)")
-            return whisperFactory(locale)
-        }
-        return appleSpeechFactory(locale)
+        makeService(for: locale, direction: .incoming)
     }
 
-    // MARK: - Preference management
-
-    /// Updates the preferred engine and persists the choice.
-    ///
-    /// If Parakeet is selected and the model is not yet available, triggers a background load.
-    func setPreferredEngine(_ engine: STTEngine) {
-        preferredEngine = engine
-        defaults.set(engine.rawValue, forKey: STTEngineSelector.defaultsKey)
-        setAutomatic(false)
-        selectorLogger.info("STT engine preference set to: \(engine.rawValue)")
-
-        if engine == .parakeet, !parakeetAvailable {
-            Task {
-                do {
-                    _ = try await ParakeetModelManager.shared.ensureReady()
-                } catch {
-                    selectorLogger.error(
-                        "Parakeet model load failed: \(error.localizedDescription)"
-                    )
-                }
-            }
-        }
-
-        if engine == .whisper, !whisperAvailable {
-            isWhisperDownloading = true
-            Task {
-                do {
-                    try await WhisperModelManager.shared.loadIfNeeded()
-                    self.whisperAvailable = true
-                    self.isWhisperDownloading = false
-                } catch {
-                    self.isWhisperDownloading = false
-                    selectorLogger.error(
-                        "Whisper model load failed: \(error.localizedDescription)"
-                    )
-                }
-            }
-        }
-    }
-
-    /// Triggers a model re-download and clears the current preference state.
-    ///
-    /// Called from the Settings UI when the user requests a fresh download.
-    func redownloadParakeetModel() {
-        Task {
-            do {
-                try await ParakeetModelManager.shared.redownload()
-            } catch {
-                selectorLogger.error("Parakeet re-download failed: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    /// Releases the Parakeet model from memory (e.g., user switches to Apple Speech).
-    func unloadParakeetModel() {
-        Task {
-            await ParakeetModelManager.shared.unload()
-        }
-    }
-
-    /// Releases the Whisper model from memory.
-    func unloadWhisperModel() {
-        Task {
-            await WhisperModelManager.shared.unloadModel()
-            whisperAvailable = false
+    private func makeService(for locale: Locale, direction: TranscriptDirection) -> any SpeechRecognizerService {
+        let engine = resolvedEngine(for: locale, direction: direction)
+        selectorLogger.debug("\(String(describing: direction)): \(engine.rawValue) for \(locale.identifier)")
+        switch engine {
+        case .parakeet: return parakeetFactory(locale)
+        case .whisper: return whisperFactory(locale)
+        case .appleSpeech: return appleSpeechFactory(locale)
         }
     }
 }

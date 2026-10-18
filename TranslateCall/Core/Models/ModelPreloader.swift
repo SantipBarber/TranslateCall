@@ -40,8 +40,8 @@ nonisolated struct ModelLoaders: Sendable {
 
 // MARK: - ModelPreloader
 
-/// Preloads the cached models the catalog picks for the current pair, at launch and on every
-/// pair change, so Start is fast (M9 UI core D-6, REQ-UI-21a, design §3.3). Never downloads,
+/// Preloads the cached models resolved for the current pair (its choice, else the catalog), at launch
+/// and on every pair change, so Start is fast (M9 UI core D-6, REQ-UI-21a, design §3.3). Never downloads,
 /// never runs during a session. The voice clone is preloaded when it is the outgoing choice; the
 /// catalog never picks Kokoro then, so one MLX TTS model at a time holds (NF-04).
 /// `AppContainer` does not start it in the test host.
@@ -74,19 +74,14 @@ final class ModelPreloader {
             .store(in: &cancellables)
     }
 
-    /// The models the next session would load, given the pair and what is on disk.
+    /// The models the next session would load, given the pair, its choice and what is on disk.
     func wantedModels() -> Set<PreloadModel> {
-        guard stt.isAutomatic else { return [] }
         let source = Locale(identifier: languagePairManager.sourceLanguage.minimalIdentifier)
         let target = Locale(identifier: languagePairManager.targetLanguage.minimalIdentifier)
-        let sttAvailable = stt.availability
-        let sttPicks = [
-            ModelChoice.stt(for: source, direction: .outgoing, catalog: stt.catalog, availability: sttAvailable),
-            ModelChoice.stt(for: target, direction: .incoming, catalog: stt.catalog, availability: sttAvailable)
-        ]
+        let sttPicks = [stt.resolvedEngine(for: source, direction: .outgoing),
+                        stt.resolvedEngine(for: target, direction: .incoming)]
         // My voice, spoken in their language.
-        let outgoingVoice = ModelChoice.tts(for: target, direction: .outgoing, catalog: tts.catalog,
-                                            availability: tts.availability)
+        let outgoingVoice = tts.resolvedEngine(for: target, direction: .outgoing)
         var wanted: Set<PreloadModel> = []
         if sttPicks.contains(.parakeet) { wanted.insert(.parakeet) }
         if sttPicks.contains(.whisper) { wanted.insert(.whisper) }
@@ -94,10 +89,9 @@ final class ModelPreloader {
         return wanted
     }
 
-    /// Loads what the pair needs and unloads what it no longer needs; a no-op during a session and in
-    /// manual mode, where the user's picks own the models and `loaded` is left as it is (R27).
+    /// Loads what the pair needs and unloads what it no longer needs; a no-op during a session.
     func preload() async {
-        guard stt.isAutomatic, !isSessionActive() else { return }
+        guard !isSessionActive() else { return }
         let wanted = wantedModels()
         for model in loaded.subtracting(wanted) { await loaders.unload(model) }
         for model in wanted.subtracting(loaded) { await loaders.load(model) }

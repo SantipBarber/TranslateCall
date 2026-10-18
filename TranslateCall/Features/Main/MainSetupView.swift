@@ -10,6 +10,8 @@ struct MainSetupActions {
     var setUpDriver: () -> Void = {}
     var openVoiceProfiles: () -> Void = {}
     var download: (TranslationSession) async -> Void = { _ in }
+    /// "Advanced…" next to the models line; the pair's models sheet arrives in Task 9 (P10).
+    var openModels: () -> Void = {}
     var primary: () -> Void = {}
 }
 
@@ -22,7 +24,7 @@ struct MainSetupContent: View {
     @ObservedObject var monitor: CallAppMonitor
     let selectedBundleID: String?
     @ObservedObject var languages: LanguagePairManager
-    @ObservedObject var sttSelector: STTEngineSelector
+    let modelsLabel: String
     @ObservedObject var ttsSelector: TTSEngineSelector
     @ObservedObject var conversationSettings: ConversationSettings
     let profile: VoiceProfileHeader?
@@ -40,7 +42,7 @@ struct MainSetupContent: View {
                     CallAppNotOpenCard(card: card)
                 }
             }
-            LanguageSection(manager: languages, sttSelector: sttSelector, ttsSelector: ttsSelector, pair: pair,
+            LanguageSection(manager: languages, pair: pair, modelsLabel: modelsLabel, onAdvanced: actions.openModels,
                             isLocked: isLocked, onDownload: actions.download)
             VoiceSection(ttsSelector: ttsSelector, profile: profile,
                          targetLocale: Locale(identifier: languages.targetLanguage.minimalIdentifier),
@@ -77,7 +79,6 @@ struct MainSetupView: View {
     @EnvironmentObject private var viewModel: AudioViewModel
     @EnvironmentObject private var setupManager: SetupManager
     @EnvironmentObject private var voiceProfileManager: VoiceProfileManager
-    @EnvironmentObject private var sttSelector: STTEngineSelector
     @EnvironmentObject private var ttsSelector: TTSEngineSelector
     @EnvironmentObject private var languages: LanguagePairManager
     @EnvironmentObject private var model: MainSetupModel
@@ -92,7 +93,7 @@ struct MainSetupView: View {
         MainSetupContent(
             readiness: model.readiness, pair: model.pair, isLocked: session.phase != .idle,
             monitor: model.monitor, selectedBundleID: setupManager.selectedCaptureBundleID,
-            languages: languages, sttSelector: sttSelector, ttsSelector: ttsSelector,
+            languages: languages, modelsLabel: model.modelsLabel, ttsSelector: ttsSelector,
             conversationSettings: viewModel.conversationSettings, profile: voiceProfileManager.activeProfile,
             actions: actions
         )

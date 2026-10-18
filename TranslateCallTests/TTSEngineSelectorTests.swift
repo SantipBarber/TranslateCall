@@ -5,28 +5,22 @@ import Testing
 
 // MARK: - TTSEngineSelectorTests
 
-/// Tests for `TTSEngineSelector`.
-///
-/// All tests inject fake synthesizers, a fake output and a fresh `UserDefaults` suite, so they are
-/// hermetic: no audio device, no model, no installed-voice dependency.
+/// `TTSEngineSelector` playback composition and resolution through the pair choice (M9 UI settings
+/// REQ-ST-02…04). Fake synthesizers and output, a fresh `UserDefaults` suite, injected disk checks: no
+/// audio device, no model, no installed-voice dependency.
 @Suite("TTSEngineSelector")
 @MainActor
 struct TTSEngineSelectorTests {
 
-    // MARK: - Helpers
+    private let kokoroOnDisk = ModelCacheProbe(parakeet: { false }, whisper: { false }, kokoro: { true },
+                                               voiceClone: { true })
 
-    static let suiteName = "TTSEngineSelectorTests"
-
-    func freshDefaults() -> UserDefaults {
-        let suite = UserDefaults(suiteName: TTSEngineSelectorTests.suiteName)!
-        suite.removePersistentDomain(forName: TTSEngineSelectorTests.suiteName)
-        return suite
-    }
-
-    func makeSelector(defaults: UserDefaults? = nil, systemVoice: @escaping (Locale) -> Bool = { _ in true }) -> TTSEngineSelector {
-        let defaults = defaults ?? freshDefaults()
-        defaults.set(false, forKey: ModelChoice.automaticKey)   // these tests cover manual mode (M9 UI core)
-        let selector = TTSEngineSelector(defaults: defaults)
+    func makeSelector(systemVoice: @escaping (Locale) -> Bool = { _ in true },
+                      probe: ModelCacheProbe = .none, choice: PairModelChoice = PairModelChoice()) -> TTSEngineSelector {
+        let selector = TTSEngineSelector(defaults: UserDefaults(suiteName: "TTSEngineSelectorTests.\(UUID())")!)
+        selector.catalog = .builtIn
+        selector.cacheProbe = probe
+        selector.pairChoice = { choice }
         selector.hasSystemVoice = systemVoice
         selector.outputFactory = { _ in FakeOutput() }
         selector.avSpeechFactory = { FakeSynthesizer(engine: .avSpeech) }
@@ -36,90 +30,68 @@ struct TTSEngineSelectorTests {
         return selector
     }
 
-    // MARK: - Default engine
-
-    @Test("Default engine is AVSpeech when no preference is stored")
-    func defaultEngineIsAVSpeech() {
-        let selector = makeSelector()
-        #expect(selector.preferredEngine == .avSpeech)
-    }
-
-    // MARK: - Preference persistence
-
-    @Test("setPreferredEngine persists to UserDefaults")
-    func persistsEnginePreference() {
-        let defaults = freshDefaults()
-        let selector = makeSelector(defaults: defaults)
-        selector.setPreferredEngine(.kokoro)
-        #expect(defaults.string(forKey: "tlk.tts.engine") == "kokoro")
-    }
-
-    @Test("Selector restores engine from UserDefaults on init")
-    func restoresEngineOnInit() {
-        let defaults = freshDefaults()
-        defaults.set("kokoro", forKey: "tlk.tts.engine")
-        let selector = makeSelector(defaults: defaults)
-        #expect(selector.preferredEngine == .kokoro)
-    }
-
-    @Test("Unknown stored value falls back to avSpeech")
-    func unknownStoredValueFallsBack() {
-        let defaults = freshDefaults()
-        defaults.set("unknownEngine", forKey: "tlk.tts.engine")
-        let selector = makeSelector(defaults: defaults)
-        #expect(selector.preferredEngine == .avSpeech)
-    }
-
-    @Test("Changing preference updates preferredEngine property")
-    func setPreferredEngineUpdatesProperty() {
-        let selector = makeSelector()
-        selector.setPreferredEngine(.kokoro)
-        #expect(selector.preferredEngine == .kokoro)
-        selector.setPreferredEngine(.avSpeech)
-        #expect(selector.preferredEngine == .avSpeech)
-    }
-
-    // MARK: - makeOutgoingService
-
-    @Test("AVSpeech preference builds an AVSpeech primary with no fallback (REQ-T-22)")
+    @Test("nothing on disk: AVSpeech primary with no fallback (REQ-T-22)")
     func avSpeechHasNoFallback() throws {
         let service = try makeSelector().makeOutgoingService(for: Locale(identifier: "en-US"), deviceID: nil)
         #expect(service.primaryEngine == .avSpeech)
         #expect(service.fallbackEngine == nil)
     }
 
-    @Test("Kokoro preference, English, model available: Kokoro primary with the AVSpeech fallback (REQ-T-22)")
-    func kokoroWithEnglish() throws {
-        let selector = makeSelector()
-        selector.setPreferredEngine(.kokoro)
-        selector.setKokoroAvailableForTesting(true)
-        let service = try selector.makeOutgoingService(for: Locale(identifier: "en-US"), deviceID: nil)
-        #expect(service.primaryEngine == .kokoro)
-        #expect(service.fallbackEngine == .avSpeech)
+    @Test("recommended: Kokoro for English when on disk, both directions, with the AVSpeech fallback")
+    func kokoroRecommendedForEnglish() throws {
+        let selector = makeSelector(probe: kokoroOnDisk)
+        let outgoing = try selector.makeOutgoingService(for: Locale(identifier: "en-US"), deviceID: nil)
+        #expect(outgoing.primaryEngine == .kokoro)
+        #expect(outgoing.fallbackEngine == .avSpeech)
+        #expect(try selector.makeIncomingService(for: Locale(identifier: "en-US"), deviceID: nil).primaryEngine
+                == .kokoro)
+        #expect(try selector.makeOutgoingService(for: Locale(identifier: "es-ES"), deviceID: nil).primaryEngine
+                == .avSpeech)
     }
 
-    @Test("Kokoro preference with a non-English locale uses AVSpeech")
-    func kokoroPreferenceNonEnglishUsesAVSpeech() throws {
-        let selector = makeSelector()
-        selector.setPreferredEngine(.kokoro)
-        selector.setKokoroAvailableForTesting(true)
-        let service = try selector.makeOutgoingService(for: Locale(identifier: "fr-FR"), deviceID: nil)
-        #expect(service.primaryEngine == .avSpeech)
+    @Test("a pair's voice choice overrides the recommendation in both directions")
+    func pairChoiceOverrides() throws {
+        let selector = makeSelector(probe: kokoroOnDisk, choice: PairModelChoice(voice: .avSpeech))
+        #expect(try selector.makeOutgoingService(for: Locale(identifier: "en-US"), deviceID: nil).primaryEngine
+                == .avSpeech)
+        #expect(try selector.makeIncomingService(for: Locale(identifier: "en-US"), deviceID: nil).primaryEngine
+                == .avSpeech)
     }
 
-    @Test("Kokoro preference without the model uses AVSpeech")
-    func kokoroUnavailableFallsBackToAVSpeech() throws {
-        let selector = makeSelector()
-        selector.setPreferredEngine(.kokoro)
-        let service = try selector.makeOutgoingService(for: Locale(identifier: "en-US"), deviceID: nil)
-        #expect(service.primaryEngine == .avSpeech)
+    @Test("the voice clone is the outgoing voice when on disk, enabled and with a profile (REQ-ST-04)")
+    func voiceCloneOutgoing() throws {
+        let selector = makeSelector(probe: kokoroOnDisk, choice: PairModelChoice(voice: .kokoro))
+        selector.setProfileStore(MockVoiceProfileStore())
+        #expect(!selector.availability.voiceCloneReady, "not enabled, no profile")
+        selector.voiceCloningEnabled = true
+        selector.activeVoiceProfileId = UUID()
+        #expect(selector.availability.voiceCloneReady, "on disk is enough; loading is not required")
+        #expect(try selector.makeOutgoingService(for: Locale(identifier: "es-ES"), deviceID: nil).primaryEngine
+                == .voiceClone)
+        #expect(try selector.makeIncomingService(for: Locale(identifier: "en-US"), deviceID: nil).primaryEngine
+                == .avSpeech, "Kokoro is blocked while the voice clone is ready (NF-04)")
     }
 
-    @Test("Edge, Kokoro and the voice clone get the AVSpeech fallback only when the locale has a system voice")
+    @Test("a voice clone with no profile store falls back to the system voice")
+    func voiceCloneWithoutStore() throws {
+        let selector = makeSelector(probe: kokoroOnDisk)
+        selector.voiceCloningEnabled = true
+        selector.activeVoiceProfileId = UUID()
+        #expect(try selector.makeOutgoingService(for: Locale(identifier: "es-ES"), deviceID: nil).primaryEngine
+                == .avSpeech)
+    }
+
+    @Test("Edge as the pair's choice gets the AVSpeech fallback only when the locale has a system voice")
     func fallbackNeedsSystemVoice() throws {
-        let selector = makeSelector(systemVoice: { $0.language.languageCode?.identifier == "en" })
-        selector.setPreferredEngine(.edgeTTS)
-        #expect(try selector.makeOutgoingService(for: Locale(identifier: "en-US"), deviceID: nil).fallbackEngine == .avSpeech)
+        let selector = makeSelector(systemVoice: { $0.language.languageCode?.identifier == "en" },
+                                    choice: PairModelChoice(voice: .edgeTTS))
+        selector.catalog = ModelCatalog(version: 2, stt: [:], ttsOutgoing: ["default": ["avSpeech"]],
+                                        ttsIncoming: ["default": ["avSpeech"]])
+        selector.cloudAllowed = { true }
+        selector.edgeConsentGiven = { true }
+        let english = try selector.makeOutgoingService(for: Locale(identifier: "en-US"), deviceID: nil)
+        #expect(english.primaryEngine == .edgeTTS)
+        #expect(english.fallbackEngine == .avSpeech)
         #expect(try selector.makeOutgoingService(for: Locale(identifier: "uk-UA"), deviceID: nil).fallbackEngine == nil)
     }
 
@@ -142,67 +114,19 @@ struct TTSEngineSelectorTests {
         }
     }
 
-    // MARK: - makeIncomingService
-
-    @Test("Incoming uses AVSpeech even when Kokoro is preferred")
-    func incomingAlwaysAVSpeech() throws {
-        let selector = makeSelector()
-        selector.setPreferredEngine(.kokoro)
-        selector.setKokoroAvailableForTesting(true)
-        let service = try selector.makeIncomingService(for: Locale(identifier: "en-US"), deviceID: nil)
-        #expect(service.primaryEngine == .avSpeech)
-        #expect(service.fallbackEngine == nil)
-    }
-
-    @Test("Incoming uses Edge when it is the preferred engine")
-    func incomingEdgeWhenPreferred() throws {
-        let selector = makeSelector()
-        selector.setPreferredEngine(.edgeTTS)
-        let service = try selector.makeIncomingService(for: Locale(identifier: "de-DE"), deviceID: nil)
-        #expect(service.primaryEngine == .edgeTTS)
-        #expect(service.fallbackEngine == .avSpeech)
-    }
-
-    // MARK: - usingFallback
-
-    @Test("usingFallback is false when AVSpeech is preferred")
-    func usingFallbackFalseForAVSpeech() {
-        let selector = makeSelector()
-        #expect(!selector.usingFallback)
-    }
-
-    @Test("usingFallback is false when Kokoro is available and target is English")
-    func usingFallbackFalseWhenKokoroUsed() throws {
-        let selector = makeSelector()
-        selector.setPreferredEngine(.kokoro)
-        selector.setKokoroAvailableForTesting(true)
-        _ = try selector.makeOutgoingService(for: Locale(identifier: "en-US"), deviceID: nil)
-        #expect(!selector.usingFallback)
-    }
-
-    @Test("usingFallback is true when Kokoro preferred but target is not English")
-    func usingFallbackTrueForNonEnglish() throws {
-        let selector = makeSelector()
-        selector.setPreferredEngine(.kokoro)
-        selector.setKokoroAvailableForTesting(true)
-        _ = try selector.makeOutgoingService(for: Locale(identifier: "de-DE"), deviceID: nil)
-        #expect(selector.usingFallback)
-    }
-
-    @Test("usingFallback is true when Kokoro preferred but model not available")
-    func usingFallbackTrueWhenModelUnavailable() throws {
-        let selector = makeSelector()
-        selector.setPreferredEngine(.kokoro)
-        _ = try selector.makeOutgoingService(for: Locale(identifier: "en-US"), deviceID: nil)
-        #expect(selector.usingFallback)
-    }
-
-    // MARK: - currentTargetLocale
-
     @Test("makeOutgoingService updates currentTargetLocale")
     func makeOutgoingServiceUpdatesCurrentLocale() throws {
         let selector = makeSelector()
         _ = try selector.makeOutgoingService(for: Locale(identifier: "en-AU"), deviceID: nil)
         #expect(selector.currentTargetLocale == Locale(identifier: "en-AU"))
+    }
+
+    @Test("Voice Clone supports Spanish, French, and other languages")
+    func voiceCloneSupportsMultipleLanguages() {
+        for code in ["es-ES", "fr-FR", "de-DE", "it-IT", "pt-BR", "ru-RU", "zh-Hans", "ja-JP", "ko-KR"] {
+            #expect(TTSEngine.voiceClone.supports(locale: Locale(identifier: code)))
+        }
+        #expect(!TTSEngine.voiceClone.supports(locale: Locale(identifier: "hi-IN")))
+        #expect(!TTSEngine.voiceClone.supports(locale: Locale(identifier: "ar-SA")))
     }
 }

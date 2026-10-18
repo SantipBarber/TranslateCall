@@ -7,20 +7,17 @@ private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "
 
 // MARK: - TTSEngineSelector
 
-/// Manages TTS engine selection, model availability, and the factories that build each direction's
-/// `TTSPlaybackService(primary:fallback:output:)` (F8.5.2 §3.6).
-///
-/// Outgoing priority: explicit Edge > Voice Clone > Kokoro (English) > AVSpeech > Edge (consent) > AVSpeech.
-/// Incoming: explicit Edge > AVSpeech > Edge (consent) > AVSpeech.
+/// Resolves each direction's voice and builds its `TTSPlaybackService(primary:fallback:output:)`
+/// (F8.5.2 §3.6). One resolution path (M9 UI settings REQ-ST-02…04, P5): the voice clone when ready,
+/// else the pair's choice where usable, else the catalog; a system voice path without a system voice
+/// falls back to Edge when the cloud rules permit it.
 @MainActor
 final class TTSEngineSelector: ObservableObject {
 
     // MARK: - Published state
 
-    @Published private(set) var preferredEngine: TTSEngine = .avSpeech
     @Published private(set) var kokoroAvailable: Bool = false
     @Published private(set) var voiceCloneAvailable: Bool = false
-    @Published private(set) var isDownloading: Bool = false
     @Published private(set) var isVoiceCloneDownloading: Bool = false
     @Published private(set) var currentTargetLocale: Locale = Locale.current
 
@@ -32,35 +29,14 @@ final class TTSEngineSelector: ObservableObject {
     /// Active voice profile ID — set by VoiceProfileManager observation.
     @Published var activeVoiceProfileId: UUID?
 
-    /// True when all three conditions are met: enabled + voice clone available + profile selected.
-    var voiceCloningActive: Bool {
-        voiceCloningEnabled && voiceCloneAvailable && activeVoiceProfileId != nil
-    }
-
-    /// True when Edge TTS consent is needed for current locale.
-    var needsEdgeTTSConsent: Bool {
-        !hasSystemVoice(currentTargetLocale)
-            && !edgeConsentGiven()
-    }
-
-    /// True when Edge TTS is being used for the current locale.
+    /// True when Edge speaks my outgoing voice for the last target locale.
     var isUsingEdgeTTS: Bool {
-        !hasSystemVoice(currentTargetLocale)
-            && edgeConsentGiven()
-    }
-
-    var usingFallback: Bool {
-        preferredEngine == .kokoro && (!kokoroAvailable || !currentTargetLocale.isEnglish)
+        resolvedEngine(for: currentTargetLocale, direction: .outgoing) == .edgeTTS
     }
 
     // MARK: - UserDefaults
 
     let defaults: UserDefaults
-    private static let engineKey = "tlk.tts.engine"
-
-    // MARK: - Combine
-
-    private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Factories (var — injectable for tests)
 
@@ -88,74 +64,73 @@ final class TTSEngineSelector: ObservableObject {
 
     // MARK: - Dependencies
 
-    /// Automatic choice inputs (M9 UI core §3.3); injectable for tests.
+    /// Resolution inputs; injectable for tests.
     var catalog: ModelCatalog = .bundled
     var cacheProbe: ModelCacheProbe = .live
+    /// The current pair's stored choice; `ModelServices` wires it (P1). Default: no choice.
+    var pairChoice: () -> PairModelChoice = { PairModelChoice() }
+    /// "Allow cloud models"; `ModelServices` wires it from `CloudPolicy` (P1). Default: no cloud.
+    var cloudAllowed: () -> Bool = { false }
 
     private(set) var profileStore: (any VoiceProfileStoring)?
 
     // MARK: - Init
 
-    /// `voiceCloneAutoLoad` replaces the launch-time load of REQ-VC-04 (manual mode only, D-6); nil = the real one.
-    init(
-        defaults: UserDefaults = .standard,
-        voiceCloneAutoLoad: (() async throws -> Void)? = nil
-    ) {
+    init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        if let raw = defaults.string(forKey: Self.engineKey),
-           let engine = TTSEngine(rawValue: raw) {
-            preferredEngine = engine
-        }
         voiceCloningEnabled = defaults.bool(forKey: QwenCloneConfiguration.voiceCloningEnabledKey)
         observeModelManager()
         observeQwenCloneModelManager()
+    }
 
-        // REQ-VC-04: auto-load voice clone model on relaunch if previously enabled — manual mode only.
-        // In automatic mode (D-6) the preloader loads it ahead of Start, one MLX model at a time.
-        if voiceCloningEnabled, !ModelChoice.isAutomatic(in: defaults) {
-            Task {
-                do {
-                    if let voiceCloneAutoLoad {
-                        try await voiceCloneAutoLoad()
-                    } else {
-                        try await QwenCloneModelManager.shared.ensureReady()
-                    }
-                } catch {
-                    logger.info("Voice clone auto-load skipped: \(error.localizedDescription)")
-                }
-            }
+    // MARK: - Resolution
+
+    /// What is usable now. The voice clone counts as ready when its model is on disk, "Use my voice" is
+    /// on and a profile is active (D-6); the preloader loads it ahead of Start.
+    var availability: ModelAvailability {
+        ModelAvailability(kokoroCached: cacheProbe.kokoro(),
+                          voiceCloneReady: voiceCloningEnabled && activeVoiceProfileId != nil
+                              && cacheProbe.voiceClone(),
+                          cloud: cloudSnapshot)
+    }
+
+    /// The cloud rules as a value (P2).
+    var cloudSnapshot: CloudSnapshot {
+        CloudSnapshot(allowed: cloudAllowed(), consented: edgeConsentGiven() ? [.edgeTTS] : [],
+                      unavailable: catalog.isUnavailable(.edgeTTS) ? [.edgeTTS] : [])
+    }
+
+    /// The engine the next session speaks with for `locale` in `direction` (P5): what the factories
+    /// build, what the preloader loads and what the models line reads.
+    func resolvedEngine(for locale: Locale, direction: TranscriptDirection) -> TTSEngine {
+        let engine = ModelChoice.tts(for: locale, direction: direction, pairChoice: pairChoice().voice,
+                                     catalog: catalog, availability: availability)
+        switch engine {
+        case .voiceClone where profileStore == nil, .avSpeech: return systemOrEdgeEngine(for: locale)
+        default: return engine
         }
+    }
+
+    /// No system voice for `locale`, Edge could speak it and the cloud is allowed, but no consent yet:
+    /// a start must first ask (REQ-ST-32).
+    func needsEdgeConsent(for locale: Locale) -> Bool {
+        let cloud = cloudSnapshot
+        return !hasSystemVoice(locale) && EdgeTTSVoiceCatalog.supports(locale)
+            && cloud.allowed && !cloud.unavailable.contains(.edgeTTS) && !cloud.consented.contains(.edgeTTS)
     }
 
     // MARK: - Public API
 
-    func setPreferredEngine(_ engine: TTSEngine) {
-        preferredEngine = engine
-        defaults.set(engine.rawValue, forKey: Self.engineKey)
-        setAutomatic(false)
-    }
-
-    /// Creates the outgoing TTS service for `locale` routed to `deviceID`.
-    /// If user explicitly selected Edge TTS, use it directly.
-    /// Otherwise: Voice Clone > Kokoro > AVSpeech > Edge TTS (auto fallback).
+    /// Creates the outgoing TTS service (my voice, in `locale`) routed to `deviceID`.
     func makeOutgoingService(for locale: Locale, deviceID: AudioDeviceID?) throws -> TTSPlaybackService {
         currentTargetLocale = locale
-        return try makePlayback(primary: outgoingPrimary(for: locale), locale: locale, deviceID: deviceID)
+        return try makePlayback(primary: primary(for: locale, direction: .outgoing), locale: locale,
+                                deviceID: deviceID)
     }
 
-    /// Creates the incoming TTS service.
-    /// Uses Edge TTS if explicitly selected or as fallback when no AVSpeech voice.
+    /// Creates the incoming TTS service (their voice, in `locale`).
     func makeIncomingService(for locale: Locale, deviceID: AudioDeviceID?) throws -> TTSPlaybackService {
-        try makePlayback(primary: incomingPrimary(for: locale), locale: locale, deviceID: deviceID)
-    }
-
-    /// Triggers Kokoro model download; sets `isDownloading` while in-flight.
-    func downloadKokoroModel() {
-        isDownloading = true
-        Task { [weak self] in
-            _ = try? await KokoroModelManager.shared.ensureReady()
-            self?.isDownloading = false
-        }
+        try makePlayback(primary: primary(for: locale, direction: .incoming), locale: locale, deviceID: deviceID)
     }
 
     func unloadKokoroModel() {
@@ -204,11 +179,6 @@ final class TTSEngineSelector: ObservableObject {
         objectWillChange.send()
     }
 
-    // MARK: - For testing
-
-    func setKokoroAvailableForTesting(_ value: Bool) { kokoroAvailable = value }
-    func setVoiceCloneAvailableForTesting(_ value: Bool) { voiceCloneAvailable = value }
-
     // MARK: - Private
 
     /// Edge, Kokoro and the voice clone fall back to the system voice when the locale has one
@@ -220,38 +190,26 @@ final class TTSEngineSelector: ObservableObject {
         return TTSPlaybackService(primary: primary, fallback: fallback, output: try outputFactory(deviceID))
     }
 
-    private func outgoingPrimary(for locale: Locale) -> any UtteranceSynthesizer {
-        if isAutomatic { return automaticPrimary(for: locale, direction: .outgoing) }
-        if preferredEngine == .edgeTTS, EdgeTTSVoiceCatalog.supports(locale) {
-            return edgeFactory()
-        }
-        // Priority 1: Voice Clone (10 supported languages)
-        if voiceCloningActive, QwenCloneConfiguration.supportsLocale(locale),
-           let profileId = activeVoiceProfileId, let store = profileStore {
+    /// The synthesizer for the resolved engine; a voice clone without a profile speaks with the system voice.
+    private func primary(for locale: Locale, direction: TranscriptDirection) -> any UtteranceSynthesizer {
+        switch resolvedEngine(for: locale, direction: direction) {
+        case .voiceClone:
+            guard let profileId = activeVoiceProfileId, let store = profileStore else { return avSpeechFactory() }
             return voiceCloneFactory(profileId, store)
-        }
-        // Priority 2: Kokoro (English only)
-        if preferredEngine == .kokoro, kokoroAvailable, locale.isEnglish {
+        case .kokoro:
             let voiceID = defaults.string(forKey: KokoroConfiguration.voiceDefaultsKey) ?? ""
             return kokoroFactory(KokoroConfiguration(voiceIdentifier: voiceID))
+        case .edgeTTS: return edgeFactory()
+        case .avSpeech: return avSpeechFactory()
         }
-        return systemOrEdgePrimary(for: locale)
     }
 
-    private func incomingPrimary(for locale: Locale) -> any UtteranceSynthesizer {
-        if isAutomatic { return automaticPrimary(for: locale, direction: .incoming) }
-        if preferredEngine == .edgeTTS, EdgeTTSVoiceCatalog.supports(locale) {
-            return edgeFactory()
-        }
-        return systemOrEdgePrimary(for: locale)
-    }
-
-    /// AVSpeech when a system voice exists, else Edge (consent required), else AVSpeech, which then
-    /// skips each sentence with a visible "No voice" notice.
-    func systemOrEdgePrimary(for locale: Locale) -> any UtteranceSynthesizer {
-        if hasSystemVoice(locale) { return avSpeechFactory() }
-        if edgeConsentGiven(), EdgeTTSVoiceCatalog.supports(locale) { return edgeFactory() }
-        return avSpeechFactory()
+    /// AVSpeech when a system voice exists, else Edge when the cloud rules permit it, else AVSpeech, which
+    /// then skips each sentence with a visible "No voice" notice.
+    private func systemOrEdgeEngine(for locale: Locale) -> TTSEngine {
+        if hasSystemVoice(locale) { return .avSpeech }
+        if cloudSnapshot.permits(.edgeTTS), EdgeTTSVoiceCatalog.supports(locale) { return .edgeTTS }
+        return .avSpeech
     }
 
     private func observeModelManager() {

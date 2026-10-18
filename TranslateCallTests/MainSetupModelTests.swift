@@ -10,6 +10,8 @@ private struct SetupHarness {
     let monitor: CallAppMonitor
     let setupManager: SetupManager
     let languages: LanguagePairManager
+    let tts = TTSEngineSelector(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+    let models: ModelServices
     let model: MainSetupModel
 
     init(installed: @escaping (Locale.Language, Locale.Language) async -> Bool = { _, _ in true },
@@ -41,8 +43,18 @@ private struct SetupHarness {
             conversationSettings: ConversationSettings(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
         )
         let session = CallSessionModel(coordinator: coordinator, viewModel: viewModel)
+        tts.cacheProbe = .none
+        tts.edgeConsentGiven = { true }
+        tts.catalog = ModelCatalog(version: 2, stt: [:], ttsOutgoing: [:], ttsIncoming: [:])   // Edge available
+        let modelDefaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        models = ModelServices(choices: PairModelChoices(defaults: modelDefaults),
+                               cloud: CloudPolicy(defaults: modelDefaults, edgeConsentGiven: { true },
+                                                  grantEdgeConsent: {}),
+                               stt: STTEngineSelector(), tts: tts, languagePairManager: languages)
+        models.cloud.allowed = false
         model = MainSetupModel(monitor: monitor, setupManager: setupManager, languagePairManager: languages,
-                               session: session, isInstalled: installed, permissions: permissions)
+                               session: session, models: models, tts: tts,
+                               isInstalled: installed, permissions: permissions)
     }
 
     var zoom: CallAppRow { monitor.rows.first { $0.bundleID == "us.zoom.xos" }! }
@@ -118,5 +130,16 @@ struct MainSetupModelTests {
         #expect(changes.value > 0)
         subscription.cancel()
     }
-}
 
+    @Test("the models line: Recommended; Custom with a pair choice; · Cloud when Edge will speak (REQ-ST-05, 40)")
+    func modelsLabel() async {
+        let harness = SetupHarness()
+        #expect(harness.model.modelsLabel == "Models: Recommended")
+        harness.models.choices.set(PairModelChoice(stt: .appleSpeech), for: PairKey("en", "de"))
+        #expect(await waitUntil { harness.model.modelsLabel == "Models: Custom" })
+        harness.tts.hasSystemVoice = { _ in false }
+        harness.models.cloud.allowed = true
+        #expect(await waitUntil { harness.model.modelsLabel == "Models: Custom · Cloud" })
+        #expect(ModelsLabel.text(hasChoice: false, usesCloud: true) == "Models: Recommended · Cloud")
+    }
+}

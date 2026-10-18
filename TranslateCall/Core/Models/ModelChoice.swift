@@ -21,17 +21,6 @@ struct ModelAvailability: Equatable {
 /// first catalog engine that serves the language and is ready, otherwise Apple Speech / the system voice.
 /// The voice clone wins outgoing whatever the choice. Pure functions.
 enum ModelChoice {
-    /// Shared by both selectors: automatic (default `true`) or the engines picked by hand (REQ-UI-23).
-    static let automaticKey = "tlk.models.automatic"
-
-    static func isAutomatic(in defaults: UserDefaults) -> Bool {
-        defaults.object(forKey: automaticKey) as? Bool ?? true
-    }
-
-    static func setAutomatic(_ automatic: Bool, in defaults: UserDefaults) {
-        defaults.set(automatic, forKey: automaticKey)
-    }
-
     // MARK: Resolution
 
     static func stt(for locale: Locale, direction: TranscriptDirection, pairChoice: STTEngine? = nil,

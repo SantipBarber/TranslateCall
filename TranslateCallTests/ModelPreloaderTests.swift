@@ -27,7 +27,7 @@ private struct Harness {
         defaults.removePersistentDomain(forName: name)
         defaults.set(source, forKey: "tlk.source.language")
         defaults.set(target, forKey: "tlk.target.language")
-        stt = STTEngineSelector(defaults: defaults, appleSpeechFactory: { MockSpeechRecognizerService(locale: $0) },
+        stt = STTEngineSelector(appleSpeechFactory: { MockSpeechRecognizerService(locale: $0) },
                                 parakeetFactory: { MockSpeechRecognizerService(locale: $0) },
                                 whisperFactory: { MockSpeechRecognizerService(locale: $0) })
         tts = TTSEngineSelector(defaults: defaults)
@@ -72,6 +72,7 @@ struct ModelPreloaderTests {
     func voiceCloneWhenOutgoingChoice() {
         let harness = Harness(source: "es", target: "en", probe: cachedAll)
         #expect(!harness.preloader().wantedModels().contains(.voiceClone), "Use my voice is off")
+        harness.tts.setProfileStore(MockVoiceProfileStore())
         harness.tts.voiceCloningEnabled = true
         harness.tts.activeVoiceProfileId = UUID()
         #expect(harness.preloader().wantedModels() == [.whisper, .voiceClone])
@@ -90,30 +91,24 @@ struct ModelPreloaderTests {
         #expect(preloader.loaded == [.whisper])
     }
 
-    @Test("manual mode preloads nothing; a session in progress blocks any change")
-    func manualAndSession() async {
+    @Test("a session in progress blocks any change")
+    func sessionBlocks() async {
         let harness = Harness(source: "en", target: "es", probe: cachedAll)
-        harness.stt.setAutomatic(false)
-        #expect(harness.preloader().wantedModels().isEmpty)
-
-        harness.stt.setAutomatic(true)
         let busy = harness.preloader(sessionActive: { true })
         await busy.preload()
         #expect(harness.log.entries.isEmpty)
     }
 
-    @Test("switching to manual keeps what automatic mode loaded: no unloads on a later preload (R27)")
-    func manualKeepsLoadedModels() async {
-        let harness = Harness(source: "en", target: "es", probe: cachedAll)
+    @Test("the pair's choice drives the picks: Apple Speech chosen → Whisper unloaded (REQ-ST-61)")
+    func pairChoiceDrivesPicks() async {
+        let harness = Harness(source: "es", target: "en", probe: cachedAll)
         let preloader = harness.preloader()
         await preloader.preload()
-        #expect(preloader.loaded == [.parakeet, .whisper])
-
-        harness.stt.setAutomatic(false)
-        await harness.pair.setSourceLanguage(Locale.Language(identifier: "de"))
+        #expect(preloader.loaded == [.whisper])
+        harness.stt.pairChoice = { PairModelChoice(stt: .appleSpeech) }
         await preloader.preload()
-        #expect(!harness.log.entries.contains { $0.hasPrefix("unload") })
-        #expect(preloader.loaded == [.parakeet, .whisper])
+        #expect(harness.log.entries.last == "unload whisper")
+        #expect(preloader.loaded.isEmpty)
     }
 }
 

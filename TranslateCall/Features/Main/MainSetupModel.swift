@@ -15,35 +15,44 @@ final class MainSetupModel: ObservableObject {
     /// The pair as the panel and the popover show it (they observe this model, not the manager).
     @Published private(set) var sourceLanguage: Locale.Language
     @Published private(set) var targetLanguage: Locale.Language
+    /// "Models: Recommended" / "Models: Custom", with " · Cloud" when Edge will speak (REQ-ST-05, 40).
+    @Published private(set) var modelsLabel: String
 
     let monitor: CallAppMonitor
     let setupManager: SetupManager
     let languagePairManager: LanguagePairManager
     let session: CallSessionModel
+    private let models: ModelServices?
+    private let tts: TTSEngineSelector?
     private let isInstalled: (Locale.Language, Locale.Language) async -> Bool
     private let readPermissions: () -> PermissionState
     private var cancellables: Set<AnyCancellable> = []
 
     init(monitor: CallAppMonitor, setupManager: SetupManager, languagePairManager: LanguagePairManager,
-         session: CallSessionModel,
+         session: CallSessionModel, models: ModelServices? = nil, tts: TTSEngineSelector? = nil,
          isInstalled: @escaping (Locale.Language, Locale.Language) async -> Bool = AppleTranslationService.isInstalled,
          permissions: @escaping () -> PermissionState = PermissionState.current) {
         self.monitor = monitor
         self.setupManager = setupManager
         self.languagePairManager = languagePairManager
         self.session = session
+        self.models = models
+        self.tts = tts
         self.isInstalled = isInstalled
         readPermissions = permissions
         let current = permissions()
         self.permissions = current
         sourceLanguage = languagePairManager.sourceLanguage
         targetLanguage = languagePairManager.targetLanguage
+        modelsLabel = ModelsLabel.text(hasChoice: false, usesCloud: false)
         readiness = Readiness.derive(permissions: current, blackHolePresent: setupManager.isBlackHolePresent,
                                      pair: .checking, app: nil, phase: session.phase)
-        let changes: [ObservableObjectPublisher] = [
+        var changes: [ObservableObjectPublisher] = [
             monitor.objectWillChange, session.objectWillChange, languagePairManager.objectWillChange,
             setupManager.objectWillChange
         ]
+        if let models { changes += [models.choices.objectWillChange, models.cloud.objectWillChange] }
+        if let tts { changes.append(tts.objectWillChange) }
         for publisher in changes {
             publisher.receive(on: DispatchQueue.main)
                 .sink { [weak self] _ in self?.recompute() }
@@ -99,5 +108,19 @@ final class MainSetupModel: ObservableObject {
         let derived = Readiness.derive(permissions: permissions, blackHolePresent: setupManager.isBlackHolePresent,
                                        pair: pair, app: selectedRow, phase: session.phase)
         if derived != readiness { readiness = derived }
+        let label = currentModelsLabel()
+        if label != modelsLabel { modelsLabel = label }
+    }
+
+    /// Custom when the pair has a stored choice; Cloud when Edge speaks either direction (P12).
+    private func currentModelsLabel() -> String {
+        guard let models, let tts else { return ModelsLabel.text(hasChoice: false, usesCloud: false) }
+        let source = languagePairManager.sourceLanguage
+        let target = languagePairManager.targetLanguage
+        let hasChoice = !models.choices.choice(for: PairKey(source, target)).isEmpty
+        let usesCloud = tts.resolvedEngine(for: Locale(identifier: target.minimalIdentifier), direction: .outgoing)
+            == .edgeTTS
+            || tts.resolvedEngine(for: Locale(identifier: source.minimalIdentifier), direction: .incoming) == .edgeTTS
+        return ModelsLabel.text(hasChoice: hasChoice, usesCloud: usesCloud)
     }
 }

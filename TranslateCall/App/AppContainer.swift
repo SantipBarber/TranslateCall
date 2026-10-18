@@ -93,6 +93,8 @@ final class AppContainer: ObservableObject {
 /// The M9 UI core services, built after the view model.
 @MainActor
 struct UIServices {
+    /// Per-pair model choices and the cloud policy, wired into the selectors (M9 UI settings).
+    let models: ModelServices
     let modelPreloader: ModelPreloader
     let callAppMonitor: CallAppMonitor
     let callSession: CallSessionModel
@@ -103,14 +105,18 @@ struct UIServices {
     /// The preloader never runs in the test host (REQ-UI-21a).
     init(coordinator: AudioCoordinator, viewModel: AudioViewModel, stt: STTEngineSelector, tts: TTSEngineSelector) {
         UISettingsKeys.registerDefaults()
+        let inSession = { coordinator.isOutgoingActive || coordinator.isStarting }
+        models = ModelServices(stt: stt, tts: tts, languagePairManager: viewModel.languagePairManager,
+                               isSessionActive: inSession)
         modelPreloader = ModelPreloader(stt: stt, tts: tts, languagePairManager: viewModel.languagePairManager,
-                                        isSessionActive: { coordinator.isOutgoingActive || coordinator.isStarting })
+                                        isSessionActive: inSession)
         if !AppContainer.isTestHost { modelPreloader.start() }
         callAppMonitor = CallAppMonitor(workspace: LiveWorkspace(),
                                         selectedBundleID: viewModel.setupManager.selectedCaptureBundleID)
         callSession = CallSessionModel(coordinator: coordinator, viewModel: viewModel)
         mainSetupModel = MainSetupModel(monitor: callAppMonitor, setupManager: viewModel.setupManager,
-                                        languagePairManager: viewModel.languagePairManager, session: callSession)
+                                        languagePairManager: viewModel.languagePairManager, session: callSession,
+                                        models: models, tts: tts)
         let (session, setup) = (callSession, mainSetupModel)
         statusPanel = StatusPanelController(size: NSSize(width: 320, height: 174)) { panel in
             PanelHostingView(rootView: StatusPanelView()

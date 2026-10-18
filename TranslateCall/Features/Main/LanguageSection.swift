@@ -4,9 +4,11 @@ import SwiftUI
 /// "I speak" / "They speak", the swap button and the pair's status line (REQ-UI-05…07, 33).
 struct LanguageSection: View {
     @ObservedObject var manager: LanguagePairManager
-    @ObservedObject var sttSelector: STTEngineSelector
-    @ObservedObject var ttsSelector: TTSEngineSelector
     let pair: PairReadiness
+    /// "Models: Recommended" / "Models: Custom" (· Cloud), from `MainSetupModel.modelsLabel`.
+    let modelsLabel: String
+    /// "Advanced…": opens the pair's models (P10).
+    let onAdvanced: () -> Void
     /// True while a session is starting, launching or running.
     let isLocked: Bool
     /// Runs the system download with the view's own session (F8.5.4 REQ-TR-40), then re-checks the pair.
@@ -104,10 +106,10 @@ struct LanguageSection: View {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.Status.green)
             Text("Ready").font(.callout).foregroundStyle(.secondary)
             Spacer(minLength: Theme.Spacing.small)
-            Text(sttSelector.isAutomatic && ttsSelector.isAutomatic ? "Models: Recommended" : "Models: Custom")
-                .font(.callout).foregroundStyle(.secondary).lineLimit(1)
+            Text(modelsLabel)
+                .font(.callout).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
             Text("·").foregroundStyle(.secondary)
-            Button("Advanced…") { SettingsOpener.shared.open(tab: .advancedLegacy) }
+            Button("Advanced…", action: onAdvanced)
                 .buttonStyle(.link)
                 .font(.callout)
         }
