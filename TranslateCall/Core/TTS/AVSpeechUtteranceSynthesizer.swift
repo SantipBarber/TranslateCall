@@ -12,11 +12,16 @@ import Synchronization
 nonisolated final class AVSpeechUtteranceSynthesizer: UtteranceSynthesizer, @unchecked Sendable {
     let engine: TTSEngine = .avSpeech
     private let config: SynthesisConfiguration
+    private let preferredVoice: @Sendable (Locale) -> String?
     private let synthesizer = AVSpeechSynthesizer()
     private let router = SpeechCompletionRouter()
 
-    init(config: SynthesisConfiguration = .default) {
+    init(
+        config: SynthesisConfiguration = .default,
+        preferredVoice: @escaping @Sendable (Locale) -> String? = { SystemVoicePreference.identifier(for: $0) }
+    ) {
         self.config = config
+        self.preferredVoice = preferredVoice
         synthesizer.delegate = router
     }
 
@@ -30,7 +35,7 @@ nonisolated final class AVSpeechUtteranceSynthesizer: UtteranceSynthesizer, @unc
             continuation.finish()   // no audio to produce (REQ-T-03)
             return stream
         }
-        guard let voice = Self.bestVoice(for: locale) else {
+        guard let voice = Self.voice(for: locale, preferred: preferredVoice(locale)) else {
             continuation.finish(throwing: STSError.voiceUnavailable(locale))
             return stream
         }
@@ -54,6 +59,15 @@ nonisolated final class AVSpeechUtteranceSynthesizer: UtteranceSynthesizer, @unc
             }
         }
         return stream
+    }
+
+    /// The picked voice when it is still installed and speaks the locale's language, else `bestVoice`.
+    static func voice(for locale: Locale, preferred: String?) -> AVSpeechSynthesisVoice? {
+        let lang = String(locale.identifier.replacingOccurrences(of: "_", with: "-").prefix(2))
+        if let preferred, let voice = AVSpeechSynthesisVoice(identifier: preferred), voice.language.hasPrefix(lang) {
+            return voice
+        }
+        return bestVoice(for: locale)
     }
 
     /// Premium, then enhanced, then any voice whose language matches the locale's first two letters.
