@@ -15,7 +15,8 @@ dependencies = [
 
 [project.optional-dependencies]
 # Heavy (torch); unbabel-comet needs numpy<2 and huggingface-hub<1, hence those pins.
-comet = ["unbabel-comet==2.2.7"]
+# torchmetrics (via comet) imports pkg_resources, which setuptools dropped in 81.
+comet = ["unbabel-comet==2.2.7", "setuptools==80.9.0"]
 vad = ["silero-vad==6.2.3"]
 
 [project.scripts]

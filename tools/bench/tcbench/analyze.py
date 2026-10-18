@@ -35,15 +35,17 @@ def comet_available() -> bool:
 def _comet_model():
     """Load the pinned checkpoint once per process."""
     from comet import load_from_checkpoint  # type: ignore[import-not-found]
-    from huggingface_hub import hf_hub_download
+    from huggingface_hub import snapshot_download
 
-    path = hf_hub_download(COMET_MODEL, "checkpoints/model.ckpt", revision=COMET_REVISION)
-    return load_from_checkpoint(path)
+    # load_from_checkpoint reads hparams.yaml from the snapshot root, next to checkpoints/.
+    root = Path(snapshot_download(COMET_MODEL, revision=COMET_REVISION))
+    return load_from_checkpoint(str(root / "checkpoints" / "model.ckpt"))
 
 
 def comet_score(triples: list[dict[str, str]]) -> float:
     """System-level COMET (mean segment score) for ``[{src, mt, ref}]``. Needs the 'comet' extra."""
-    out = _comet_model().predict(triples, batch_size=8, gpus=0, progress_bar=False)
+    # num_workers=1: on Apple silicon COMET forces a "fork" loader context, which rejects 0 workers.
+    out = _comet_model().predict(triples, batch_size=8, gpus=0, num_workers=1, progress_bar=False)
     return float(out.system_score)
 
 
