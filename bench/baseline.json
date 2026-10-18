@@ -1,0 +1,655 @@
+{
+  "reason": "First baseline (M9 T16): full set, Basic profile, 70d08d7, Mac mini; second of two consecutive full runs (p50 within 1.3 %, WER within 0.4 pts)",
+  "date": "2026-10-18T03:56:58Z",
+  "commit": "70d08d7",
+  "manifestSha256": "35be2afb0d1345a67d3c29c7f32c3a3e4b1c9ce1cc7fc09a66fabf67f388fe74",
+  "macOS": "Version 26.6.2 (Build 25G83)",
+  "machine": "Mac16,10",
+  "set": "full",
+  "aggregates": {
+    "basic/incoming en>es": {
+      "chrf": {
+        "mtOnly": 63.65174392909358,
+        "pipeline": 47.721359575938294
+      },
+      "comet": {
+        "mtOnly": 0.8577393290400505,
+        "pipeline": 0.7914092155570157
+      },
+      "cutRate": 0.01444043321299639,
+      "dropped": {
+        "idle-timeout": 2
+      },
+      "fallbacks": 0,
+      "latency": {
+        "stt": {
+          "count": 275,
+          "mean": 309.3361923927273,
+          "p50": 307.472125,
+          "p90": 377.99689159999997
+        },
+        "total": {
+          "count": 275,
+          "mean": 2045.0991559309093,
+          "p50": 2075.453958,
+          "p90": 2374.356559
+        },
+        "translate": {
+          "count": 275,
+          "mean": 733.1215257818181,
+          "p50": 715.9415409999999,
+          "p90": 1024.0267832
+        },
+        "ttsFirstAudio": {
+          "count": 275,
+          "mean": 114.17041909454545,
+          "p50": 113.149709,
+          "p90": 118.979717
+        },
+        "vad": {
+          "count": 275,
+          "mean": 888.4710186618181,
+          "p50": 911.0186669999999,
+          "p90": 1037.7615996
+        }
+      },
+      "latencyCold": {
+        "stt": {
+          "count": 1,
+          "mean": 370.64995799999997,
+          "p50": 370.64995799999997,
+          "p90": 370.64995799999997
+        },
+        "total": {
+          "count": 1,
+          "mean": 2267.1521669999997,
+          "p50": 2267.1521669999997,
+          "p90": 2267.1521669999997
+        },
+        "translate": {
+          "count": 1,
+          "mean": 701.712584,
+          "p50": 701.712584,
+          "p90": 701.712584
+        },
+        "ttsFirstAudio": {
+          "count": 1,
+          "mean": 246.54874999999998,
+          "p50": 246.54874999999998,
+          "p90": 246.54874999999998
+        },
+        "vad": {
+          "count": 1,
+          "mean": 948.240875,
+          "p50": 948.240875,
+          "p90": 948.240875
+        }
+      },
+      "mergeRate": 0.0,
+      "missed": 0,
+      "unassigned": 0,
+      "wer": 0.11997838227346425
+    },
+    "basic/outgoing en>es": {
+      "chrf": {
+        "mtOnly": 63.65174392909358,
+        "pipeline": 47.86278969314324
+      },
+      "comet": {
+        "mtOnly": 0.8577393290400505,
+        "pipeline": 0.7927110228512692
+      },
+      "cutRate": 0.01444043321299639,
+      "dropped": {
+        "idle-timeout": 1
+      },
+      "fallbacks": 0,
+      "latency": {
+        "stt": {
+          "count": 275,
+          "mean": 314.6636945454546,
+          "p50": 313.49775,
+          "p90": 379.4588
+        },
+        "total": {
+          "count": 275,
+          "mean": 2049.5332329272724,
+          "p50": 2060.557667,
+          "p90": 2409.5202747999997
+        },
+        "translate": {
+          "count": 275,
+          "mean": 730.3779369563637,
+          "p50": 713.762375,
+          "p90": 1013.5935585999999
+        },
+        "ttsFirstAudio": {
+          "count": 275,
+          "mean": 112.69949049090908,
+          "p50": 111.70275,
+          "p90": 117.88924999999999
+        },
+        "vad": {
+          "count": 275,
+          "mean": 891.7921109345453,
+          "p50": 907.824208,
+          "p90": 1022.5692504
+        }
+      },
+      "latencyCold": {
+        "stt": {
+          "count": 1,
+          "mean": 338.047625,
+          "p50": 338.047625,
+          "p90": 338.047625
+        },
+        "total": {
+          "count": 1,
+          "mean": 2346.2615419999997,
+          "p50": 2346.2615419999997,
+          "p90": 2346.2615419999997
+        },
+        "translate": {
+          "count": 1,
+          "mean": 671.442417,
+          "p50": 671.442417,
+          "p90": 671.442417
+        },
+        "ttsFirstAudio": {
+          "count": 1,
+          "mean": 319.38575,
+          "p50": 319.38575,
+          "p90": 319.38575
+        },
+        "vad": {
+          "count": 1,
+          "mean": 1017.3857499999999,
+          "p50": 1017.3857499999999,
+          "p90": 1017.3857499999999
+        }
+      },
+      "mergeRate": 0.0,
+      "missed": 0,
+      "unassigned": 0,
+      "wer": 0.11763646189875698
+    },
+    "basic/outgoing es-419>en": {
+      "chrf": {
+        "mtOnly": 66.14892393177007,
+        "pipeline": 53.807744477854534
+      },
+      "comet": {
+        "mtOnly": 0.8816123801469803,
+        "pipeline": 0.8458570114771525
+      },
+      "cutRate": 0.01,
+      "dropped": {},
+      "fallbacks": 0,
+      "latency": {
+        "stt": {
+          "count": 299,
+          "mean": 257.0265517023411,
+          "p50": 256.557458,
+          "p90": 290.603025
+        },
+        "total": {
+          "count": 299,
+          "mean": 1847.119052451505,
+          "p50": 1842.093792,
+          "p90": 2058.6658586
+        },
+        "translate": {
+          "count": 299,
+          "mean": 577.6883694113711,
+          "p50": 577.450625,
+          "p90": 747.3696914
+        },
+        "ttsFirstAudio": {
+          "count": 299,
+          "mean": 109.5273458896321,
+          "p50": 108.17237499999999,
+          "p90": 113.345575
+        },
+        "vad": {
+          "count": 299,
+          "mean": 902.8767854481605,
+          "p50": 906.9616249999999,
+          "p90": 1023.2897416
+        }
+      },
+      "latencyCold": {
+        "stt": {
+          "count": 1,
+          "mean": 316.047917,
+          "p50": 316.047917,
+          "p90": 316.047917
+        },
+        "total": {
+          "count": 1,
+          "mean": 1892.482834,
+          "p50": 1892.482834,
+          "p90": 1892.482834
+        },
+        "translate": {
+          "count": 1,
+          "mean": 470.991667,
+          "p50": 470.991667,
+          "p90": 470.991667
+        },
+        "ttsFirstAudio": {
+          "count": 1,
+          "mean": 243.34525,
+          "p50": 243.34525,
+          "p90": 243.34525
+        },
+        "vad": {
+          "count": 1,
+          "mean": 862.098,
+          "p50": 862.098,
+          "p90": 862.098
+        }
+      },
+      "mergeRate": 0.0,
+      "missed": 0,
+      "unassigned": 0,
+      "wer": 0.06412859560067682
+    },
+    "basic/outgoing es-ES>en": {
+      "chrf": {
+        "mtOnly": 63.9936228926036,
+        "pipeline": null
+      },
+      "comet": {
+        "mtOnly": 0.8748821100592613,
+        "pipeline": null
+      },
+      "cutRate": 0.0033333333333333335,
+      "dropped": {
+        "idle-timeout": 25
+      },
+      "fallbacks": 0,
+      "latency": {
+        "stt": {
+          "count": 275,
+          "mean": 261.9108636254545,
+          "p50": 269.62429199999997,
+          "p90": 335.98360019999996
+        },
+        "total": {
+          "count": 275,
+          "mean": 1588.2187349672727,
+          "p50": 1608.084625,
+          "p90": 1822.9865168
+        },
+        "translate": {
+          "count": 275,
+          "mean": 375.3420204509091,
+          "p50": 361.108875,
+          "p90": 490.87853319999994
+        },
+        "ttsFirstAudio": {
+          "count": 275,
+          "mean": 108.62106328727273,
+          "p50": 107.354708,
+          "p90": 113.350317
+        },
+        "vad": {
+          "count": 275,
+          "mean": 842.3447876036364,
+          "p50": 868.3355839999999,
+          "p90": 998.9251579999999
+        }
+      },
+      "latencyCold": {
+        "stt": {
+          "count": 1,
+          "mean": 267.092542,
+          "p50": 267.092542,
+          "p90": 267.092542
+        },
+        "total": {
+          "count": 1,
+          "mean": 3016.968916,
+          "p50": 3016.968916,
+          "p90": 3016.968916
+        },
+        "translate": {
+          "count": 1,
+          "mean": 314.354666,
+          "p50": 314.354666,
+          "p90": 314.354666
+        },
+        "ttsFirstAudio": {
+          "count": 1,
+          "mean": 1682.4785,
+          "p50": 1682.4785,
+          "p90": 1682.4785
+        },
+        "vad": {
+          "count": 1,
+          "mean": 753.0432079999999,
+          "p50": 753.0432079999999,
+          "p90": 753.0432079999999
+        }
+      },
+      "mergeRate": 0.0,
+      "missed": 0,
+      "unassigned": 0,
+      "wer": 0.1408497825359652
+    }
+  },
+  "prAggregates": {
+    "basic/incoming en>es": {
+      "chrf": {
+        "mtOnly": 64.09953881654363,
+        "pipeline": 42.83793968047112
+      },
+      "comet": null,
+      "cutRate": 0.0,
+      "dropped": {},
+      "fallbacks": 0,
+      "latency": {
+        "stt": {
+          "count": 8,
+          "mean": 274.884463375,
+          "p50": 286.288042,
+          "p90": 308.13526609999997
+        },
+        "total": {
+          "count": 8,
+          "mean": 1717.981104,
+          "p50": 1740.70825,
+          "p90": 1929.8350535
+        },
+        "translate": {
+          "count": 8,
+          "mean": 540.7207658749999,
+          "p50": 541.9457709999999,
+          "p90": 648.8718580999999
+        },
+        "ttsFirstAudio": {
+          "count": 8,
+          "mean": 112.33686424999999,
+          "p50": 111.73474949999999,
+          "p90": 115.34608309999999
+        },
+        "vad": {
+          "count": 8,
+          "mean": 790.0390104999999,
+          "p50": 748.5692295,
+          "p90": 994.8454543
+        }
+      },
+      "latencyCold": {
+        "stt": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        },
+        "total": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        },
+        "translate": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        },
+        "ttsFirstAudio": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        },
+        "vad": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        }
+      },
+      "mergeRate": 0.0,
+      "missed": 0,
+      "unassigned": 0,
+      "wer": 0.1111111111111111
+    },
+    "basic/outgoing en>es": {
+      "chrf": {
+        "mtOnly": 64.09953881654363,
+        "pipeline": 43.34149843240436
+      },
+      "comet": null,
+      "cutRate": 0.0,
+      "dropped": {},
+      "fallbacks": 0,
+      "latency": {
+        "stt": {
+          "count": 8,
+          "mean": 271.38517187499997,
+          "p50": 273.3752495,
+          "p90": 300.9322036
+        },
+        "total": {
+          "count": 8,
+          "mean": 1727.4954739999998,
+          "p50": 1759.1842505,
+          "p90": 1945.1902501
+        },
+        "translate": {
+          "count": 8,
+          "mean": 540.415619875,
+          "p50": 526.7187705,
+          "p90": 653.4262749999999
+        },
+        "ttsFirstAudio": {
+          "count": 8,
+          "mean": 110.345588625,
+          "p50": 108.89445849999998,
+          "p90": 115.62034189999999
+        },
+        "vad": {
+          "count": 8,
+          "mean": 805.349093625,
+          "p50": 814.8922295,
+          "p90": 928.8910999
+        }
+      },
+      "latencyCold": {
+        "stt": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        },
+        "total": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        },
+        "translate": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        },
+        "ttsFirstAudio": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        },
+        "vad": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        }
+      },
+      "mergeRate": 0.0,
+      "missed": 0,
+      "unassigned": 0,
+      "wer": 0.09259259259259259
+    },
+    "basic/outgoing es-419>en": {
+      "chrf": {
+        "mtOnly": 67.19684399408993,
+        "pipeline": 45.125215532632275
+      },
+      "comet": null,
+      "cutRate": 0.0,
+      "dropped": {},
+      "fallbacks": 0,
+      "latency": {
+        "stt": {
+          "count": 8,
+          "mean": 240.7760055,
+          "p50": 240.92010449999998,
+          "p90": 251.13706259999998
+        },
+        "total": {
+          "count": 8,
+          "mean": 1587.6476978749997,
+          "p50": 1633.733646,
+          "p90": 1734.9483913
+        },
+        "translate": {
+          "count": 8,
+          "mean": 390.38605175,
+          "p50": 382.00060399999995,
+          "p90": 469.1535581
+        },
+        "ttsFirstAudio": {
+          "count": 8,
+          "mean": 110.644047,
+          "p50": 110.05812499999999,
+          "p90": 116.01993319999998
+        },
+        "vad": {
+          "count": 8,
+          "mean": 845.841593625,
+          "p50": 807.4962915,
+          "p90": 980.5292251
+        }
+      },
+      "latencyCold": {
+        "stt": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        },
+        "total": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        },
+        "translate": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        },
+        "ttsFirstAudio": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        },
+        "vad": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        }
+      },
+      "mergeRate": 0.0,
+      "missed": 0,
+      "unassigned": 0,
+      "wer": 0.07692307692307693
+    },
+    "basic/outgoing es-ES>en": {
+      "chrf": {
+        "mtOnly": 64.19007689459873,
+        "pipeline": null
+      },
+      "comet": null,
+      "cutRate": 0.0,
+      "dropped": {},
+      "fallbacks": 0,
+      "latency": {
+        "stt": {
+          "count": 8,
+          "mean": 234.512807125,
+          "p50": 252.304708,
+          "p90": 279.4347705
+        },
+        "total": {
+          "count": 8,
+          "mean": 1584.9859687499998,
+          "p50": 1562.173146,
+          "p90": 1750.9890624
+        },
+        "translate": {
+          "count": 8,
+          "mean": 369.84943775,
+          "p50": 375.70600049999996,
+          "p90": 491.4885419
+        },
+        "ttsFirstAudio": {
+          "count": 8,
+          "mean": 106.594296625,
+          "p50": 105.63541649999999,
+          "p90": 109.999758
+        },
+        "vad": {
+          "count": 8,
+          "mean": 874.02942725,
+          "p50": 857.7924585,
+          "p90": 966.2754581999999
+        }
+      },
+      "latencyCold": {
+        "stt": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        },
+        "total": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        },
+        "translate": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        },
+        "ttsFirstAudio": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        },
+        "vad": {
+          "count": 0,
+          "mean": null,
+          "p50": null,
+          "p90": null
+        }
+      },
+      "mergeRate": 0.0,
+      "missed": 0,
+      "unassigned": 0,
+      "wer": 0.02666666666666667
+    }
+  }
+}
