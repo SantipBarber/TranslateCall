@@ -47,6 +47,11 @@ nonisolated enum DownloadState: Equatable, Sendable {
     case downloading(progress: Double?)
     case ready
     case failed(String)
+
+    var isDownloading: Bool {
+        if case .downloading = self { return true }
+        return false
+    }
 }
 
 // MARK: - DownloadManagers
@@ -88,24 +93,28 @@ nonisolated struct DownloadManagers: Sendable {
 @MainActor
 final class ModelDownloads: ObservableObject {
     @Published private(set) var states: [DownloadableModel: DownloadState] = [:]
+    /// True while a session runs: downloads wait until it ends (S-7). Published, so the sheet and "Use my
+    /// voice" show "Available after the call" as a call starts and drop it as the call ends.
+    @Published private(set) var isBlocked = false
     /// A download completed and the model is on disk (the preloader listens).
     let didFinish = PassthroughSubject<DownloadableModel, Never>()
 
     private let probe: ModelCacheProbe
     private let managers: DownloadManagers
-    private let isSessionActive: () -> Bool
     private var tasks: [DownloadableModel: Task<Void, Never>] = [:]
+    private var cancellables: Set<AnyCancellable> = []
 
+    /// `sessionActive` emits whether a session runs (the coordinator's `isOutgoingActive || isStarting`);
+    /// it is read synchronously, so a publisher with a current value sets `isBlocked` before `init` returns.
     init(probe: ModelCacheProbe, managers: DownloadManagers = .live,
-         isSessionActive: @escaping () -> Bool = { false }) {
+         sessionActive: AnyPublisher<Bool, Never> = Just(false).eraseToAnyPublisher()) {
         self.probe = probe
         self.managers = managers
-        self.isSessionActive = isSessionActive
+        sessionActive.removeDuplicates()
+            .sink { [weak self] active in self?.isBlocked = active }
+            .store(in: &cancellables)
         refresh()
     }
-
-    /// True while a session runs: downloads wait until it ends (S-7).
-    var isBlocked: Bool { isSessionActive() }
 
     func state(_ model: DownloadableModel) -> DownloadState {
         states[model] ?? .notOnDisk

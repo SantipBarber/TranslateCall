@@ -107,10 +107,13 @@ struct UIServices {
     init(coordinator: AudioCoordinator, viewModel: AudioViewModel, stt: STTEngineSelector, tts: TTSEngineSelector) {
         UISettingsKeys.registerDefaults()
         let inSession = { coordinator.isOutgoingActive || coordinator.isStarting }
+        let sessionActive = coordinator.$isOutgoingActive.combineLatest(coordinator.$isStarting)
+            .map { $0 || $1 }.eraseToAnyPublisher()
         models = ModelServices(stt: stt, tts: tts, languagePairManager: viewModel.languagePairManager,
-                               isSessionActive: inSession)
+                               sessionActive: sessionActive)
         modelPreloader = ModelPreloader(stt: stt, tts: tts, languagePairManager: viewModel.languagePairManager,
                                         isSessionActive: inSession)
+        modelPreloader.trackDownloads(models.downloads.didFinish.eraseToAnyPublisher())
         if !AppContainer.isTestHost {
             let sessionEnded = coordinator.$isOutgoingActive.removeDuplicates().filter { !$0 }
                 .map { _ in () }.eraseToAnyPublisher()

@@ -41,6 +41,8 @@ private struct SheetHarness {
     let cloud: CloudPolicy
     let fake = ControlledDownloads()
     let downloads: ModelDownloads
+    /// The coordinator's "a session runs", flipped by the tests (S-7).
+    let session: CurrentValueSubject<Bool, Never>
 
     init(onDisk: Set<DownloadableModel> = [.whisper, .parakeet, .kokoro], cloudAllowed: Bool = false,
          session: Bool = false) {
@@ -53,7 +55,9 @@ private struct SheetHarness {
         var consent = false
         cloud = CloudPolicy(defaults: defaults, edgeConsentGiven: { consent },
                             grantEdgeConsent: { consent = true })
-        downloads = ModelDownloads(probe: fake.probe, managers: fake.managers, isSessionActive: { session })
+        self.session = CurrentValueSubject(session)
+        downloads = ModelDownloads(probe: fake.probe, managers: fake.managers,
+                                   sessionActive: self.session.eraseToAnyPublisher())
     }
 
     func model(_ source: String, _ target: String, catalog: ModelCatalog = .builtIn,
@@ -144,6 +148,25 @@ struct PairModelsModelTests {
         #expect(try row(sheet.speechRows, .stt(.parakeet)).download == .notOnDisk)
         sheet.pick(.stt(.appleSpeech))
         #expect(sheet.staged.stt == .appleSpeech, "models already on this Mac can still be picked")
+    }
+
+    @Test("a call starting or ending while the sheet is open flips its blocked state live (S-7)")
+    func blockedFollowsTheSession() {
+        let harness = SheetHarness(onDisk: [])
+        let sheet = harness.model("en", "es")
+        var changes = 0
+        let token = sheet.objectWillChange.sink { _ in changes += 1 }
+        #expect(!sheet.downloadsBlocked)
+        harness.session.send(true)
+        #expect(harness.downloads.isBlocked && sheet.downloadsBlocked)
+        #expect(changes > 0, "the sheet re-renders when the call starts")
+        sheet.pick(.stt(.parakeet))
+        #expect(harness.downloads.state(.parakeet) == .notOnDisk)
+        let beforeEnd = changes
+        harness.session.send(false)
+        #expect(!harness.downloads.isBlocked && !sheet.downloadsBlocked)
+        #expect(changes > beforeEnd, "the sheet re-renders when the call ends")
+        token.cancel()
     }
 
     @Test("Edge: shown with cloud on; marked unavailable it can't be picked (S-3)")

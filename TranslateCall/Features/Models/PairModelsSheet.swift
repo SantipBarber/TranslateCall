@@ -9,7 +9,6 @@ extension PairModelsModel: Identifiable {
 struct PairModelsSheet: View {
     @ObservedObject var model: PairModelsModel
     let onClose: () -> Void
-    @EnvironmentObject private var downloads: ModelDownloads
 
     /// The model for the manager's current pair; also used by the Settings entry (Task 14).
     @MainActor
@@ -47,7 +46,6 @@ struct PairModelsSheet: View {
             footer
         }
         .frame(width: 460)
-        .onAppear { downloads.refresh() }
         .confirmationDialog("Send text to Microsoft?", isPresented: consentBinding, titleVisibility: .visible) {
             Button("Allow") { model.confirmConsent() }
             Button("Not now", role: .cancel) { model.declineConsent() }

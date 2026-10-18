@@ -28,7 +28,8 @@ extension IntegrationTests {
 
             // First TTS audio = the first buffer handed to the device (speak() only enqueues).
             let output = RecordingOutput(wrapping: try TTSOutput(deviceID: nil))
-            let tts = TTSPlaybackService(primary: AVSpeechUtteranceSynthesizer(), output: output)
+            let synthesizer = AVSpeechUtteranceSynthesizer(preferredVoice: { _ in nil })
+            let tts = TTSPlaybackService(primary: synthesizer, output: output)
             let ttsStart = ContinuousClock.now
             await tts.speak(text: text, locale: Locale(identifier: "en-US"))
             #expect(await waitUntil(timeout: .seconds(15)) { output.firstScheduleAt != nil }, "no TTS audio within 15 s")

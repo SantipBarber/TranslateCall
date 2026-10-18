@@ -1,4 +1,5 @@
 #if DEBUG
+import Combine
 import SwiftUI
 
 /// One state of the models sheet on fixture stores (previews never touch the disk, the network or a model).
@@ -28,7 +29,8 @@ struct PairModelsFixture {
             if fails { throw URLError(.notConnectedToInternet) }
             try await Task.sleep(for: .seconds(3600))
         }, cancel: { _ in })
-        let downloads = ModelDownloads(probe: probe, managers: managers, isSessionActive: { isBlocked })
+        let downloads = ModelDownloads(probe: probe, managers: managers,
+                                       sessionActive: Just(isBlocked).eraseToAnyPublisher())
         let cloud = CloudPolicy(defaults: defaults, edgeConsentGiven: { false }, grantEdgeConsent: {})
         let names = ["es": "Español", "de": "Deutsch", "en": "English"]
         let model = PairModelsModel(
@@ -38,7 +40,6 @@ struct PairModelsFixture {
             catalog: catalog, voiceCloneOn: voiceCloneOn)
         if let download { downloads.start(download) }
         return PairModelsSheet(model: model, onClose: {})
-            .environmentObject(downloads)
             .background(Color(.windowBackgroundColor))
     }
 }

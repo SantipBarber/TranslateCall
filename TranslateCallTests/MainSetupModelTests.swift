@@ -13,6 +13,8 @@ private struct SetupHarness {
     let tts = TTSEngineSelector(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
     let models: ModelServices
     let model: MainSetupModel
+    /// Holds every model download until opened.
+    let downloadGate = AsyncGate()
 
     init(installed: @escaping (Locale.Language, Locale.Language) async -> Bool = { _, _ in true },
          permissions: @escaping () -> PermissionState = { .allGranted }) {
@@ -51,7 +53,7 @@ private struct SetupHarness {
                                cloud: CloudPolicy(defaults: modelDefaults, edgeConsentGiven: { true },
                                                   grantEdgeConsent: {}),
                                downloads: ModelDownloads(probe: .none, managers: DownloadManagers(
-                                   download: { _ in }, cancel: { _ in })),
+                                   download: { [downloadGate] _ in await downloadGate.wait() }, cancel: { _ in })),
                                stt: STTEngineSelector(), tts: tts, languagePairManager: languages)
         models.cloud.allowed = false
         model = MainSetupModel(monitor: monitor, setupManager: setupManager, languagePairManager: languages,
@@ -107,6 +109,20 @@ struct MainSetupModelTests {
         harness.model.select(harness.zoom)
         await harness.model.refresh()
         #expect(harness.model.readiness.primary == .openAppAndStart("Zoom"))
+    }
+
+    @Test("a model download in flight blocks Start with its reason; finishing it unblocks Start (S-7)")
+    func downloadInFlightBlocksStart() async {
+        let harness = SetupHarness()
+        await harness.model.refresh()
+        #expect(harness.model.readiness.primary == .start && harness.model.readiness.primaryEnabled)
+        harness.models.downloads.start(.whisper)
+        #expect(harness.model.readiness.primary == .waitingForDownload)
+        #expect(!harness.model.readiness.primaryEnabled)
+        #expect(harness.model.readiness.blockingReason == "Wait for the model download to finish")
+        harness.downloadGate.open()
+        #expect(await waitUntil { harness.model.readiness.primary == .start })
+        #expect(harness.model.readiness.primaryEnabled)
     }
 
     @Test("a denied microphone blocks Start")

@@ -13,7 +13,7 @@ struct VADProviderTests {
         let provider = VADProvider { config in
             configs.append(config)
             return MockVADService(engine: .silero)
-        }
+        } preferred: { .silero }
         var config = VADConfiguration()
         config.minSilenceDuration = -1
 
@@ -30,7 +30,7 @@ struct VADProviderTests {
         let provider = VADProvider { _ in
             calls.append(1)
             throw SileroUnavailable()
-        }
+        } preferred: { .silero }
         let first = await provider.makeVAD(config: VADConfiguration())
         let second = await provider.makeVAD(config: VADConfiguration())
         #expect(first.engine == .energy)
@@ -51,7 +51,7 @@ struct VADProviderTests {
             default: break
             }
             return MockVADService(engine: .silero)
-        }
+        } preferred: { .silero }
         #expect(await provider.makeVAD(config: VADConfiguration()).engine == .energy)
 
         let engines = LockedArray<VADEngine>()
@@ -83,7 +83,7 @@ struct VADProviderTests {
             default: break
             }
             return MockVADService(engine: .silero)
-        }
+        } preferred: { .silero }
         provider.preload()
         #expect(await waitUntil { calls.values.count == 1 })
         #expect(await waitUntil { !provider.isWarmingUp }, "the failed preload has settled")
@@ -108,7 +108,7 @@ struct VADProviderTests {
             calls.append(1)
             if calls.values.count == 1 { await gate.wait() }   // the preload's load hangs
             return MockVADService(engine: .silero)
-        }
+        } preferred: { .silero }
         provider.preload()
         #expect(await waitUntil { gate.waiterCount == 1 })
 
@@ -127,7 +127,7 @@ struct VADProviderTests {
         let provider = VADProvider { _ in
             calls.append(1)
             return MockVADService(engine: .silero)
-        }
+        } preferred: { .silero }
         provider.preload()
         provider.preload()
         #expect(await waitUntil { calls.values.count == 1 })

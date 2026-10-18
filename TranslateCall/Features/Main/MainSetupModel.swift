@@ -26,6 +26,8 @@ final class MainSetupModel: ObservableObject {
     private let tts: TTSEngineSelector?
     private let isInstalled: (Locale.Language, Locale.Language) async -> Bool
     private let readPermissions: () -> PermissionState
+    /// A model download is in flight: Start waits for it (S-7).
+    private var modelDownloading = false
     private var cancellables: Set<AnyCancellable> = []
 
     init(monitor: CallAppMonitor, setupManager: SetupManager, languagePairManager: LanguagePairManager,
@@ -56,6 +58,7 @@ final class MainSetupModel: ObservableObject {
                 .sink { [weak self] _ in self?.recompute() }
                 .store(in: &cancellables)
         }
+        observeDownloads()
         recompute()
         observeModelsLabelInputs()
     }
@@ -105,8 +108,22 @@ final class MainSetupModel: ObservableObject {
         if languagePairManager.sourceLanguage != sourceLanguage { sourceLanguage = languagePairManager.sourceLanguage }
         if languagePairManager.targetLanguage != targetLanguage { targetLanguage = languagePairManager.targetLanguage }
         let derived = Readiness.derive(permissions: permissions, blackHolePresent: setupManager.isBlackHolePresent,
-                                       pair: pair, app: selectedRow, phase: session.phase)
+                                       pair: pair, app: selectedRow, phase: session.phase,
+                                       modelDownloading: modelDownloading)
         if derived != readiness { readiness = derived }
+    }
+
+    /// A download lands by loading its model, so Start waits while any runs (S-7, design §11). `$states`
+    /// carries the new value, so this is synchronous.
+    private func observeDownloads() {
+        models?.downloads.$states
+            .map { $0.values.contains(where: \.isDownloading) }
+            .removeDuplicates()
+            .sink { [weak self] downloading in
+                self?.modelDownloading = downloading
+                self?.recompute()
+            }
+            .store(in: &cancellables)
     }
 
     /// The label probes the disk and the system voices, so it follows only its own inputs (the pair, its

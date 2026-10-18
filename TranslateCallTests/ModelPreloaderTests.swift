@@ -177,6 +177,21 @@ struct ModelPreloaderTests {
         #expect(await waitUntil { preloader.loaded == [.whisper, .voiceClone] })
         #expect(harness.log.entries.filter { $0 == "load voiceClone" }.count == 1)
     }
+
+    @Test("a speech model a download left loaded is unloaded when the pair does not want it (design §11)")
+    func downloadedUnwantedModelIsUnloaded() async {
+        let harness = Harness(source: "es", target: "de", probe: cachedAll)   // wants Whisper only
+        let preloader = harness.preloader()
+        let finished = PassthroughSubject<DownloadableModel, Never>()
+        preloader.trackDownloads(finished.eraseToAnyPublisher())
+        finished.send(.parakeet)
+        finished.send(.kokoro)
+        finished.send(.voiceClone)
+        #expect(preloader.loaded == [.parakeet], "only the speech models a download loads are recorded")
+        await preloader.preload()
+        #expect(preloader.loaded == [.whisper])
+        #expect(harness.log.entries == ["unload parakeet", "load whisper"])
+    }
 }
 
 // MARK: - Load-only paths (P20: the preloader never triggers a download)

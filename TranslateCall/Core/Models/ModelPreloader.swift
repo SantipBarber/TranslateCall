@@ -82,6 +82,25 @@ final class ModelPreloader {
             .store(in: &cancellables)
     }
 
+    /// Records a model loaded outside the preloader, so the next run unloads it if the pair does not want
+    /// it (a sheet download of Parakeet or Whisper leaves the model loaded; design §11).
+    func markLoaded(_ model: PreloadModel) {
+        loaded.insert(model)
+    }
+
+    /// Marks the speech models a download leaves loaded (`ModelDownloads.didFinish`). Kokoro is unloaded
+    /// by its download, and the voice clone belongs to "Use my voice".
+    func trackDownloads(_ finished: AnyPublisher<DownloadableModel, Never>) {
+        finished.sink { [weak self] model in
+            switch model {
+            case .parakeet: self?.markLoaded(.parakeet)
+            case .whisper: self?.markLoaded(.whisper)
+            case .kokoro, .voiceClone: break
+            }
+        }
+        .store(in: &cancellables)
+    }
+
     /// The models the next session would load, given the pair, its choice and what is on disk.
     func wantedModels() -> Set<PreloadModel> {
         let source = Locale(identifier: languagePairManager.sourceLanguage.minimalIdentifier)

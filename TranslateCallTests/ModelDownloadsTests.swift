@@ -127,7 +127,8 @@ struct ModelDownloadsTests {
     @Test("no download starts while a session runs (S-7)")
     func blockedDuringSession() {
         let fake = FakeDownloads()
-        let downloads = ModelDownloads(probe: FakeDisk().probe, managers: fake.managers, isSessionActive: { true })
+        let downloads = ModelDownloads(probe: FakeDisk().probe, managers: fake.managers, 
+                                       sessionActive: Just(true).eraseToAnyPublisher())
         #expect(downloads.isBlocked)
         downloads.start(.parakeet)
         #expect(downloads.state(.parakeet) == .notOnDisk)

@@ -52,7 +52,7 @@ struct MainSetupFixture {
         return MainSetupContent(
             readiness: readiness, pair: pair, isLocked: false, monitor: monitor,
             selectedBundleID: teams?.bundleID, languages: languages, modelsLabel: "Models: Recommended",
-            ttsSelector: selector, voiceCloneDownloading: false,
+            ttsSelector: selector, voiceCloneDownload: .notOnDisk,
             conversationSettings: ConversationSettings(defaults: defaults), profile: profile,
             actions: MainSetupActions()
         )

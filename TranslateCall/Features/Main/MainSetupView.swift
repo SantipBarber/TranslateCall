@@ -9,6 +9,8 @@ struct MainSetupActions {
     var selectOther: (String?) -> Void = { _ in }
     var setUpDriver: () -> Void = {}
     var openVoiceProfiles: () -> Void = {}
+    /// "Try again" after the voice model download failed (blocked during a call).
+    var retryVoiceDownload: () -> Void = {}
     var download: (TranslationSession) async -> Void = { _ in }
     /// "Advanced…" next to the models line: opens the pair's models sheet (P10).
     var openModels: () -> Void = {}
@@ -26,7 +28,7 @@ struct MainSetupContent: View {
     @ObservedObject var languages: LanguagePairManager
     let modelsLabel: String
     @ObservedObject var ttsSelector: TTSEngineSelector
-    let voiceCloneDownloading: Bool
+    let voiceCloneDownload: DownloadState
     @ObservedObject var conversationSettings: ConversationSettings
     let profile: VoiceProfileHeader?
     let actions: MainSetupActions
@@ -48,8 +50,8 @@ struct MainSetupContent: View {
             VoiceSection(ttsSelector: ttsSelector, profile: profile,
                          targetLocale: Locale(identifier: languages.targetLanguage.minimalIdentifier),
                          targetName: languages.displayName(for: languages.targetLanguage),
-                         isDownloading: voiceCloneDownloading, isLocked: isLocked,
-                         onOpenProfiles: actions.openVoiceProfiles)
+                         download: voiceCloneDownload, isLocked: isLocked,
+                         onOpenProfiles: actions.openVoiceProfiles, onRetryDownload: actions.retryVoiceDownload)
             primaryButton
             SetupFooter(settings: conversationSettings)
         }
@@ -100,7 +102,7 @@ struct MainSetupView: View {
             readiness: model.readiness, pair: model.pair, isLocked: session.phase != .idle,
             monitor: model.monitor, selectedBundleID: setupManager.selectedCaptureBundleID,
             languages: languages, modelsLabel: model.modelsLabel, ttsSelector: ttsSelector,
-            voiceCloneDownloading: isDownloading(downloads.state(.voiceClone)),
+            voiceCloneDownload: downloads.state(.voiceClone),
             conversationSettings: viewModel.conversationSettings, profile: voiceProfileManager.activeProfile,
             actions: actions
         )
@@ -144,16 +146,12 @@ struct MainSetupView: View {
         .onChange(of: languages.targetLanguage) { _, _ in Task { await model.refresh() } }
     }
 
-    private func isDownloading(_ state: DownloadState) -> Bool {
-        if case .downloading = state { return true }
-        return false
-    }
-
     private var actions: MainSetupActions {
         MainSetupActions(
             select: model.select, open: { row in Task { await model.open(row) } },
             selectOther: model.selectOther(bundleID:), setUpDriver: { showSetupWizard = true },
             openVoiceProfiles: { showVoiceProfiles = true },
+            retryVoiceDownload: { ttsSelector.enableVoiceCloning() },
             download: { session in
                 await viewModel.downloadLanguages(using: session)
                 await model.refresh()

@@ -10,7 +10,8 @@ extension IntegrationTests {
             let locale = Locale(identifier: lang)
             try requirePrerequisite(AVSpeechUtteranceSynthesizer.hasVoice(for: locale), "system voice for \(lang)")
             // Default output: audible during the run.
-            let tts = TTSPlaybackService(primary: AVSpeechUtteranceSynthesizer(), output: try TTSOutput(deviceID: nil))
+            let synthesizer = AVSpeechUtteranceSynthesizer(preferredVoice: { _ in nil })
+            let tts = TTSPlaybackService(primary: synthesizer, output: try TTSOutput(deviceID: nil))
             let monitor = try TTSAudioMonitor()
             monitor.isEnabled = true
             let file = try monitor.startRecording()

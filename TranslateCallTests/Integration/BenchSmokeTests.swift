@@ -60,7 +60,8 @@ extension IntegrationTests {
         @Test func startRefusesEnergyVAD() async throws {
             try await requireBasicPrerequisites()
             let options = BenchOptions()
-            let provider = VADProvider(loadSilero: { _ in throw BenchSetupError(description: "no silero") })
+            let provider = VADProvider(loadSilero: { _ in throw BenchSetupError(description: "no silero") },
+                                       preferred: { .silero })
             let session = try await BenchPipelineFactory.make(
                 .outgoingEsESToEn, options: options, vadProvider: provider)
             var refused: MissingPrerequisite?

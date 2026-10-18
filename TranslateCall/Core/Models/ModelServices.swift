@@ -12,11 +12,11 @@ struct ModelServices {
     let downloads: ModelDownloads
 
     /// Production: the stores in `UserDefaults.standard` and the machine-wide Edge consent.
-    /// `isSessionActive` is for the downloads, which must not start during a call (S-7).
+    /// `sessionActive` is for the downloads, which must not start during a call (S-7).
     init(stt: STTEngineSelector, tts: TTSEngineSelector, languagePairManager: LanguagePairManager,
-         isSessionActive: @escaping () -> Bool) {
+         sessionActive: AnyPublisher<Bool, Never>) {
         self.init(choices: PairModelChoices(), cloud: CloudPolicy(),
-                  downloads: ModelDownloads(probe: .live, isSessionActive: isSessionActive),
+                  downloads: ModelDownloads(probe: .live, sessionActive: sessionActive),
                   stt: stt, tts: tts, languagePairManager: languagePairManager)
     }
 

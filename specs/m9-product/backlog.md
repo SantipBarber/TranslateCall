@@ -8,7 +8,7 @@
 | Sub-feature | Spec | Items |
 |-------------|------|-------|
 | UI core | `m9-product/ui-core/` | A29, UI-L1, UI-L2 (closed), UI-B1…UI-B12 |
-| UI settings | `m9-product/ui-settings/` | UI-B4, UI-B5, UI-B9 (closed), UI-S1…UI-S7 |
+| UI settings | `m9-product/ui-settings/` | UI-B9 (closed), UI-B4/UI-B5 (narrowed), UI-S1…UI-S7 |
 
 ## From the implementation
 

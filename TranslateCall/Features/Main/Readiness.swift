@@ -31,6 +31,9 @@ nonisolated struct Readiness: Sendable, Equatable {
         case download(String)
         case unsupportedPair
         case checking
+        /// A model download is in flight: it loads its model when it lands, so no call starts until then
+        /// (M9 UI settings S-7, design §11).
+        case waitingForDownload
         /// "Open <App> and start" is waiting for the app to run (REQ-UI-34, P24).
         case opening(String)
         case starting
@@ -50,7 +53,7 @@ nonisolated struct Readiness: Sendable, Equatable {
     var cards: [Card]
 
     static func derive(permissions: PermissionState, blackHolePresent: Bool, pair: PairReadiness,
-                       app: CallAppRow?, phase: SessionPhase) -> Readiness {
+                       app: CallAppRow?, phase: SessionPhase, modelDownloading: Bool = false) -> Readiness {
         switch phase {
         case .running: return Readiness(primary: .stop, primaryEnabled: true, cards: [])
         case .starting: return Readiness(primary: .starting, primaryEnabled: false, cards: [])
@@ -65,6 +68,7 @@ nonisolated struct Readiness: Sendable, Equatable {
         case .checking: return Readiness(primary: .checking, primaryEnabled: false, cards: cards)
         case .ready: break
         }
+        if modelDownloading { return Readiness(primary: .waitingForDownload, primaryEnabled: false, cards: cards) }
         if let app, !app.isRunning, app.appURL != nil {
             return Readiness(primary: .openAppAndStart(app.appName), primaryEnabled: micOK, cards: cards)
         }
@@ -93,6 +97,7 @@ nonisolated extension Readiness.Primary {
         case .download(let language): String(localized: "Download \(language) to start")
         case .unsupportedPair: String(localized: "This pair isn't available")
         case .checking: String(localized: "Checking languages…")
+        case .waitingForDownload: String(localized: "Wait for the model download to finish")
         case .opening(let app): String(localized: "Opening \(app)…")
         case .starting: String(localized: "Starting…")
         case .stop: String(localized: "Stop translating")
