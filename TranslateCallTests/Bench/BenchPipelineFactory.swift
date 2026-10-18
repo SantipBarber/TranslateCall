@@ -190,7 +190,7 @@ enum BenchPipelineFactory {
     /// The user's real voice-clone choice: read, never written (NFR-BH-03).
     private static let activeProfileKey = "tlk.voiceCloning.activeProfileId"
 
-    static func make(_ line: BenchRunLine, options: BenchOptions, vadProvider: VADProvider = VADProvider()) async throws
+    static func make(_ line: BenchRunLine, options: BenchOptions, vadProvider: VADProvider = VADProvider(preferred: { .silero })) async throws
         -> BenchSession {
         let suiteName = "bench-\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
@@ -366,8 +366,8 @@ enum BenchPipelineFactory {
                                     "Kokoro model — download it in the app first (M5)")
             // Kokoro has no load-only path (P20); its presence check above keeps this from downloading.
             _ = try await KokoroModelManager.shared.ensureReady()
-            let ready = await waitUntil(timeout: .seconds(120)) { tts.kokoroAvailable }
-            try requirePrerequisite(ready, "Kokoro model (download it in the app: TTS → Kokoro)")
+            await tts.refreshModelAvailability()
+            try requirePrerequisite(tts.kokoroAvailable, "Kokoro model (download it in the app: TTS → Kokoro)")
         } else if options.overrideTTS == nil, options.profile == .best {
             let raw = UserDefaults.standard.string(forKey: activeProfileKey)
             try requirePrerequisite(raw.flatMap(UUID.init(uuidString:)) != nil, "an active voice-clone profile (M5)")
@@ -379,8 +379,8 @@ enum BenchPipelineFactory {
             tts.voiceCloningEnabled = true   // the selector's own (throwaway) suite
             let loaded = (try? await QwenCloneModelManager.shared.loadCached()) != nil
             try requirePrerequisite(loaded, "Qwen3-TTS voice-clone model — download it in the app first (M5)")
-            let ready = await waitUntil(timeout: .seconds(120)) { tts.voiceCloneAvailable }
-            try requirePrerequisite(ready, "Qwen3-TTS voice-clone model (enable voice cloning in the app)")
+            await tts.refreshModelAvailability()
+            try requirePrerequisite(tts.voiceCloneAvailable, "Qwen3-TTS voice-clone model (enable voice cloning in the app)")
         }
     }
 

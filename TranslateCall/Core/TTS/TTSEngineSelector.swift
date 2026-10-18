@@ -72,6 +72,10 @@ final class TTSEngineSelector: ObservableObject {
     /// Downloads are blocked while a session runs (S-7); `ModelServices` wires it. Default: never blocked.
     var downloadsBlocked: () -> Bool = { false }
 
+    /// The model managers whose state `refreshModelAvailability()` reads; tests inject their own.
+    var kokoroManager: KokoroModelManager = .shared
+    var voiceCloneManager: QwenCloneModelManager = .shared
+
     private(set) var profileStore: (any VoiceProfileStoring)?
 
     // MARK: - Init
@@ -224,6 +228,18 @@ final class TTSEngineSelector: ObservableObject {
         if hasSystemVoice(locale) { return .avSpeech }
         if cloud.permits(.edgeTTS), EdgeTTSVoiceCatalog.supports(locale) { return .edgeTTS }
         return .avSpeech
+    }
+
+    /// Sets `kokoroAvailable` and `voiceCloneAvailable` from the managers' current state, loading nothing.
+    /// The state streams are single-consumer, so a second selector in the same process (the benchmark's)
+    /// never sees a `.ready` that another consumer already took; this reads the state directly instead.
+    func refreshModelAvailability() async {
+        if case .ready = await kokoroManager.state { kokoroAvailable = true } else { kokoroAvailable = false }
+        if case .ready = await voiceCloneManager.state {
+            voiceCloneAvailable = true
+        } else {
+            voiceCloneAvailable = false
+        }
     }
 
     private func observeModelManager() {

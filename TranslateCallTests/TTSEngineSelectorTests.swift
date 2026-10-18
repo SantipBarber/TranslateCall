@@ -30,6 +30,30 @@ struct TTSEngineSelectorTests {
         return selector
     }
 
+    @Test("refreshModelAvailability reads the managers' current state without loading anything")
+    func refreshReadsManagerState() async throws {
+        let selector = makeSelector()
+        let kokoro = KokoroModelManager(managerFactory: { _ in MockKokoroTtsManager() })
+        let clone = QwenCloneModelManager(modelLoader: { _ in MockQwenCloneInferrer() })
+        selector.kokoroManager = kokoro
+        selector.voiceCloneManager = clone
+
+        await selector.refreshModelAvailability()
+        #expect(!selector.kokoroAvailable)
+        #expect(!selector.voiceCloneAvailable)
+
+        _ = try await kokoro.ensureReady()
+        try await clone.ensureReady()
+        await selector.refreshModelAvailability()
+        #expect(selector.kokoroAvailable)
+        #expect(selector.voiceCloneAvailable)
+
+        await clone.unload()
+        await selector.refreshModelAvailability()
+        #expect(selector.kokoroAvailable)
+        #expect(!selector.voiceCloneAvailable)
+    }
+
     @Test("nothing on disk: AVSpeech primary with no fallback (REQ-T-22)")
     func avSpeechHasNoFallback() throws {
         let service = try makeSelector().makeOutgoingService(for: Locale(identifier: "en-US"), deviceID: nil)
