@@ -9,6 +9,8 @@ struct VoiceSection: View {
     let targetName: String
     /// The voice model is downloading (`ModelDownloads`, S-4).
     let isDownloading: Bool
+    /// A call runs: the toggle waits until it ends, like the languages (S-7).
+    let isLocked: Bool
     let onOpenProfiles: () -> Void
 
     private var supported: Bool { QwenCloneConfiguration.supportsLocale(targetLocale) }
@@ -21,6 +23,8 @@ struct VoiceSection: View {
                     header
                     if !supported {
                         detail { Text("Your voice isn't available in \(targetName) yet") }
+                    } else if isLocked, !ttsSelector.voiceCloningEnabled {
+                        detail { Text("Available after the call") }
                     } else if isDownloading {
                         detail {
                             HStack(spacing: 6) {
@@ -48,7 +52,7 @@ struct VoiceSection: View {
             }
             Spacer(minLength: Theme.Spacing.small)
             Toggle("Use my voice", isOn: toggleBinding).labelsHidden().toggleStyle(.switch)
-                .disabled(!supported)
+                .disabled(!supported || isLocked)
         }
         .padding(Theme.Spacing.medium)
     }

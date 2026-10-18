@@ -1,5 +1,8 @@
 import Combine
 import Foundation
+import OSLog
+
+private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "ModelDownloads")
 
 // MARK: - DownloadableModel
 
@@ -136,10 +139,13 @@ final class ModelDownloads: ObservableObject {
         states[model] = diskState(model)
     }
 
-    /// Re-reads the disk for every model not downloading (e.g. when the models sheet appears).
+    /// Re-reads the disk for every model not downloading (e.g. when the models sheet appears). A failure
+    /// stays shown until the model is on disk, so the row keeps "Try again" (REQ-ST-14).
     func refresh() {
         for model in DownloadableModel.allCases where tasks[model] == nil {
-            states[model] = diskState(model)
+            let onDisk = diskState(model)
+            if case .failed = state(model), onDisk == .notOnDisk { continue }
+            states[model] = onDisk
         }
     }
 
@@ -152,6 +158,7 @@ final class ModelDownloads: ObservableObject {
             states[model] = .ready
             didFinish.send(model)
         case .failure(let error):
+            logger.error("Download of \(model.rawValue) failed: \(error.localizedDescription)")
             states[model] = .failed(error.localizedDescription)
         }
     }

@@ -48,7 +48,8 @@ struct MainSetupContent: View {
             VoiceSection(ttsSelector: ttsSelector, profile: profile,
                          targetLocale: Locale(identifier: languages.targetLanguage.minimalIdentifier),
                          targetName: languages.displayName(for: languages.targetLanguage),
-                         isDownloading: voiceCloneDownloading, onOpenProfiles: actions.openVoiceProfiles)
+                         isDownloading: voiceCloneDownloading, isLocked: isLocked,
+                         onOpenProfiles: actions.openVoiceProfiles)
             primaryButton
             SetupFooter(settings: conversationSettings)
         }
@@ -96,7 +97,7 @@ struct MainSetupView: View {
             readiness: model.readiness, pair: model.pair, isLocked: session.phase != .idle,
             monitor: model.monitor, selectedBundleID: setupManager.selectedCaptureBundleID,
             languages: languages, modelsLabel: model.modelsLabel, ttsSelector: ttsSelector,
-            voiceCloneDownloading: downloads.state(.voiceClone) == .downloading(progress: nil),
+            voiceCloneDownloading: isDownloading(downloads.state(.voiceClone)),
             conversationSettings: viewModel.conversationSettings, profile: voiceProfileManager.activeProfile,
             actions: actions
         )
@@ -135,6 +136,11 @@ struct MainSetupView: View {
         }
         .onChange(of: languages.sourceLanguage) { _, _ in Task { await model.refresh() } }
         .onChange(of: languages.targetLanguage) { _, _ in Task { await model.refresh() } }
+    }
+
+    private func isDownloading(_ state: DownloadState) -> Bool {
+        if case .downloading = state { return true }
+        return false
     }
 
     private var actions: MainSetupActions {

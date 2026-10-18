@@ -69,6 +69,8 @@ final class TTSEngineSelector: ObservableObject {
     var cloudAllowed: () -> Bool = { false }
     /// Starts the voice clone download; `ModelServices` wires it to `ModelDownloads` (S-4). Default: no-op.
     var startVoiceCloneDownload: () -> Void = {}
+    /// Downloads are blocked while a session runs (S-7); `ModelServices` wires it. Default: never blocked.
+    var downloadsBlocked: () -> Bool = { false }
 
     private(set) var profileStore: (any VoiceProfileStoring)?
 
@@ -153,8 +155,9 @@ final class TTSEngineSelector: ObservableObject {
 
     /// Enables voice cloning and, when the model is not loaded, starts its download through
     /// `ModelDownloads` (a no-op when on disk: the preloader then loads it). Unloads Kokoro first
-    /// (NF-04: only one MLX TTS model at a time).
+    /// (NF-04: only one MLX TTS model at a time). A no-op during a session (S-7): nothing unloads mid-call.
     func enableVoiceCloning() {
+        guard !downloadsBlocked() else { return }
         voiceCloningEnabled = true
         guard !voiceCloneAvailable else { return }
         if kokoroAvailable { unloadKokoroModel() }

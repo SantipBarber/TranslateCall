@@ -131,6 +131,17 @@ struct TTSEngineSelectorTests {
         #expect(started == 1)
     }
 
+    @Test("\"Use my voice\" during a session changes nothing and starts no download (S-7)")
+    func enableVoiceCloningBlockedDuringSession() {
+        let selector = makeSelector()
+        var started = 0
+        selector.startVoiceCloneDownload = { started += 1 }
+        selector.downloadsBlocked = { true }
+        selector.enableVoiceCloning()
+        #expect(!selector.voiceCloningEnabled)
+        #expect(started == 0)
+    }
+
     @Test("Voice Clone supports Spanish, French, and other languages")
     func voiceCloneSupportsMultipleLanguages() {
         for code in ["es-ES", "fr-FR", "de-DE", "it-IT", "pt-BR", "ru-RU", "zh-Hans", "ja-JP", "ko-KR"] {

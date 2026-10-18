@@ -33,5 +33,6 @@ struct ModelServices {
         tts.pairChoice = currentChoice
         tts.cloudAllowed = { [cloud] in cloud.allowed }
         tts.startVoiceCloneDownload = { [downloads] in downloads.start(.voiceClone) }
+        tts.downloadsBlocked = { [downloads] in downloads.isBlocked }
     }
 }

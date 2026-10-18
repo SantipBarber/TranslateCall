@@ -90,6 +90,22 @@ struct ModelDownloadsTests {
         #expect(await waitUntil { downloads.state(.kokoro) == .ready })
     }
 
+    @Test("refresh keeps a failure while the model is still not on disk (REQ-ST-14)")
+    func refreshKeepsFailure() async {
+        let disk = FakeDisk()
+        let fake = FakeDownloads()
+        let downloads = ModelDownloads(probe: disk.probe, managers: fake.managers)
+        downloads.start(.whisper)
+        #expect(await waitUntil { fake.isWaiting })
+        fake.finish(.whisper, error: Boom())
+        #expect(await waitUntil { downloads.state(.whisper) == .failed("No network") })
+        downloads.refresh()
+        #expect(downloads.state(.whisper) == .failed("No network"))
+        disk.onDisk.withLock { $0 = [.whisper] }
+        downloads.refresh()
+        #expect(downloads.state(.whisper) == .ready)
+    }
+
     @Test("cancel asks the manager to stop and re-probes the disk; a late finish changes nothing")
     func cancelIsBestEffort() async {
         let fake = FakeDownloads()
