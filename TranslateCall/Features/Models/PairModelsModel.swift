@@ -89,7 +89,8 @@ final class PairModelsModel: ObservableObject {
     private let downloads: ModelDownloads
     private let catalog: ModelCatalog
     private let voiceCloneOn: Bool
-    private var pendingPick: PairEngine?
+    /// The pick waiting on its download, per stage (key: `isVoice`).
+    private var pendingPicks: [Bool: PairEngine] = [:]
     private var cancellables: Set<AnyCancellable> = []
 
     init(source: Locale.Language, target: Locale.Language, displayName: (Locale.Language) -> String,
@@ -110,6 +111,7 @@ final class PairModelsModel: ObservableObject {
         downloads.refresh()
         downloads.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
         cloud.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
+        downloads.$states.sink { [weak self] states in self?.dropFailedPicks(states) }.store(in: &cancellables)
         downloads.didFinish.sink { [weak self] model in self?.downloadFinished(model) }.store(in: &cancellables)
     }
 
@@ -155,7 +157,7 @@ final class PairModelsModel: ObservableObject {
         guard current.availability != .notForPair, current.availability != .unavailable else { return }
         if let model = engine.downloadable, downloads.state(model) != .ready {
             guard !downloads.isBlocked else { return }
-            pendingPick = engine
+            pendingPicks[engine.isVoice] = engine
             downloads.start(model)
             return
         }
@@ -179,7 +181,7 @@ final class PairModelsModel: ObservableObject {
 
     /// Back to "Recommended" for both stages (stored by `commit()`).
     func reset() {
-        pendingPick = nil
+        pendingPicks = [:]
         staged = PairModelChoice()
     }
 
@@ -191,7 +193,7 @@ final class PairModelsModel: ObservableObject {
     // MARK: - Private
 
     private func stage(_ engine: PairEngine) {
-        pendingPick = nil
+        pendingPicks[engine.isVoice] = nil
         let recommended = row(for: engine).recommendation == .both   // recommended for both: stays "Recommended" (P6)
         switch engine {
         case .stt(let stt): staged.stt = recommended ? nil : stt
@@ -200,8 +202,15 @@ final class PairModelsModel: ObservableObject {
     }
 
     private func downloadFinished(_ model: DownloadableModel) {
-        guard let engine = pendingPick, engine.downloadable == model else { return }
+        guard let engine = pendingPicks.values.first(where: { $0.downloadable == model }) else { return }
         stage(engine)
+    }
+
+    /// A failed download drops its pending pick; "Try again" sets it again through `pick(_:)`.
+    private func dropFailedPicks(_ states: [DownloadableModel: DownloadState]) {
+        for (stage, engine) in pendingPicks {
+            if let model = engine.downloadable, case .failed = states[model] { pendingPicks[stage] = nil }
+        }
     }
 
     private var speechSides: [Side] {
@@ -221,13 +230,18 @@ final class PairModelsModel: ObservableObject {
         let selected: Bool
         switch engine {
         case .stt: selected = staged.stt.map { .stt($0) == engine } ?? (recommendation != .none)
-        case .tts: selected = staged.voice.map { .tts($0) == engine } ?? (recommendation != .none)
+        case .tts: selected = shownVoice.map { .tts($0) == engine } ?? (recommendation != .none)
         }
         return EngineRowState(engine: engine, name: Self.name(engine), recommendation: recommendation,
                               isCloud: engine.isCloud, tested: metrics?.tested ?? false,
                               latency: metrics?.latencyLabel(isVoice: engine.isVoice),
                               availability: availability(of: engine, sides: sides),
                               download: engine.downloadable.map { downloads.state($0) }, isSelected: selected)
+    }
+
+    /// The staged voice, unless it has no row (Edge with cloud off): then the recommended row shows.
+    private var shownVoice: TTSEngine? {
+        staged.voice == .edgeTTS && !cloud.allowed ? nil : staged.voice
     }
 
     private func availability(of engine: PairEngine, sides: [Side]) -> EngineRowState.Availability {

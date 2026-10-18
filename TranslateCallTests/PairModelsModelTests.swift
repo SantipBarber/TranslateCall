@@ -24,6 +24,10 @@ private final class ControlledDownloads: Sendable {
                          cancel: { _ in })
     }
 
+    func fail(_ model: DownloadableModel) {
+        pending.withLock { $0.removeValue(forKey: model) }?.resume(throwing: CancellationError())
+    }
+
     func finish(_ model: DownloadableModel) {
         onDisk.withLock { _ = $0.insert(model) }
         pending.withLock { $0.removeValue(forKey: model) }?.resume()
@@ -185,5 +189,46 @@ struct PairModelsModelTests {
                                    pairs: ["de|es": ["whisper": EngineMetrics(tested: true, latencyMs: 400)]])
         let whisper = try row(SheetHarness().model("es", "de", catalog: catalog).speechRows, .stt(.whisper))
         #expect(whisper.tested && whisper.latency == "~0.4 s")
+    }
+
+    @Test("a speech download finishing after a voice pick still selects its row (REQ-ST-14)")
+    func pendingPickPerStage() async throws {
+        let harness = SheetHarness(onDisk: [.whisper, .kokoro])
+        let sheet = harness.model("en", "es")
+        harness.fake.onDisk.withLock { _ = $0.remove(.kokoro) }
+        harness.downloads.refresh()
+        sheet.pick(.stt(.parakeet))
+        #expect(await waitUntil { harness.fake.isWaiting })
+        sheet.pick(.tts(.avSpeech))
+        harness.fake.finish(.parakeet)
+        #expect(await waitUntil { sheet.staged.stt == .parakeet })
+        #expect(try row(sheet.speechRows, .stt(.parakeet)).isSelected)
+    }
+
+    @Test("a failed download clears the pending pick; Try again then success stages it")
+    func failedClearsPending() async throws {
+        let harness = SheetHarness(onDisk: [])
+        let sheet = harness.model("en", "es")
+        sheet.pick(.stt(.parakeet))
+        #expect(await waitUntil { harness.fake.isWaiting })
+        harness.fake.fail(.parakeet)
+        #expect(await waitUntil {
+            if case .failed = harness.downloads.state(.parakeet) { true } else { false }
+        })
+        // finished from elsewhere: not staged unprompted
+        harness.downloads.didFinish.send(.parakeet)
+        #expect(sheet.staged.stt == nil)
+        sheet.pick(.stt(.parakeet))
+        #expect(await waitUntil { harness.fake.isWaiting })
+        harness.fake.finish(.parakeet)
+        #expect(await waitUntil { sheet.staged.stt == .parakeet })
+    }
+
+    @Test("a stored Edge choice with cloud off leaves the recommended voice selected (REQ-ST-32)")
+    func storedEdgeCloudOff() throws {
+        let harness = SheetHarness(cloudAllowed: false)
+        harness.choices.set(PairModelChoice(voice: .edgeTTS), for: PairKey("de", "es"))
+        let sheet = harness.model("es", "de")
+        #expect(try row(sheet.voiceRows, .tts(.avSpeech)).isSelected)
     }
 }
