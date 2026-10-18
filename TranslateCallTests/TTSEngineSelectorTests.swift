@@ -121,6 +121,16 @@ struct TTSEngineSelectorTests {
         #expect(selector.currentTargetLocale == Locale(identifier: "en-AU"))
     }
 
+    @Test("\"Use my voice\" with the model not loaded starts the download through ModelDownloads (S-4)")
+    func enableVoiceCloningStartsDownload() {
+        let selector = makeSelector()
+        var started = 0
+        selector.startVoiceCloneDownload = { started += 1 }
+        selector.enableVoiceCloning()
+        #expect(selector.voiceCloningEnabled)
+        #expect(started == 1)
+    }
+
     @Test("Voice Clone supports Spanish, French, and other languages")
     func voiceCloneSupportsMultipleLanguages() {
         for code in ["es-ES", "fr-FR", "de-DE", "it-IT", "pt-BR", "ru-RU", "zh-Hans", "ja-JP", "ko-KR"] {

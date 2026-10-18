@@ -1,9 +1,6 @@
 import Combine
 import CoreAudio
 import Foundation
-import OSLog
-
-private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "TTSEngineSelector")
 
 // MARK: - TTSEngineSelector
 
@@ -18,7 +15,6 @@ final class TTSEngineSelector: ObservableObject {
 
     @Published private(set) var kokoroAvailable: Bool = false
     @Published private(set) var voiceCloneAvailable: Bool = false
-    @Published private(set) var isVoiceCloneDownloading: Bool = false
     @Published private(set) var currentTargetLocale: Locale = Locale.current
 
     /// User toggle — persisted in UserDefaults.
@@ -71,6 +67,8 @@ final class TTSEngineSelector: ObservableObject {
     var pairChoice: () -> PairModelChoice = { PairModelChoice() }
     /// "Allow cloud models"; `ModelServices` wires it from `CloudPolicy` (P1). Default: no cloud.
     var cloudAllowed: () -> Bool = { false }
+    /// Starts the voice clone download; `ModelServices` wires it to `ModelDownloads` (S-4). Default: no-op.
+    var startVoiceCloneDownload: () -> Void = {}
 
     private(set) var profileStore: (any VoiceProfileStoring)?
 
@@ -153,25 +151,14 @@ final class TTSEngineSelector: ObservableObject {
 
     // MARK: - Voice Cloning API
 
-    /// Enables voice cloning and begins Qwen3-TTS model download if needed.
-    /// Unloads Kokoro first (NF-04: only one MLX TTS model at a time).
+    /// Enables voice cloning and, when the model is not loaded, starts its download through
+    /// `ModelDownloads` (a no-op when on disk: the preloader then loads it). Unloads Kokoro first
+    /// (NF-04: only one MLX TTS model at a time).
     func enableVoiceCloning() {
         voiceCloningEnabled = true
-        if !voiceCloneAvailable {
-            // Unload Kokoro to free GPU memory
-            if kokoroAvailable {
-                unloadKokoroModel()
-            }
-            isVoiceCloneDownloading = true
-            Task { [weak self] in
-                do {
-                    try await QwenCloneModelManager.shared.ensureReady()
-                } catch {
-                    logger.error("Voice clone setup failed: \(error.localizedDescription)")
-                }
-                self?.isVoiceCloneDownloading = false
-            }
-        }
+        guard !voiceCloneAvailable else { return }
+        if kokoroAvailable { unloadKokoroModel() }
+        startVoiceCloneDownload()
     }
 
     /// Disables voice cloning and unloads Qwen3-TTS model.

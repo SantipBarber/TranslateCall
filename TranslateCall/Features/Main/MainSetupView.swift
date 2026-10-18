@@ -26,6 +26,7 @@ struct MainSetupContent: View {
     @ObservedObject var languages: LanguagePairManager
     let modelsLabel: String
     @ObservedObject var ttsSelector: TTSEngineSelector
+    let voiceCloneDownloading: Bool
     @ObservedObject var conversationSettings: ConversationSettings
     let profile: VoiceProfileHeader?
     let actions: MainSetupActions
@@ -47,7 +48,7 @@ struct MainSetupContent: View {
             VoiceSection(ttsSelector: ttsSelector, profile: profile,
                          targetLocale: Locale(identifier: languages.targetLanguage.minimalIdentifier),
                          targetName: languages.displayName(for: languages.targetLanguage),
-                         onOpenProfiles: actions.openVoiceProfiles)
+                         isDownloading: voiceCloneDownloading, onOpenProfiles: actions.openVoiceProfiles)
             primaryButton
             SetupFooter(settings: conversationSettings)
         }
@@ -83,6 +84,7 @@ struct MainSetupView: View {
     @EnvironmentObject private var languages: LanguagePairManager
     @EnvironmentObject private var model: MainSetupModel
     @EnvironmentObject private var session: CallSessionModel
+    @EnvironmentObject private var downloads: ModelDownloads
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismissWindow) private var dismissWindow
     @AppStorage(UISettingsKeys.showStatusPanel) private var showStatusPanel = true
@@ -94,6 +96,7 @@ struct MainSetupView: View {
             readiness: model.readiness, pair: model.pair, isLocked: session.phase != .idle,
             monitor: model.monitor, selectedBundleID: setupManager.selectedCaptureBundleID,
             languages: languages, modelsLabel: model.modelsLabel, ttsSelector: ttsSelector,
+            voiceCloneDownloading: downloads.state(.voiceClone) == .downloading(progress: nil),
             conversationSettings: viewModel.conversationSettings, profile: voiceProfileManager.activeProfile,
             actions: actions
         )

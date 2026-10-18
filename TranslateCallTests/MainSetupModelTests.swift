@@ -50,6 +50,8 @@ private struct SetupHarness {
         models = ModelServices(choices: PairModelChoices(defaults: modelDefaults),
                                cloud: CloudPolicy(defaults: modelDefaults, edgeConsentGiven: { true },
                                                   grantEdgeConsent: {}),
+                               downloads: ModelDownloads(probe: .none, managers: DownloadManagers(
+                                   download: { _ in }, cancel: { _ in })),
                                stt: STTEngineSelector(), tts: tts, languagePairManager: languages)
         models.cloud.allowed = false
         model = MainSetupModel(monitor: monitor, setupManager: setupManager, languagePairManager: languages,

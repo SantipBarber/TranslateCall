@@ -7,6 +7,8 @@ struct VoiceSection: View {
     let profile: VoiceProfileHeader?
     let targetLocale: Locale
     let targetName: String
+    /// The voice model is downloading (`ModelDownloads`, S-4).
+    let isDownloading: Bool
     let onOpenProfiles: () -> Void
 
     private var supported: Bool { QwenCloneConfiguration.supportsLocale(targetLocale) }
@@ -19,7 +21,7 @@ struct VoiceSection: View {
                     header
                     if !supported {
                         detail { Text("Your voice isn't available in \(targetName) yet") }
-                    } else if ttsSelector.isVoiceCloneDownloading {
+                    } else if isDownloading {
                         detail {
                             HStack(spacing: 6) {
                                 ProgressView().controlSize(.small)

@@ -22,6 +22,7 @@ struct TranslateCallApp: App {
             .environmentObject(container.uiServices.mainSetupModel)
             .environmentObject(container.uiServices.models.choices)
             .environmentObject(container.uiServices.models.cloud)
+            .environmentObject(container.uiServices.models.downloads)
             .onAppear {
                 // Only now: a host on screen before this point stops SwiftUI opening this window (A26).
                 container.translationHost.show()
@@ -58,6 +59,7 @@ struct TranslateCallApp: App {
                 .environmentObject(container.uiServices.mainSetupModel)
                 .environmentObject(container.uiServices.models.choices)
                 .environmentObject(container.uiServices.models.cloud)
+                .environmentObject(container.uiServices.models.downloads)
         }
     }
 
