@@ -102,7 +102,8 @@ struct UIServices {
     /// The one status panel and its presenter, shown with the session (P25).
     let statusPanel: StatusPanelController
 
-    /// The preloader never runs in the test host (REQ-UI-21a).
+    /// The preloader never runs in the test host (REQ-UI-21a); outside it, it re-runs on the model
+    /// triggers and when a session ends (REQ-ST-61, P11).
     init(coordinator: AudioCoordinator, viewModel: AudioViewModel, stt: STTEngineSelector, tts: TTSEngineSelector) {
         UISettingsKeys.registerDefaults()
         let inSession = { coordinator.isOutgoingActive || coordinator.isStarting }
@@ -110,7 +111,11 @@ struct UIServices {
                                isSessionActive: inSession)
         modelPreloader = ModelPreloader(stt: stt, tts: tts, languagePairManager: viewModel.languagePairManager,
                                         isSessionActive: inSession)
-        if !AppContainer.isTestHost { modelPreloader.start() }
+        if !AppContainer.isTestHost {
+            let sessionEnded = coordinator.$isOutgoingActive.removeDuplicates().filter { !$0 }
+                .map { _ in () }.eraseToAnyPublisher()
+            modelPreloader.start(triggers: models.preloadTriggers(tts: tts) + [sessionEnded])
+        }
         callAppMonitor = CallAppMonitor(workspace: LiveWorkspace(),
                                         selectedBundleID: viewModel.setupManager.selectedCaptureBundleID)
         callSession = CallSessionModel(coordinator: coordinator, viewModel: viewModel)

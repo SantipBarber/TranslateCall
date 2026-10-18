@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 // MARK: - ModelServices
@@ -34,5 +35,15 @@ struct ModelServices {
         tts.cloudAllowed = { [cloud] in cloud.allowed }
         tts.startVoiceCloneDownload = { [downloads] in downloads.start(.voiceClone) }
         tts.downloadsBlocked = { [downloads] in downloads.isBlocked }
+    }
+
+    /// What re-runs the preloader besides a pair change (REQ-ST-61): a pair's choice, the cloud policy, a
+    /// finished download, "Use my voice" and its profile.
+    func preloadTriggers(tts: TTSEngineSelector) -> [AnyPublisher<Void, Never>] {
+        [choices.$all.map { _ in () }.eraseToAnyPublisher(),
+         cloud.$allowed.map { _ in () }.eraseToAnyPublisher(),
+         downloads.didFinish.map { _ in () }.eraseToAnyPublisher(),
+         tts.$voiceCloningEnabled.map { _ in () }.eraseToAnyPublisher(),
+         tts.$activeVoiceProfileId.map { _ in () }.eraseToAnyPublisher()]
     }
 }
