@@ -86,7 +86,7 @@ func hostOffscreen(_ view: some View) -> NSWindow {
 
 extension IntegrationTests {
     /// F8.5.4 D-6: is the translation latency the session start-up (one session per sentence) or the
-    /// translation itself? Both numbers go to build/reports/latency.json; nothing is asserted here.
+    /// translation itself? Both numbers are printed for the benchmark harness; nothing is asserted here.
     @Suite("Translation latency (session reuse)", .serialized) @MainActor
     struct TranslationLatencyTests {
         @Test("one session per sentence (pre-F8.5.4 bridge)")
@@ -106,10 +106,8 @@ extension IntegrationTests {
                 }
                 samples.append(start.duration(to: .now).milliseconds)
             }
-            await LatencyReport.shared.record(fixture: "es→en session per sentence (median)", stage: .translate,
-                                              ms: median(samples))
-            await LatencyReport.shared.record(fixture: "es→en session per sentence (p90)", stage: .translate,
-                                              ms: percentile90(samples))
+            print("LATENCY es→en session per sentence (median) translate \(median(samples)) ms")
+            print("LATENCY es→en session per sentence (p90) translate \(percentile90(samples)) ms")
             #expect(samples.count == latencySentences.count)
             #expect(failures.isEmpty, "translation failures would skew the latency: \(failures)")
         }
@@ -134,12 +132,9 @@ extension IntegrationTests {
                     if index == 0 { first = elapsed } else { samples.append(elapsed) }
                 }
             }
-            await LatencyReport.shared.record(fixture: "es→en kept session, first sentence", stage: .translate,
-                                              ms: first)
-            await LatencyReport.shared.record(fixture: "es→en kept session (median)", stage: .translate,
-                                              ms: median(samples))
-            await LatencyReport.shared.record(fixture: "es→en kept session (p90)", stage: .translate,
-                                              ms: percentile90(samples))
+            print("LATENCY es→en kept session, first sentence translate \(first) ms")
+            print("LATENCY es→en kept session (median) translate \(median(samples)) ms")
+            print("LATENCY es→en kept session (p90) translate \(percentile90(samples)) ms")
             #expect(samples.count == latencySentences.count - 1)
             #expect(failures.isEmpty, "translation failures would skew the latency: \(failures)")
         }

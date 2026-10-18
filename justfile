@@ -7,7 +7,7 @@ xcb := "xcodebuild -project TranslateCall.xcodeproj -scheme TranslateCall -desti
 default:
     @just --list
 
-# Install / verify tooling (opengrep, swiftlint, xcbeautify, Metal Toolchain)
+# Install / verify tooling (opengrep, uv, swiftlint, xcbeautify, Metal Toolchain)
 setup:
     tools/scripts/setup.sh
 
@@ -21,9 +21,9 @@ build:
 test:
     rm -rf build/logs/unit.xcresult
     mkdir -p build/logs
-    {{xcb}} test -testPlan Unit -skip-testing:TranslateCallTests/IntegrationTests -resultBundlePath build/logs/unit.xcresult 2>&1 | tee build/logs/test-unit.log | xcbeautify
+    {{xcb}} test -testPlan Unit -skip-testing:TranslateCallTests/IntegrationTests -skip-testing:TranslateCallTests/BenchTests -resultBundlePath build/logs/unit.xcresult 2>&1 | tee build/logs/test-unit.log | xcbeautify
 
-# Integration tier (real frameworks + audio fixtures); writes build/reports/latency.json
+# Integration tier (real frameworks + audio fixtures)
 test-integration:
     rm -rf build/logs/integration.xcresult
     mkdir -p build/logs build/reports
@@ -43,8 +43,46 @@ test-tooling:
     tools/scripts/test-pr-guards.sh
     tools/scripts/test-pr-gate.sh
 
-# Everything GitHub runs: lint + scan + tooling self-tests
-check: lint scan test-tooling
+# Python benchmark tooling tests (tools/bench; no network)
+test-bench-tools:
+    uv run --locked --project tools/bench pytest -q
+
+# Download + normalise manifest clips into ~/Library/Caches/TranslateCallBench (override: TC_BENCH_CACHE). set: pr | full
+bench-fetch set="pr":
+    uv run --locked --project tools/bench tcbench fetch --set {{quote(set)}}
+
+# Regenerate bench/manifests/phase1.json (needs the optional 'vad' extra: silero-vad)
+bench-manifest:
+    uv run --locked --extra vad --project tools/bench tcbench manifest
+
+# Benchmark: fetch → build → real-time Swift tier → analyze → report → compare. set: pr | full;
+# (bench.sh reads the xcodebuild invocation from `xcb` above: one source.)
+# profile: all | basic | best; lines: comma-separated slugs, e.g. outgoing-es-419-en,incoming-en-es (empty = all)
+bench set="pr" profile="all" edge="0" lines="":
+    tools/scripts/bench.sh {{quote(set)}} {{quote(profile)}} {{quote(edge)}} {{quote(lines)}}
+
+# Import recordings of a variant for the benchmark (e.g. native speakers)
+bench-ingest dir variant native="false":
+    uv run --locked --extra vad --project tools/bench tcbench ingest {{quote(dir)}} --variant {{quote(variant)}} --native {{quote(native)}}
+
+# Compare a run with bench/baseline.json (default: latest). Pass baseline=... to override.
+bench-compare run="build/bench/runs/latest" baseline="":
+    if [ -n {{quote(baseline)}} ]; then \
+      uv run --locked --project tools/bench tcbench compare {{quote(run)}} --baseline {{quote(baseline)}}; \
+    else \
+      uv run --locked --project tools/bench tcbench compare {{quote(run)}}; \
+    fi
+
+# Rewrite report.html of a run (default: the latest)
+bench-report run="build/bench/runs/latest":
+    uv run --locked --project tools/bench tcbench report {{quote(run)}}
+
+# Promote a run to bench/baseline.json
+bench-baseline run reason:
+    uv run --locked --project tools/bench tcbench baseline {{quote(run)}} --reason {{quote(reason)}}
+
+# Everything GitHub runs: lint + scan + tooling self-tests + bench tooling tests
+check: lint scan test-tooling test-bench-tools
 
 # Run selected unit tests, e.g. `just test-only WordErrorRateTests FileAudioSourceTests`
 test-only +suites:
@@ -54,6 +92,6 @@ test-only +suites:
 fixtures:
     tools/scripts/fixtures.sh
 
-# Full PR gate: build → check → test → test-integration → status on SHA → push → PR
+# Full PR gate: build → check → test → test-integration → bench → status on SHA → push → PR
 pr:
     tools/scripts/pr.sh

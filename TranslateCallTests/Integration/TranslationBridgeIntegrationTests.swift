@@ -37,10 +37,8 @@ extension IntegrationTests {
                 samples.append(start.duration(to: .now).milliseconds)
             }
             let typical = median(samples)
-            await LatencyReport.shared.record(fixture: "es→en AppleTranslationService warm (median)", stage: .translate,
-                                              ms: typical)
-            await LatencyReport.shared.record(fixture: "es→en AppleTranslationService warm (p90)", stage: .translate,
-                                              ms: percentile90(samples))
+            print("LATENCY es→en AppleTranslationService warm (median) translate \(typical) ms")
+            print("LATENCY es→en AppleTranslationService warm (p90) translate \(percentile90(samples)) ms")
             #expect(typical <= 400, "warm median \(typical) ms")
         }
 
@@ -57,7 +55,7 @@ extension IntegrationTests {
             let start = ContinuousClock.now
             _ = try await service.translate(text: latencySentences[1], from: src, to: dst)
             let first = start.duration(to: .now).milliseconds
-            await LatencyReport.shared.record(fixture: "es→uk first sentence after warm-up", stage: .translate, ms: first)
+            print("LATENCY es→uk first sentence after warm-up translate \(first) ms")
             #expect(first <= 600, "first sentence \(first) ms")
         }
     }

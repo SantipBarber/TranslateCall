@@ -110,7 +110,7 @@ extension IntegrationTests {
             guard let closed = run.arrivals.first?.at else { return }
             let speechEnd = run.start + SplicedSpeech.seconds(lead.count + first.count)
             let latency = speechEnd.duration(to: closed)
-            await LatencyReport.shared.record(fixture: "silero-pause-0.6", stage: .vad, ms: latency.milliseconds)
+            print("LATENCY silero-pause-0.6 vad \(latency.milliseconds) ms")
             #expect(latency <= .seconds(pause + 0.5), "segment closed \(latency) after the end of speech")
             #expect(latency >= .seconds(pause - 0.35), "segment closed before the pause: \(latency)")
         }

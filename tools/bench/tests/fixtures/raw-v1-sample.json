@@ -1,0 +1,91 @@
+{
+  "clips" : [
+    {
+      "feedEndNs" : 3500000000,
+      "feedStartNs" : 0,
+      "id" : "cv-es-es-0001",
+      "speechEndNs" : 3150000000,
+      "speechStartNs" : 220000000
+    },
+    {
+      "feedEndNs" : 7000000000,
+      "feedStartNs" : 4000000000,
+      "id" : "cv-es-419-0001",
+      "speechEndNs" : 6900000000,
+      "speechStartNs" : 4180000000
+    }
+  ],
+  "informative" : false,
+  "meta" : {
+    "commit" : "abc1234",
+    "dirty" : false,
+    "engines" : {
+      "stt" : "apple",
+      "translation" : "apple",
+      "tts" : "avspeech"
+    },
+    "macOS" : "15.6",
+    "machine" : "Mac14,3",
+    "manifestSha256" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "settings" : {
+      "vadTrailingSilenceMs" : "600"
+    },
+    "xcode" : "16.4"
+  },
+  "mtOnly" : [
+    {
+      "hyp" : "La factura se enviará mañana por la mañana.",
+      "id" : "mt-en-es-0001",
+      "ms" : 261.5
+    },
+    {
+      "error" : "pack missing",
+      "id" : "mt-es-en-0001",
+      "ms" : 0
+    }
+  ],
+  "profile" : "basic",
+  "runId" : "20261017T120000Z-abc1234",
+  "runLine" : "es-ES>en",
+  "schema" : 1,
+  "set" : "pr",
+  "utterances" : [
+    {
+      "audio" : "utterances/0.wav",
+      "detail" : {
+        "sttFinal" : {
+          "engine" : "apple",
+          "text" : "Buenos días"
+        },
+        "translated" : {
+          "text" : "Good morning"
+        },
+        "vadEnd" : {
+          "segmentAudioMs" : "2930",
+          "trailingSilenceMs" : "600"
+        }
+      },
+      "events" : {
+        "speechStart" : 220000000,
+        "sttFinal" : 4100000000,
+        "translated" : 4360000000,
+        "ttsEnd" : 6000000000,
+        "ttsFirstBuffer" : 4700000000,
+        "vadEnd" : 3750000000
+      },
+      "seq" : 0
+    },
+    {
+      "detail" : {
+        "dropped" : {
+          "reason" : "empty"
+        }
+      },
+      "events" : {
+        "dropped" : 7500000000,
+        "speechStart" : 4180000000
+      },
+      "seq" : 1
+    }
+  ]
+}

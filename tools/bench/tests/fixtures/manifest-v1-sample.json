@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "clips": [
+    {
+      "id": "cv-es-es-0001",
+      "source": {"dataset": "common_voice", "revision": "17.0", "originalId": "common_voice_es_00000001"},
+      "lang": "es",
+      "variant": "es-ES",
+      "speaker": "spk-es-01",
+      "nativeSpeaker": true,
+      "transcript": "Buenos días, ¿puedes oírme bien?",
+      "translations": {"en": "Good morning, can you hear me well?", "de": "Guten Morgen, kannst du mich gut hören?"},
+      "gainDb": 6.0,
+      "speechStartMs": 220.0,
+      "speechEndMs": 3150.0,
+      "tags": ["greeting", "question"],
+      "tiers": ["pr", "full"],
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "licence": "CC0-1.0",
+      "audio": "common_voice/es-ES/cv-es-es-0001.wav"
+    },
+    {
+      "id": "cv-es-419-0001",
+      "source": {"dataset": "common_voice", "revision": "17.0", "originalId": "common_voice_es_00000002"},
+      "lang": "es",
+      "variant": "es-419",
+      "speaker": "spk-es-02",
+      "nativeSpeaker": true,
+      "transcript": "Ahorita te mando el archivo por correo.",
+      "translations": {"en": "I will send you the file by email right now.", "de": "Ich schicke dir die Datei gleich per E-Mail."},
+      "gainDb": 6.0,
+      "speechStartMs": 180.0,
+      "speechEndMs": 2900.0,
+      "tags": ["regionalism"],
+      "tiers": ["pr", "full"],
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "licence": "CC0-1.0",
+      "audio": "common_voice/es-419/cv-es-419-0001.wav"
+    },
+    {
+      "id": "cv-en-0001",
+      "source": {"dataset": "common_voice", "revision": "17.0", "originalId": "common_voice_en_00000001"},
+      "lang": "en",
+      "variant": "en",
+      "speaker": "spk-en-01",
+      "nativeSpeaker": true,
+      "transcript": "Could we move the meeting to Thursday?",
+      "translations": {"es": "¿Podemos mover la reunión al jueves?", "de": "Können wir das Meeting auf Donnerstag verschieben?"},
+      "gainDb": 6.0,
+      "speechStartMs": 250.0,
+      "speechEndMs": 2800.0,
+      "tags": ["scheduling", "question"],
+      "tiers": ["full"],
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "licence": "CC0-1.0",
+      "audio": "common_voice/en/cv-en-0001.wav"
+    }
+  ],
+  "mtOnly": [
+    {
+      "id": "mt-en-es-0001",
+      "srcLang": "en",
+      "tgtLang": "es",
+      "src": "The invoice will be sent tomorrow morning.",
+      "ref": "La factura se enviará mañana por la mañana.",
+      "tiers": ["pr", "full"]
+    },
+    {
+      "id": "mt-es-en-0001",
+      "srcLang": "es",
+      "tgtLang": "en",
+      "src": "Necesitamos revisar el presupuesto antes del viernes.",
+      "ref": "We need to review the budget before Friday.",
+      "tiers": ["full"]
+    }
+  ]
+}

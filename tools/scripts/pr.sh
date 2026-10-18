@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full PR gate (REQ-W-40..43): guards → push → build → check → test → test-integration → status → PR.
+# Full PR gate (REQ-W-40..43): guards → push → build → check → test → test-integration → bench → status → PR.
 # The status is bound to the SHA captured at start; success is only posted if that exact,
 # unmodified commit is what was tested and both tiers actually ran tests.
 #
@@ -25,7 +25,7 @@ step="start"
 trap 'report_failure failure "failed at: $step"' ERR
 trap 'report_failure error "interrupted at: $step"; exit 130' INT TERM
 start=$SECONDS
-IFS=';' read -r -a steps <<<"${TC_PR_STEPS:-just build;just check;just test;just test-integration}"
+IFS=';' read -r -a steps <<<"${TC_PR_STEPS:-just build;just check;just test;just test-integration;just bench pr basic}"
 for step in "${steps[@]}"; do
   echo "━━ $step ━━"
   $step

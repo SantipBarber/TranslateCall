@@ -69,7 +69,7 @@ Establish a professional, reproducible development workflow for TranslateCall be
 
 **REQ-W-23**: Integration tests whose prerequisite is missing (model not downloaded, language pack not installed) SHALL fail with an explicit message naming the prerequisite and the `just setup` hint. They SHALL NOT be reported as passed.
 
-**REQ-W-24**: The integration tier SHALL write per-stage latency (VAD, STT, translation, TTS first-audio, total) for each fixture to `build/reports/latency.json`.
+**REQ-W-24**: The integration tier SHALL write per-stage latency (VAD, STT, translation, TTS first-audio, total) for each fixture to `build/reports/latency.json`. Superseded by the M9 benchmark harness (`specs/m9-product/benchmark-harness/`).
 
 ### FR-8.5.0.4 — Audio fixtures
 
@@ -130,4 +130,4 @@ Establish a professional, reproducible development workflow for TranslateCall be
 1. On a fresh clone, `just setup && just pr` on a feature branch either passes and sets `local/just-pr` = success, or fails at a clearly named step.
 2. `just test` passes on `main` after this feature merges.
 3. A PR to `main` cannot be merged without both `check` and `local/just-pr` green for its HEAD SHA.
-4. `build/reports/latency.json` exists after `just test-integration` with entries for ES, EN and UK fixtures.
+4. `build/reports/latency.json` exists after `just test-integration` with entries for ES, EN and UK fixtures. (superseded by the M9 benchmark harness)

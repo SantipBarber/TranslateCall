@@ -32,8 +32,8 @@ extension IntegrationTests {
 
             let start = ContinuousClock.now
             let output = try await service.translate(text: fixture.text, from: src, to: dst)
-            await LatencyReport.shared.record(fixture: "\(pair.fixtureID)→\(pair.target)", stage: .translate,
-                                              ms: start.duration(to: .now).milliseconds)
+            let translateMs = start.duration(to: .now).milliseconds
+            print("LATENCY \(pair.fixtureID)→\(pair.target) translate \(translateMs) ms")
             #expect(!output.isEmpty)
             #expect(NLLanguageRecognizer.dominantLanguage(for: output) == pair.expected, "“\(output)”")
         }
