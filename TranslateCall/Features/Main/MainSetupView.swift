@@ -10,7 +10,7 @@ struct MainSetupActions {
     var setUpDriver: () -> Void = {}
     var openVoiceProfiles: () -> Void = {}
     var download: (TranslationSession) async -> Void = { _ in }
-    /// "Advanced…" next to the models line; the pair's models sheet arrives in Task 9 (P10).
+    /// "Advanced…" next to the models line: opens the pair's models sheet (P10).
     var openModels: () -> Void = {}
     var primary: () -> Void = {}
 }
@@ -86,11 +86,14 @@ struct MainSetupView: View {
     @EnvironmentObject private var model: MainSetupModel
     @EnvironmentObject private var session: CallSessionModel
     @EnvironmentObject private var downloads: ModelDownloads
+    @EnvironmentObject private var choices: PairModelChoices
+    @EnvironmentObject private var cloud: CloudPolicy
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismissWindow) private var dismissWindow
     @AppStorage(UISettingsKeys.showStatusPanel) private var showStatusPanel = true
     @State private var showSetupWizard = false
     @State private var showVoiceProfiles = false
+    @State private var modelsSheet: PairModelsModel?
 
     var body: some View {
         MainSetupContent(
@@ -119,6 +122,9 @@ struct MainSetupView: View {
             SetupWizardView(setupManager: setupManager, isPresented: $showSetupWizard)
         }
         .sheet(isPresented: $showVoiceProfiles) { voiceProfilesSheet }
+        .sheet(item: $modelsSheet) { sheet in
+            PairModelsSheet(model: sheet, onClose: { modelsSheet = nil })
+        }
         .task {
             setupManager.checkBlackHole()
             if !setupManager.isSetupCompleted { showSetupWizard = true }
@@ -152,8 +158,15 @@ struct MainSetupView: View {
                 await viewModel.downloadLanguages(using: session)
                 await model.refresh()
             },
+            openModels: openModels,
             primary: { Task { await model.primaryAction() } }
         )
+    }
+
+    private func openModels() {
+        modelsSheet = PairModelsSheet.makeModel(
+            source: languages.sourceLanguage, target: languages.targetLanguage, languages: languages,
+            services: ModelServices(choices: choices, cloud: cloud, downloads: downloads), tts: ttsSelector)
     }
 
     /// Only with no session (P14, REQ-UI-82): a start-time failure waits for the outcome, and a mid-call
