@@ -4,18 +4,22 @@ import ServiceManagement
 import SwiftUI
 
 /// The languages whose models are installed for `source` (P17): there is no list API, so each supported
-/// language is asked through `isInstalled`. Pure so the tests inject both closures.
+/// language is asked through `isInstalled`, all at once (UI-B9). Pure so the tests inject both closures.
 nonisolated enum DownloadedLanguages {
     static func list(
         source: Locale.Language,
         supported: [Locale.Language],
         displayName: (Locale.Language) -> String,
-        isInstalled: (Locale.Language, Locale.Language) async -> Bool
+        isInstalled: @escaping @Sendable (Locale.Language, Locale.Language) async -> Bool
     ) async -> [String] {
-        var names: Set<String> = [displayName(source)]
-        for language in supported where language.minimalIdentifier != source.minimalIdentifier {
-            if await isInstalled(source, language) { names.insert(displayName(language)) }
+        let others = supported.filter { $0.minimalIdentifier != source.minimalIdentifier }
+        let installed = await withTaskGroup(of: Locale.Language?.self) { group in
+            for language in others {
+                group.addTask { await isInstalled(source, language) ? language : nil }
+            }
+            return await group.reduce(into: [Locale.Language]()) { if let language = $1 { $0.append(language) } }
         }
+        let names = Set([displayName(source)] + installed.map(displayName))
         return names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 }
@@ -49,6 +53,11 @@ final class OpenAtLoginModel: ObservableObject {
         }
         isEnabled = readEnabled()
     }
+
+    func refresh() {
+        let current = readEnabled()
+        if current != isEnabled { isEnabled = current }
+    }
 }
 
 /// Settings > General (REQ-UI-71): audio, rhythm, status panel and general options.
@@ -72,6 +81,10 @@ struct GeneralSettingsView: View {
                 downloaded = await DownloadedLanguages.list(
                     source: languages.sourceLanguage, supported: languages.supportedLanguages,
                     displayName: languages.displayName(for:), isInstalled: AppleTranslationService.isInstalled)
+            }
+            .onAppear { login.refresh() }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                login.refresh()
             }
     }
 
@@ -113,6 +126,7 @@ struct GeneralSettingsContent: View {
             Picker("Microphone", selection: Binding(
                 get: { viewModel.selectedInput },
                 set: { if let device = $0 { viewModel.selectInput(device) } })) {
+                if viewModel.selectedInput == nil { Text("System default").tag(AudioDevice?.none) }
                 ForEach(viewModel.inputDevices) { Text($0.name).tag(Optional($0)) }
             }
             Picker("Their voice plays on", selection: Binding(
