@@ -185,7 +185,7 @@ specs/m9-product/backlog.md, docs/ARCHITECTURE.md   MOD T15
   - `nonisolated struct PairModelChoice: Codable, Equatable, Sendable`, with `stt: STTEngine?` and `voice: TTSEngine?` (never `.voiceClone`), `isEmpty`, and `init(stt:voice:)`;
   - `@MainActor final class PairModelChoices: ObservableObject`, with `static let defaultsKey = "tlk.models.pairChoices"`, `@Published private(set) var all: [PairKey: PairModelChoice]`, `init(defaults:)`, `choice(for:)` and `set(_:for:)` (an empty choice removes the entry).
 
-- [ ] **Step 1: Write the failing tests** — `TranslateCallTests/PairModelChoicesTests.swift`:
+- [x] **Step 1: Write the failing tests** — `TranslateCallTests/PairModelChoicesTests.swift`:
 
 ```swift
 import Foundation
@@ -243,9 +243,9 @@ struct PairModelChoicesTests {
 }
 ```
 
-- [ ] **Step 2: Run them, expect a compile failure** — `just test-only PairModelChoicesTests` → "cannot find 'PairKey' in scope".
+- [x] **Step 2: Run them, expect a compile failure** — `just test-only PairModelChoicesTests` → "cannot find 'PairKey' in scope".
 
-- [ ] **Step 3: Implement** — `TranslateCall/Core/Models/PairModelChoices.swift` (full code; pi copies it):
+- [x] **Step 3: Implement** — `TranslateCall/Core/Models/PairModelChoices.swift` (full code; pi copies it):
 
 ```swift
 import Combine
@@ -356,9 +356,9 @@ final class PairModelChoices: ObservableObject {
 }
 ```
 
-- [ ] **Step 4: Run** — `just test-only PairModelChoicesTests` → passes; `just lint` → clean.
+- [x] **Step 4: Run** — `just test-only PairModelChoicesTests` → passes; `just lint` → clean.
 
-- [ ] **Step 5: Commit** — `feat(models): per-pair model choice store (M9 UI settings REQ-ST-01)`.
+- [x] **Step 5: Commit** — `feat(models): per-pair model choice store (M9 UI settings REQ-ST-01)`.
 
 ---
 
@@ -378,7 +378,7 @@ final class PairModelChoices: ObservableObject {
   - `struct EngineMetrics: Decodable, Equatable { var tested = false; var latencyMs: Int? }`, with `func latencyLabel(isVoice: Bool) -> String?` returning `"~0.4 s"` / `"~0.5 s to first audio"`;
   - `ModelCatalog.builtIn` and the bundled JSON become `version: 2` with `"engines": {"edgeTTS": {"unavailable": true}}` and `"pairs": {}`.
 
-- [ ] **Step 1: Write the failing tests** — `TranslateCallTests/ModelCatalogV2Tests.swift`:
+- [x] **Step 1: Write the failing tests** — `TranslateCallTests/ModelCatalogV2Tests.swift`:
 
 ```swift
 import Foundation
@@ -428,9 +428,9 @@ struct ModelCatalogV2Tests {
 }
 ```
 
-- [ ] **Step 2: Run, expect failure** — `just test-only ModelCatalogV2Tests` → "value of type 'ModelCatalog' has no member 'engines'".
+- [x] **Step 2: Run, expect failure** — `just test-only ModelCatalogV2Tests` → "value of type 'ModelCatalog' has no member 'engines'".
 
-- [ ] **Step 3: Implement.** The decoding needs care: a v1 file must still decode, and the memberwise init must survive.
+- [x] **Step 3: Implement.** The decoding needs care: a v1 file must still decode, and the memberwise init must survive.
   - Put `init(from:)` in **extensions** of `ModelCatalog`, `EngineInfo` and `EngineMetrics`. In the type body it would remove the memberwise init.
   - Each extension declares a `private enum CodingKeys`. Synthesis does not provide them once `init(from:)` is custom on a `Decodable`-only type.
   - Use `decodeIfPresent(...) ?? [:]` / `?? false`.
@@ -459,9 +459,9 @@ struct ModelCatalogV2Tests {
 }
 ```
 
-- [ ] **Step 4: Run** — `just test-only ModelCatalogV2Tests ModelCatalogTests` → both pass; `just lint` → clean.
+- [x] **Step 4: Run** — `just test-only ModelCatalogV2Tests ModelCatalogTests` → both pass; `just lint` → clean.
 
-- [ ] **Step 5: Commit** — `feat(models): catalog v2 with engine flags and per-pair metrics (S-2, S-3)`.
+- [x] **Step 5: Commit** — `feat(models): catalog v2 with engine flags and per-pair metrics (S-2, S-3)`.
 
 ---
 
@@ -476,7 +476,7 @@ struct ModelCatalogV2Tests {
   - `nonisolated struct CloudSnapshot: Equatable, Sendable`, with `allowed`, `consented: Set<TTSEngine>`, `unavailable: Set<TTSEngine>` and `permits(_:)`;
   - `@MainActor final class CloudPolicy: ObservableObject`, with `static let allowedKey = "tlk.cloud.allowed"`, `@Published var allowed: Bool` (stored on set), `init(defaults:edgeConsentGiven:grantEdgeConsent:)`, `hasConsent(_:)` and `grantConsent(_:)`.
 
-- [ ] **Step 1: Write the failing tests** — `TranslateCallTests/CloudPolicyTests.swift`:
+- [x] **Step 1: Write the failing tests** — `TranslateCallTests/CloudPolicyTests.swift`:
 
 ```swift
 import Foundation
@@ -530,9 +530,9 @@ struct CloudPolicyTests {
 }
 ```
 
-- [ ] **Step 2: Run, expect failure** — `just test-only CloudPolicyTests` → "cannot find 'CloudPolicy' in scope".
+- [x] **Step 2: Run, expect failure** — `just test-only CloudPolicyTests` → "cannot find 'CloudPolicy' in scope".
 
-- [ ] **Step 3: Implement** — full code:
+- [x] **Step 3: Implement** — full code:
 
 ```swift
 import Combine
@@ -595,9 +595,9 @@ final class CloudPolicy: ObservableObject {
 }
 ```
 
-- [ ] **Step 4: Run** — `just test-only CloudPolicyTests` → passes; `just lint` → clean.
+- [x] **Step 4: Run** — `just test-only CloudPolicyTests` → passes; `just lint` → clean.
 
-- [ ] **Step 5: Commit** — `feat(models): cloud policy and consent (REQ-ST-15, 32)`.
+- [x] **Step 5: Commit** — `feat(models): cloud policy and consent (REQ-ST-15, 32)`.
 
 ---
 
@@ -618,7 +618,7 @@ final class CloudPolicy: ObservableObject {
 
   The automatic-flag API (`automaticKey`, `isAutomatic(in:)`, `setAutomatic`) stays until Task 5.
 
-- [ ] **Step 1: Write the failing tests** — `TranslateCallTests/ModelResolutionTests.swift`:
+- [x] **Step 1: Write the failing tests** — `TranslateCallTests/ModelResolutionTests.swift`:
 
 ```swift
 import Foundation
@@ -703,9 +703,9 @@ struct ModelResolutionTests {
 }
 ```
 
-- [ ] **Step 2: Run, expect failure** — `just test-only ModelResolutionTests` → "extra argument 'pairChoice' in call".
+- [x] **Step 2: Run, expect failure** — `just test-only ModelResolutionTests` → "extra argument 'pairChoice' in call".
 
-- [ ] **Step 3: Implement** the rules of REQ-ST-02…04.
+- [x] **Step 3: Implement** the rules of REQ-ST-02…04.
   - **`serves`:**
     - `engine.supports(locale:)`;
     - not Parakeet for incoming;
@@ -725,9 +725,9 @@ struct ModelResolutionTests {
   - **Algorithm order:** keep the voice-clone-first step before the choice; a test pins it.
   - Update the type's doc comment.
 
-- [ ] **Step 4: Run** — `just test-only ModelResolutionTests ModelCatalogTests` → both pass; `just lint` → clean.
+- [x] **Step 4: Run** — `just test-only ModelResolutionTests ModelCatalogTests` → both pass; `just lint` → clean.
 
-- [ ] **Step 5: Commit** — `feat(models): resolve engines with the pair's choice (REQ-ST-02…04)`.
+- [x] **Step 5: Commit** — `feat(models): resolve engines with the pair's choice (REQ-ST-02…04)`.
 
 ---
 
@@ -792,7 +792,7 @@ The switch-over: from here on there is no global manual mode. One commit, becaus
   - **`HelpLinks.usageGuide: URL`**, and a Help menu item "TranslateCall Help" (`CommandGroup(replacing: .help)`; keep the existing "Send Feedback…" group after it).
   - `container.uiServices.models.choices` and `.cloud` are injected as environment objects in both scenes.
 
-- [ ] **Step 1: Rewrite the selector tests** (they fail to compile until Step 3):
+- [x] **Step 1: Rewrite the selector tests** (they fail to compile until Step 3):
   - `TranslateCallTests/STTEngineSelectorTests.swift`:
 
 ```swift
@@ -1109,9 +1109,9 @@ struct TTSEngineSelectorEdgeTTSTests {
 
   - `SettingsOpenerTests` stays as it is until Task 10.
 
-- [ ] **Step 2: Run, expect failure** — `just test-only STTEngineSelectorTests` → compile errors on `pairChoice` / `resolvedEngine`.
+- [x] **Step 2: Run, expect failure** — `just test-only STTEngineSelectorTests` → compile errors on `pairChoice` / `resolvedEngine`.
 
-- [ ] **Step 3: Implement.**
+- [x] **Step 3: Implement.**
   - **Delete the manual mode.** Run `grep -rn "setPreferredEngine\|isAutomatic\|preferredEngine\|automaticKey\|setAutomatic\|usingFallback\|voiceCloningActive\|needsEdgeTTSConsent\|whisperAutoLoad\|voiceCloneAutoLoad\|LegacyAdvanced\|ModelDownloadSheets\|advancedLegacy" TranslateCall TranslateCallTests`. When done, the only hits are `TranslationEngineSelector` (a separate selector, untouched) and `SettingsTab.advancedLegacy` with its test (Task 10).
   - **TTS resolution** (the one path, P5):
 
@@ -1153,11 +1153,11 @@ struct TTSEngineSelectorEdgeTTSTests {
     - add `models.choices`, `models.cloud` and `tts` `objectWillChange` to the change sources.
   - **`SettingsView`:** only the General tab remains (Tasks 10, 12 and 14 add the others). The metrics views, `TTSMonitorRow` and `KokoroVoicePicker` stay in `Legacy/`, unused, until Tasks 12 and 14.
 
-- [ ] **Step 4: Run** — `just test-only STTEngineSelectorTests TTSEngineSelectorTests TTSEngineSelectorEdgeTTSTests ModelPreloaderTests MainSetupModelTests ModelResolutionTests ModelCatalogTests`, then `just build`, `just lint`. All green.
+- [x] **Step 4: Run** — `just test-only STTEngineSelectorTests TTSEngineSelectorTests TTSEngineSelectorEdgeTTSTests ModelPreloaderTests MainSetupModelTests ModelResolutionTests ModelCatalogTests`, then `just build`, `just lint`. All green.
 
-- [ ] **Step 5: Run the unit tier** — `just test` → green. A `TranslationBridgeIntegrationTests` latency ceiling failing under load is not this task; re-run before suspecting code.
+- [x] **Step 5: Run the unit tier** — `just test` → green. A `TranslationBridgeIntegrationTests` latency ceiling failing under load is not this task; re-run before suspecting code.
 
-- [ ] **Step 6: Commit** — `refactor(models)!: per-pair choices replace the global manual engine mode (S-1)`.
+- [x] **Step 6: Commit** — `refactor(models)!: per-pair choices replace the global manual engine mode (S-1)`.
 
 ---
 
@@ -1189,7 +1189,7 @@ struct TTSEngineSelectorEdgeTTSTests {
   - `TTSEngineSelector.startVoiceCloneDownload: () -> Void` (default no-op);
   - `VoiceSection(…, isDownloading: Bool, …)`.
 
-- [ ] **Step 1: Write the failing tests** — `TranslateCallTests/ModelDownloadsTests.swift`:
+- [x] **Step 1: Write the failing tests** — `TranslateCallTests/ModelDownloadsTests.swift`:
 
 ```swift
 import Combine
@@ -1346,9 +1346,9 @@ struct ModelDownloadsTests {
     }
 ```
 
-- [ ] **Step 2: Run, expect failure** — `just test-only ModelDownloadsTests` → "cannot find 'ModelDownloads' in scope".
+- [x] **Step 2: Run, expect failure** — `just test-only ModelDownloadsTests` → "cannot find 'ModelDownloads' in scope".
 
-- [ ] **Step 3: Implement.**
+- [x] **Step 3: Implement.**
   - **The download lifecycle:**
     - `start(_:)` is a no-op while blocked, while a task exists for the model, or when the state is `.ready`;
     - otherwise it sets `.downloading(progress: nil)` and keeps a `Task` per model;
@@ -1373,9 +1373,9 @@ struct ModelDownloadsTests {
     - when the model is already on disk, `start` is a no-op and the preloader loads it (Task 7 trigger).
   - **`MainSetupView`** passes `voiceCloneDownloading: downloads.state(.voiceClone) == .downloading(progress: nil)` to `MainSetupContent`, which hands it to `VoiceSection(isDownloading:)`.
 
-- [ ] **Step 4: Run** — `just test-only ModelDownloadsTests TTSEngineSelectorTests MainSetupModelTests`; repeat `ModelDownloadsTests` 3 times (concurrency); `just lint`.
+- [x] **Step 4: Run** — `just test-only ModelDownloadsTests TTSEngineSelectorTests MainSetupModelTests`; repeat `ModelDownloadsTests` 3 times (concurrency); `just lint`.
 
-- [ ] **Step 5: Commit** — `feat(models): one download facade for the UI; "Use my voice" goes through it (S-4, S-7)`.
+- [x] **Step 5: Commit** — `feat(models): one download facade for the UI; "Use my voice" goes through it (S-4, S-7)`.
 
 ---
 
@@ -1392,7 +1392,7 @@ struct ModelDownloadsTests {
   - `ModelPreloader.start(triggers: [AnyPublisher<Void, Never>] = [])`;
   - `ModelServices.preloadTriggers(tts:) -> [AnyPublisher<Void, Never>]`: `choices.$all`, `cloud.$allowed`, `downloads.didFinish`, `tts.$voiceCloningEnabled` and `tts.$activeVoiceProfileId`, each mapped to `()`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - In `ModelPreloaderTests.swift`, `LoaderLog` gains failures:
 
 ```swift
@@ -1457,9 +1457,9 @@ private final class LoaderLog: Sendable {
     }
 ```
 
-- [ ] **Step 2: Run, expect failure** — `just test-only ModelPreloaderTests` → "cannot convert value of type '() -> ()' to … '-> Bool'" / "extra argument 'triggers'".
+- [x] **Step 2: Run, expect failure** — `just test-only ModelPreloaderTests` → "cannot convert value of type '() -> ()' to … '-> Bool'" / "extra argument 'triggers'".
 
-- [ ] **Step 3: Implement.**
+- [x] **Step 3: Implement.**
   - **`preload()`:**
     - unloads each model `loaded` holds that `wantedModels()` does not, removing it from `loaded`;
     - for each wanted model not yet loaded, `let didLoad = await loaders.load(model)` and `if didLoad { loaded.insert(model) }`. A `where await` does not compile, and a lone `if` trips `for_where`.
@@ -1470,9 +1470,9 @@ private final class LoaderLog: Sendable {
   - **`UIServices`:** `modelPreloader.start(triggers: models.preloadTriggers(tts: tts) + [sessionEnded])`, outside the test host. `sessionEnded` is `coordinator.$isOutgoingActive.removeDuplicates().filter { !$0 }.map { _ in () }.eraseToAnyPublisher()` (P11).
   - Update the doc comments (REQ-ST-61).
 
-- [ ] **Step 4: Run** — `just test-only ModelPreloaderTests` 3 times; `just lint`.
+- [x] **Step 4: Run** — `just test-only ModelPreloaderTests` 3 times; `just lint`.
 
-- [ ] **Step 5: Commit** — `fix(models): preloader retries failed loads and follows choices, downloads and sessions (UI-B4, REQ-ST-61)`.
+- [x] **Step 5: Commit** — `fix(models): preloader retries failed loads and follows choices, downloads and sessions (UI-B4, REQ-ST-61)`.
 
 ---
 
@@ -1496,7 +1496,7 @@ private final class LoaderLog: Sendable {
     - `pick(_:)`, `confirmConsent()`, `declineConsent()`, `reset()`, `commit()`;
     - `nonisolated static func name(_: PairEngine) -> String`.
 
-- [ ] **Step 1: Write the failing tests** — `TranslateCallTests/PairModelsModelTests.swift`:
+- [x] **Step 1: Write the failing tests** — `TranslateCallTests/PairModelsModelTests.swift`:
 
 ```swift
 import Combine
@@ -1690,9 +1690,9 @@ struct PairModelsModelTests {
 }
 ```
 
-- [ ] **Step 2: Run, expect failure** — `just test-only PairModelsModelTests` → "cannot find 'PairModelsModel' in scope".
+- [x] **Step 2: Run, expect failure** — `just test-only PairModelsModelTests` → "cannot find 'PairModelsModel' in scope".
 
-- [ ] **Step 3: Implement.** The decisions the tests don't fully fix:
+- [x] **Step 3: Implement.** The decisions the tests don't fully fix:
   - **Sides.** Speech recognition hears my language outgoing and theirs incoming; the voice speaks theirs outgoing and mine incoming. Use a private `struct Side { locale, direction, name }`: a 3-tuple trips `large_tuple`.
   - **`availability`:**
     - `.unavailable` when the catalog marks the TTS engine;
@@ -1716,9 +1716,9 @@ struct PairModelsModelTests {
     - names: "Whisper", "Apple Speech", "Parakeet", "Apple voices", "Kokoro", "Microsoft Edge voices" (and "My voice" for completeness).
   - Rows: speech `[.whisper, .appleSpeech, .parakeet]`; voice `[.avSpeech, .kokoro]` plus `.edgeTTS` while `cloud.allowed` (P14).
 
-- [ ] **Step 4: Run** — `just test-only PairModelsModelTests` (3 times); `just lint`.
+- [x] **Step 4: Run** — `just test-only PairModelsModelTests` (3 times); `just lint`.
 
-- [ ] **Step 5: Commit** — `feat(models): the per-pair models sheet model (REQ-ST-10…18)`.
+- [x] **Step 5: Commit** — `feat(models): the per-pair models sheet model (REQ-ST-10…18)`.
 
 ---
 
@@ -1736,14 +1736,14 @@ struct PairModelsModelTests {
   - `DownloadStateView(state:size:blocked:onDownload:onCancel:onRetry:)`;
   - `PairModelsSheet.makeModel(source:target:languages:services:tts:)`, a static helper Task 14 reuses.
 
-- [ ] **Step 1: Screenshot the frames** — the pencil MCP, `TakeScreenshot(["yReTP", "XpYEw"])`. Note:
+- [x] **Step 1: Screenshot the frames** — the pencil MCP, `TakeScreenshot(["yReTP", "XpYEw"])`. Note:
   - the 460 pt width;
   - the section header icons;
   - the chip line (Recommended in accent, On-device green, Cloud orange, Tested grey);
   - the note line under a row;
   - the footer: "Reset to recommended" as a link on the left, Cancel and Done (the default) on the right.
 
-- [ ] **Step 2: Build the views.** Copy and structure (S-6 overrides the prototype's voice rows):
+- [x] **Step 2: Build the views.** Copy and structure (S-6 overrides the prototype's voice rows):
   - **Header:** the title (`model.title`), plus the line "Recommended models are tested for this pair and run on this Mac. You can choose another one for each step.".
   - **Sections:**
     - "Speech recognition";
@@ -1766,14 +1766,14 @@ struct PairModelsModelTests {
   - **Footer:** "Reset to recommended" → `reset()`, "Cancel" → `onClose()`, "Done" → `commit()` then `onClose()`.
   - **Layout:** a disabled row is dimmed (`.secondary`) with its radio disabled. The sheet scrolls only when taller than the screen. The text-fitting rules apply. Call `downloads.refresh()` in `.onAppear`.
 
-- [ ] **Step 3: Wire the main window.** `MainSetupView`:
+- [x] **Step 3: Wire the main window.** `MainSetupView`:
   - holds `@State private var modelsSheet: PairModelsModel?`;
   - sets `actions.openModels = { modelsSheet = PairModelsSheet.makeModel(…current pair…) }`;
   - presents it with `.sheet(item:)`: `PairModelsModel` is a class, so give it `Identifiable` with `id = pair.storageKey`, or wrap it;
   - passes `voiceCloneOn: ttsSelector.voiceCloningEnabled`;
   - injects the env objects `PairModelChoices`, `CloudPolicy` and `ModelDownloads` from Task 5/6.
 
-- [ ] **Step 4: Previews and comparison.**
+- [x] **Step 4: Previews and comparison.**
   - **Previews** (light and dark), all on fixture stores (`UserDefaults(suiteName: "preview.models")`, fake `DownloadManagers`):
     - ES ↔ DE recommended;
     - EN ↔ ES with Parakeet not on disk;
@@ -1786,7 +1786,7 @@ struct PairModelsModelTests {
   - **Compare** the render with `yReTP` / `XpYEw` (NSHostingView offscreen, a temporary uncommitted test).
   - Then `just build`, `just lint`, `just test-only MainSetupModelTests PairModelsModelTests`.
 
-- [ ] **Step 5: Commit** — `feat(ui): the per-pair models sheet behind "Advanced…" (REQ-ST-10…18, UI-L2)`.
+- [x] **Step 5: Commit** — `feat(ui): the per-pair models sheet behind "Advanced…" (REQ-ST-10…18, UI-L2)`.
 
 ---
 
@@ -1803,7 +1803,7 @@ struct PairModelsModelTests {
   - `OpenAtLoginModel.refresh()`;
   - `DownloadedLanguages.list(…, isInstalled: @escaping @Sendable …)`, concurrent (P18).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - In `SettingsOpenerTests`, `opensOnTab` uses `.advanced` and expects `"advanced"`. Add:
 
 ```swift
@@ -1858,9 +1858,9 @@ struct GeneralSettingsBacklogTests {
 }
 ```
 
-- [ ] **Step 2: Run, expect failure** — `just test-only SettingsOpenerTests GeneralSettingsBacklogTests` → "type 'SettingsTab' has no member 'advanced'".
+- [x] **Step 2: Run, expect failure** — `just test-only SettingsOpenerTests GeneralSettingsBacklogTests` → "type 'SettingsTab' has no member 'advanced'".
 
-- [ ] **Step 3: Implement.**
+- [x] **Step 3: Implement.**
   - **`SettingsTab`:**
 
 ```swift
@@ -1912,9 +1912,9 @@ nonisolated enum DownloadedLanguages {
 
   - **Microphone picker:** before the `ForEach`, add `if viewModel.selectedInput == nil { Text("System default").tag(AudioDevice?.none) }` (P17).
 
-- [ ] **Step 4: Run** — `just test-only SettingsOpenerTests GeneralSettingsTests GeneralSettingsBacklogTests`; `just build`; `just lint`.
+- [x] **Step 4: Run** — `just test-only SettingsOpenerTests GeneralSettingsTests GeneralSettingsBacklogTests`; `just build`; `just lint`.
 
-- [ ] **Step 5: Commit** — `fix(settings): typed tabs with the legacy value mapped; UI-B9 (REQ-ST-51, 60)`.
+- [x] **Step 5: Commit** — `fix(settings): typed tabs with the legacy value mapped; UI-B9 (REQ-ST-51, 60)`.
 
 ---
 
@@ -1934,7 +1934,7 @@ nonisolated enum DownloadedLanguages {
     - `init(config:preferredVoice: @escaping @Sendable (Locale) -> String? = { SystemVoicePreference.identifier(for: $0) })`;
     - `static func voice(for: Locale, preferred: String?) -> AVSpeechSynthesisVoice?`, used by `synthesize`.
 
-- [ ] **Step 1: Write the failing tests** — `TranslateCallTests/StandardVoicesTests.swift`:
+- [x] **Step 1: Write the failing tests** — `TranslateCallTests/StandardVoicesTests.swift`:
 
 ```swift
 import AVFoundation
@@ -1989,9 +1989,9 @@ struct StandardVoicesTests {
 }
 ```
 
-- [ ] **Step 2: Run, expect failure** — `just test-only StandardVoicesTests` → "cannot find 'SystemVoice' in scope".
+- [x] **Step 2: Run, expect failure** — `just test-only StandardVoicesTests` → "cannot find 'SystemVoice' in scope".
 
-- [ ] **Step 3: Implement** — full code of the new file:
+- [x] **Step 3: Implement** — full code of the new file:
 
 ```swift
 import AVFoundation
@@ -2089,9 +2089,9 @@ nonisolated enum StandardVoices {
 
   `synthesize` uses `Self.voice(for: locale, preferred: preferredVoice(locale))` instead of `bestVoice`.
 
-- [ ] **Step 4: Run** — `just test-only StandardVoicesTests AVSpeechUtteranceSynthesizerTests`; `just lint`.
+- [x] **Step 4: Run** — `just test-only StandardVoicesTests AVSpeechUtteranceSynthesizerTests`; `just lint`.
 
-- [ ] **Step 5: Commit** — `feat(tts): a standard voice per language (REQ-ST-22)`.
+- [x] **Step 5: Commit** — `feat(tts): a standard voice per language (REQ-ST-22)`.
 
 ---
 
@@ -2114,9 +2114,9 @@ nonisolated enum StandardVoices {
   - `VoiceProfileRow(profile:isActive:onUse:onPlay:onRename:onDelete:)`;
   - `StandardVoicePicker(language: Locale.Language)`.
 
-- [ ] **Step 1: Screenshot the frames** — `TakeScreenshot(["o3A5RO", "G3LK2"])`.
+- [x] **Step 1: Screenshot the frames** — `TakeScreenshot(["o3A5RO", "G3LK2"])`.
 
-- [ ] **Step 2: Build the view** (REQ-ST-20…22) as a grouped `Form`:
+- [x] **Step 2: Build the view** (REQ-ST-20…22) as a grouped `Form`:
   - **"Your voices" section,** one `VoiceProfileRow` per profile:
     - name;
     - subtitle "recorded <medium date> · <n> s" (`createdAt`, `durationSeconds` rounded);
@@ -2133,19 +2133,19 @@ nonisolated enum StandardVoices {
     - **Edge** → a read-only `Text(StandardVoices.edgeVoiceName(for:) ?? "—")`.
   - **The preview service:** create it lazily in the view (`try? VoicePreviewService(profileStore: voiceProfileManager.profileStore)`), the `VoiceProfileDetailView` pattern.
 
-- [ ] **Step 3: Write the test for `standardEngine`** in `TTSEngineSelectorTests`, then implement it. With the voice clone ready and Kokoro cached for ES ↔ EN:
+- [x] **Step 3: Write the test for `standardEngine`** in `TTSEngineSelectorTests`, then implement it. With the voice clone ready and Kokoro cached for ES ↔ EN:
   - `standardEngine(for: en, .outgoing)` is `.avSpeech`, because Kokoro is blocked while the clone is ready;
   - `standardEngine(for: es, .outgoing)` is `.avSpeech`;
   - with the clone off, `standardEngine(for: en, .outgoing)` is `.kokoro`.
 
   Run `just test-only TTSEngineSelectorTests`.
 
-- [ ] **Step 4: Previews and comparison.**
+- [x] **Step 4: Previews and comparison.**
   - **Previews** (light and dark): two profiles with one in use; none; a Kokoro language; an Edge language.
   - **Compare** with `o3A5RO` / `G3LK2`.
   - Then `just build`, `just lint`.
 
-- [ ] **Step 5: Commit** — `feat(settings): the Voices tab (REQ-ST-20…22)`.
+- [x] **Step 5: Commit** — `feat(settings): the Voices tab (REQ-ST-20…22)`.
 
 ---
 
@@ -2164,7 +2164,7 @@ nonisolated enum StandardVoices {
   - `LogLine`, and `LogExporter`: `subsystem`, `entries() throws -> [LogLine]`, `text(_:timeZone:)` and `fileName(on:timeZone:)`;
   - `AdvancedPairs`: `priority`, `titleOrder`, `list(current:customized:)`, `ordered(_:currentSource:) -> (mine: String, theirs: String)` and `value(for:) -> String`.
 
-- [ ] **Step 1: Write the failing tests** — `TranslateCallTests/AdvancedSettingsLogicTests.swift`:
+- [x] **Step 1: Write the failing tests** — `TranslateCallTests/AdvancedSettingsLogicTests.swift`:
 
 ```swift
 import Foundation
@@ -2224,9 +2224,9 @@ struct AdvancedSettingsLogicTests {
 }
 ```
 
-- [ ] **Step 2: Run, expect failure** — `just test-only AdvancedSettingsLogicTests` → "cannot find 'AdvancedPairs' in scope".
+- [x] **Step 2: Run, expect failure** — `just test-only AdvancedSettingsLogicTests` → "cannot find 'AdvancedPairs' in scope".
 
-- [ ] **Step 3: Implement** — full code:
+- [x] **Step 3: Implement** — full code:
 
 ```swift
 import Foundation
@@ -2330,9 +2330,9 @@ nonisolated enum AdvancedPairs {
 
   `VADProvider` stores `preferred`. In `makeVAD`, right after `let config = config.validated()`, add `if preferred() == .energy { return energy(config) }`.
 
-- [ ] **Step 4: Run** — `just test-only AdvancedSettingsLogicTests VADProviderTests`; `just lint`.
+- [x] **Step 4: Run** — `just test-only AdvancedSettingsLogicTests VADProviderTests`; `just lint`.
 
-- [ ] **Step 5: Commit** — `feat(settings): voice detector setting, log export and the pairs list (REQ-ST-31, 33, 35)`.
+- [x] **Step 5: Commit** — `feat(settings): voice detector setting, log export and the pairs list (REQ-ST-31, 33, 35)`.
 
 ---
 
@@ -2351,9 +2351,9 @@ nonisolated enum AdvancedPairs {
   - `SetupWizardView`.
 - Produces: `AdvancedSettingsView` and a fixture-friendly `AdvancedSettingsContent`, plus `PairRow(title:value:isCustom:onOpen:)`.
 
-- [ ] **Step 1: Screenshot the frames** — `TakeScreenshot(["PFRn8", "T2mCTh"])`.
+- [x] **Step 1: Screenshot the frames** — `TakeScreenshot(["PFRn8", "T2mCTh"])`.
 
-- [ ] **Step 2: Build the view** (REQ-ST-30…36) as a grouped `Form` with four sections:
+- [x] **Step 2: Build the view** (REQ-ST-30…36) as a grouped `Form` with four sections:
   1. **"Models per language pair":**
      - one `PairRow` per `AdvancedPairs.list(current:customized: Array(choices.all.keys))`;
      - the title is "<mine> ↔ <theirs>" by `AdvancedPairs.ordered` and `LanguagePairManager.displayName`;
@@ -2367,12 +2367,12 @@ nonisolated enum AdvancedPairs {
      - "Logs", with the subtitle "Logs since TranslateCall started." and the button "Export logs…". It runs `LogExporter.entries()`, then an `NSSavePanel` with `nameFieldStringValue = LogExporter.fileName(on: .now)`, then writes `LogExporter.text(_:)`. An error goes to an inline red caption;
      - "Setup", with the subtitle "Permissions, audio cable and call app microphone." and "Run setup again…", which presents `SetupWizardView` as a sheet.
 
-- [ ] **Step 3: Previews and comparison.**
+- [x] **Step 3: Previews and comparison.**
   - **Previews** (light and dark): all Recommended; one pair Custom; metrics on.
   - **Compare** with `PFRn8` / `T2mCTh`.
   - Then `just build`, `just lint`, `just test`.
 
-- [ ] **Step 4: Commit** — `feat(settings): the Advanced tab (REQ-ST-30…36)`.
+- [x] **Step 4: Commit** — `feat(settings): the Advanced tab (REQ-ST-30…36)`.
 
 ---
 
@@ -2380,7 +2380,7 @@ nonisolated enum AdvancedPairs {
 
 **Files:** `specs/m9-product/backlog.md`, `docs/ARCHITECTURE.md` (the models section), `specs/m9-product/ui-settings/tasks.md` (tick the steps)
 
-- [ ] **Step 1: Update the backlog.**
+- [x] **Step 1: Update the backlog.**
   - Close UI-L2 and UI-B9.
   - Narrow UI-B4 to the Qwen/Whisper part (unload during load; the corrupt Whisper cache).
   - Narrow UI-B5 to what is left after Tasks 5–7.
@@ -2388,7 +2388,7 @@ nonisolated enum AdvancedPairs {
   - Add a row for real download progress (Whisper `downloadProgress` is never updated).
   - Add the sub-feature line `UI settings | m9-product/ui-settings/ | …`.
 
-- [ ] **Step 2: Update `docs/ARCHITECTURE.md`.** Describe:
+- [x] **Step 2: Update `docs/ARCHITECTURE.md`.** Describe:
   - per-pair choices → `ModelChoice` → `resolvedEngine`;
   - `ModelServices`;
   - `ModelDownloads`;
@@ -2398,7 +2398,7 @@ nonisolated enum AdvancedPairs {
   - A known flake, A28 (the integration host exiting) or A27 (Edge 403), may show up. Re-run once and report the outcome.
   - Never mark tests as known issues without asking.
 
-- [ ] **Step 4: Commit** — `docs(m9): UI settings architecture and backlog`.
+- [x] **Step 4: Commit** — `docs(m9): UI settings architecture and backlog`.
 
 ---
 
@@ -2415,6 +2415,7 @@ Design §10, items S1–S10:
 - S8: ⌘, after upgrading from feature 1 with the legacy tab stored → Settings opens on Advanced.
 - S9: Dark mode on every new screen, compared with the dark frames.
 - S10: During a call, the sheet's download buttons are disabled with "Available after the call".
+- S11: Open the models sheet in the running app and check its height doesn't collapse.
 
 ---
 
