@@ -20,13 +20,6 @@ struct ModelServices {
                   stt: stt, tts: tts, languagePairManager: languagePairManager)
     }
 
-    /// The stores as the window holds them, with no selector wiring (the app already wired them).
-    init(choices: PairModelChoices, cloud: CloudPolicy, downloads: ModelDownloads) {
-        self.choices = choices
-        self.cloud = cloud
-        self.downloads = downloads
-    }
-
     /// Injected (tests): wires `pairChoice` of both selectors to the current pair, `cloudAllowed`, and
     /// "Use my voice" to the downloads.
     init(choices: PairModelChoices, cloud: CloudPolicy, downloads: ModelDownloads, stt: STTEngineSelector,

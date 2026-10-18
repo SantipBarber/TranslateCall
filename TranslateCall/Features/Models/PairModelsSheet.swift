@@ -11,13 +11,13 @@ struct PairModelsSheet: View {
     let onClose: () -> Void
     @EnvironmentObject private var downloads: ModelDownloads
 
-    /// The model for the current pair; also used by the Settings entry (Task 14).
+    /// The model for the manager's current pair; also used by the Settings entry (Task 14).
     @MainActor
-    static func makeModel(source: Locale.Language, target: Locale.Language, languages: LanguagePairManager,
-                          services: ModelServices, tts: TTSEngineSelector) -> PairModelsModel {
-        PairModelsModel(source: source, target: target, displayName: { languages.displayName(for: $0) },
-                        choices: services.choices, cloud: services.cloud, downloads: services.downloads,
-                        voiceCloneOn: tts.voiceCloningEnabled)
+    static func makeModel(languages: LanguagePairManager, choices: PairModelChoices, cloud: CloudPolicy,
+                          downloads: ModelDownloads, tts: TTSEngineSelector) -> PairModelsModel {
+        PairModelsModel(source: languages.sourceLanguage, target: languages.targetLanguage,
+                        displayName: { languages.displayName(for: $0) }, choices: choices, cloud: cloud,
+                        downloads: downloads, voiceCloneOn: tts.voiceCloningEnabled)
     }
 
     var body: some View {
@@ -42,7 +42,7 @@ struct PairModelsSheet: View {
             Button("Allow") { model.confirmConsent() }
             Button("Not now", role: .cancel) { model.declineConsent() }
         } message: {
-            Text("The translated text is sent to Microsoft to create the voice. You'll be asked to confirm.")
+            Text("The translated text is sent to Microsoft to create the voice.")
         }
     }
 
@@ -81,8 +81,8 @@ struct PairModelsSheet: View {
         group(title, icon: icon, caption: caption) {
             ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                 if index > 0 { Divider() }
-                EngineRow(row: row, pairLabel: pairLabel, blocked: model.downloadsBlocked,
-                          onPick: { model.pick(row.engine) }, onCancel: { cancel(row) },
+                EngineRow(row: row, testedLabel: model.testedLabel, blocked: model.downloadsBlocked,
+                          onPick: { model.pick(row.engine) }, onCancel: { model.cancel(row.engine) },
                           onRetry: { model.pick(row.engine) })
             }
         }
@@ -115,15 +115,5 @@ struct PairModelsSheet: View {
             .keyboardShortcut(.defaultAction)
         }
         .padding(Theme.Spacing.large)
-    }
-
-    // MARK: Helpers
-
-    private var pairLabel: String {
-        "\(model.pair.first.uppercased()) · \(model.pair.second.uppercased())"
-    }
-
-    private func cancel(_ row: EngineRowState) {
-        if let download = row.engine.downloadable { downloads.cancel(download) }
     }
 }

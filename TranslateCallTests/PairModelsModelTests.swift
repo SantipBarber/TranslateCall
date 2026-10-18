@@ -231,4 +231,36 @@ struct PairModelsModelTests {
         let sheet = harness.model("es", "de")
         #expect(try row(sheet.voiceRows, .tts(.avSpeech)).isSelected)
     }
+
+    @Test("the Tested chip names the pair in the title's order, not the stored sorted one")
+    func testedLabelOrder() {
+        let harness = SheetHarness()
+        #expect(harness.model("es", "de").testedLabel == "ES · DE")
+        #expect(harness.model("de", "es").testedLabel == "DE · ES")
+    }
+
+    @Test("needsConsent is true for Edge until consent is given, and never for other engines")
+    func needsConsentFlag() throws {
+        let available = ModelCatalog(version: 2, stt: ModelCatalog.builtIn.stt,
+                                     ttsOutgoing: ModelCatalog.builtIn.ttsOutgoing,
+                                     ttsIncoming: ModelCatalog.builtIn.ttsIncoming)
+        let harness = SheetHarness(cloudAllowed: true)
+        let sheet = harness.model("es", "de", catalog: available)
+        #expect(try row(sheet.voiceRows, .tts(.edgeTTS)).needsConsent)
+        #expect(try !row(sheet.voiceRows, .tts(.avSpeech)).needsConsent)
+        harness.cloud.grantConsent(.edgeTTS)
+        #expect(try !row(sheet.voiceRows, .tts(.edgeTTS)).needsConsent)
+    }
+
+    @Test("cancel stops the download and drops the pick, so a later finish does not stage it")
+    func cancelDropsPendingPick() async throws {
+        let harness = SheetHarness(onDisk: [])
+        let sheet = harness.model("en", "es")
+        sheet.pick(.stt(.parakeet))
+        #expect(await waitUntil { harness.fake.isWaiting })
+        sheet.cancel(.stt(.parakeet))
+        #expect(harness.downloads.state(.parakeet) == .notOnDisk)
+        harness.downloads.didFinish.send(.parakeet)
+        #expect(sheet.staged.stt == nil)
+    }
 }

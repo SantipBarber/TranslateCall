@@ -33,7 +33,7 @@ struct DownloadStateView: View {
                 Button("Cancel", action: onCancel).buttonStyle(.link).font(.callout)
             }
         case .failed:
-            HStack(spacing: Theme.Spacing.small) {
+            VStack(alignment: .trailing, spacing: 2) {
                 Text("Download failed").font(.caption).foregroundStyle(Theme.Status.red).lineLimit(1)
                 Button("Try again", action: onRetry).controlSize(.small).disabled(blocked)
             }

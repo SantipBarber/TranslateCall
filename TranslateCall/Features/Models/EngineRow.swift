@@ -18,8 +18,8 @@ private struct EngineChip: View {
 /// row draws its own indicator instead of forming a radio group.
 struct EngineRow: View {
     let row: EngineRowState
-    /// "ES · DE" for the "Tested" chip.
-    var pairLabel = ""
+    /// "ES · DE" for the "Tested" chip, in the title's order.
+    var testedLabel = ""
     let blocked: Bool
     let onPick: () -> Void
     let onCancel: () -> Void
@@ -29,15 +29,24 @@ struct EngineRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: Theme.Spacing.medium) {
-            Image(systemName: row.isSelected ? "largecircle.fill.circle" : "circle")
-                .foregroundStyle(row.isSelected && !isDisabled ? Theme.accent : Color.secondary)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(verbatim: row.name).fontWeight(.medium).lineLimit(1).truncationMode(.tail)
-                chipLine
-                if let note { Text(note).font(.caption).foregroundStyle(noteColor) }
+            Button(action: onPick) {
+                HStack(alignment: .top, spacing: Theme.Spacing.medium) {
+                    Image(systemName: row.isSelected ? "largecircle.fill.circle" : "circle")
+                        .foregroundStyle(row.isSelected && !isDisabled ? Theme.accent : Color.secondary)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(verbatim: row.name).fontWeight(.medium).lineLimit(1).truncationMode(.tail)
+                        chipLine
+                        if let note { Text(note).font(.caption).foregroundStyle(noteColor) }
+                    }
+                    Spacer(minLength: Theme.Spacing.small)
+                }
+                .contentShape(Rectangle())
             }
-            Spacer(minLength: Theme.Spacing.small)
+            .buttonStyle(.plain)
+            .disabled(isDisabled)
+            .accessibilityLabel(Text(verbatim: row.name))
+            .accessibilityAddTraits(row.isSelected ? .isSelected : [])
             if let state = row.download {
                 DownloadStateView(state: state, size: row.engine.downloadable?.approximateSize ?? "",
                                   blocked: blocked, onDownload: onPick, onCancel: onCancel, onRetry: onRetry)
@@ -45,10 +54,6 @@ struct EngineRow: View {
         }
         .padding(.vertical, Theme.Spacing.small)
         .foregroundStyle(isDisabled ? .secondary : .primary)
-        .contentShape(Rectangle())
-        .onTapGesture { if !isDisabled { onPick() } }
-        .accessibilityElement(children: .contain)
-        .accessibilityAddTraits(row.isSelected ? .isSelected : [])
     }
 
     // MARK: Chips
@@ -65,7 +70,7 @@ struct EngineRow: View {
             } else {
                 EngineChip(text: Text("On-device"), tint: Theme.Status.green)
             }
-            if row.tested { EngineChip(text: Text("Tested \(pairLabel)"), tint: Theme.Status.neutral) }
+            if row.tested { EngineChip(text: Text("Tested \(testedLabel)"), tint: Theme.Status.neutral) }
             if let latency = row.latency {
                 Text(verbatim: latency).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
             }
@@ -80,13 +85,13 @@ struct EngineRow: View {
         case .notForPair: "Not available for this pair."
         case .unavailable: "Temporarily unavailable."
         case .selectable:
-            row.isCloud && !row.isSelected
+            row.needsConsent
                 ? "The translated text is sent to Microsoft to create the voice. You'll be asked to confirm."
                 : nil
         }
     }
 
     private var noteColor: Color {
-        row.isCloud && row.availability == .selectable ? Theme.Status.orange : .secondary
+        row.needsConsent && row.availability == .selectable ? Theme.Status.orange : .secondary
     }
 }

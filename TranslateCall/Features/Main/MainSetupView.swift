@@ -164,9 +164,8 @@ struct MainSetupView: View {
     }
 
     private func openModels() {
-        modelsSheet = PairModelsSheet.makeModel(
-            source: languages.sourceLanguage, target: languages.targetLanguage, languages: languages,
-            services: ModelServices(choices: choices, cloud: cloud, downloads: downloads), tts: ttsSelector)
+        modelsSheet = PairModelsSheet.makeModel(languages: languages, choices: choices, cloud: cloud,
+                                                downloads: downloads, tts: ttsSelector)
     }
 
     /// Only with no session (P14, REQ-UI-82): a start-time failure waits for the outcome, and a mid-call

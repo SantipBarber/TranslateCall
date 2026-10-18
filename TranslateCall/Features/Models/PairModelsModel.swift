@@ -51,6 +51,8 @@ nonisolated struct EngineRowState: Identifiable, Equatable, Sendable {
     let name: String
     let recommendation: Recommendation
     let isCloud: Bool
+    /// A cloud engine the user has not consented to yet: picking it asks first (REQ-ST-15).
+    let needsConsent: Bool
     let tested: Bool
     let latency: String?
     let availability: Availability
@@ -79,6 +81,8 @@ final class PairModelsModel: ObservableObject {
 
     let pair: PairKey
     let title: String
+    /// "ES · DE": the pair's codes in the title's order, for the "Tested" chip (REQ-ST-12).
+    let testedLabel: String
 
     private let myName: String
     private let theirName: String
@@ -101,6 +105,7 @@ final class PairModelsModel: ObservableObject {
         theirName = displayName(target)
         myLocale = Locale(identifier: source.minimalIdentifier)
         theirLocale = Locale(identifier: target.minimalIdentifier)
+        testedLabel = "\(PairKey.code(source).uppercased()) · \(PairKey.code(target).uppercased())"
         title = String(localized: "Models for \(myName) ↔ \(theirName)")
         self.choices = choices
         self.cloud = cloud
@@ -168,6 +173,12 @@ final class PairModelsModel: ObservableObject {
         stage(engine)
     }
 
+    /// Stops the engine's download and forgets the pick that was waiting on it.
+    func cancel(_ engine: PairEngine) {
+        if pendingPicks[engine.isVoice] == engine { pendingPicks[engine.isVoice] = nil }
+        if let model = engine.downloadable { downloads.cancel(model) }
+    }
+
     func confirmConsent() {
         guard let engine = pendingConsent else { return }
         pendingConsent = nil
@@ -233,7 +244,8 @@ final class PairModelsModel: ObservableObject {
         case .tts: selected = shownVoice.map { .tts($0) == engine } ?? (recommendation != .none)
         }
         return EngineRowState(engine: engine, name: Self.name(engine), recommendation: recommendation,
-                              isCloud: engine.isCloud, tested: metrics?.tested ?? false,
+                              isCloud: engine.isCloud, needsConsent: needsConsent(engine),
+                              tested: metrics?.tested ?? false,
                               latency: metrics?.latencyLabel(isVoice: engine.isVoice),
                               availability: availability(of: engine, sides: sides),
                               download: engine.downloadable.map { downloads.state($0) }, isSelected: selected)
@@ -242,6 +254,11 @@ final class PairModelsModel: ObservableObject {
     /// The staged voice, unless it has no row (Edge with cloud off): then the recommended row shows.
     private var shownVoice: TTSEngine? {
         staged.voice == .edgeTTS && !cloud.allowed ? nil : staged.voice
+    }
+
+    private func needsConsent(_ engine: PairEngine) -> Bool {
+        guard case .tts(let tts) = engine, engine.isCloud else { return false }
+        return !cloud.hasConsent(tts)
     }
 
     private func availability(of engine: PairEngine, sides: [Side]) -> EngineRowState.Availability {
