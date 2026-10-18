@@ -264,6 +264,7 @@ enum BenchRunner {
             commit: env.commit, dirty: env.dirty, machine: sysctlString("hw.model"),
             macOS: ProcessInfo.processInfo.operatingSystemVersionString,
             xcode: ProcessInfo.processInfo.environment["TC_XCODE"] ?? "unknown",
+            buildConfiguration: buildConfiguration,
             manifestSha256: sha256Hex(manifestData),
             engines: engines,
             settings: [
@@ -272,6 +273,14 @@ enum BenchRunner {
                 "listeningMode": session.coordinator.listeningMode.rawValue,
             ]
         )
+    }
+
+    private static var buildConfiguration: String {
+        #if DEBUG
+        "Debug"
+        #else
+        "Release"
+        #endif
     }
 
     private static func recognizerTypeName(_ engine: STTEngine) -> String {

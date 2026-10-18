@@ -303,6 +303,24 @@ def test_missing_meta_key_is_value_error(tmp_path):
         analyze.run(tmp_path, M2, comet=False)
 
 
+def test_build_configuration_recorded_and_defaults_to_debug(tmp_path):
+    _write_line(tmp_path, _raw(TWO, []))
+    assert analyze.run(tmp_path, M2, comet=False)["meta"]["buildConfiguration"] == "Debug"
+    release = _raw(TWO, [])
+    release["meta"]["buildConfiguration"] = "Release"
+    _write_line(tmp_path, release)
+    assert analyze.run(tmp_path, M2, comet=False)["meta"]["buildConfiguration"] == "Release"
+
+
+def test_lines_disagreeing_on_build_configuration_is_value_error(tmp_path):
+    _write_line(tmp_path, _raw(TWO, []), name="basic/a")
+    release = _raw(TWO, [], runLine="outgoing es-419>en")
+    release["meta"]["buildConfiguration"] = "Release"
+    _write_line(tmp_path, release, name="basic/b")
+    with pytest.raises(ValueError, match="buildConfiguration"):
+        analyze.run(tmp_path, M2, comet=False)
+
+
 def test_target_lang():
     assert runs.target_lang("outgoing es-ES>en") == "en"
     assert runs.target_lang("incoming en>es-419") == "es"

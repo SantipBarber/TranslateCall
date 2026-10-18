@@ -17,7 +17,7 @@ from typing import Any
 
 from sacrebleu.metrics import CHRF
 
-from .runs import target_lang
+from .runs import build_configuration, target_lang
 from .stats import summary
 from .text import corpus_wer
 
@@ -240,6 +240,10 @@ def _run_meta(raws: list[tuple[Path, dict]]) -> dict[str, Any]:
                 raise ValueError(
                     f"run lines disagree on {key}: {first_path} has {meta[key]!r}, {path} has {other[key]!r}"
                 )
+    configs = {build_configuration(r.get("meta", {})) for _, r in raws}
+    if len(configs) > 1:
+        raise ValueError(f"run lines disagree on buildConfiguration: {sorted(configs)}")
+    meta["buildConfiguration"] = configs.pop()
     meta["informative"] = any(r.get("informative", False) for _, r in raws)
     meta["override"] = next((r["override"] for _, r in raws if r.get("override") is not None), None)
     return meta

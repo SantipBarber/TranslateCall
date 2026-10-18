@@ -136,6 +136,24 @@ def test_compare_refuses_manifest_mismatch():
     assert code == 3
 
 
+def test_compare_refuses_build_configuration_change():
+    baseline_metrics = _make_metrics()
+    run = _make_metrics()
+    table, code = compare.run(run, _make_baseline(baseline_metrics), THRESHOLDS,
+                              _make_run_meta(buildConfiguration="Release"))
+    assert "build configuration changed: baseline=Debug run=Release" in table
+    assert code == 3
+
+
+def test_compare_accepts_same_build_configuration():
+    baseline_metrics = _make_metrics()
+    run = _make_metrics()
+    table, code = compare.run(run, _make_baseline(baseline_metrics, buildConfiguration="Release"), THRESHOLDS,
+                              _make_run_meta(buildConfiguration="Release"))
+    assert "build configuration changed" not in table
+    assert code == 0
+
+
 def test_compare_warns_macos_change():
     baseline_metrics = _make_metrics()
     run = _make_metrics()

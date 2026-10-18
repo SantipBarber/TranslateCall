@@ -46,6 +46,8 @@ struct RawRun: Codable, Equatable {
         var machine: String
         var macOS: String
         var xcode: String
+        /// Debug or Release: the Swift per-token loops (mlx-audio) run ~2.3× slower in Debug.
+        var buildConfiguration: String?
         var manifestSha256: String
         var engines: [String: String]
         var settings: [String: String]
