@@ -9,6 +9,8 @@ from typing import Any
 
 from tcbench import runs
 
+REPO = Path(__file__).resolve().parents[3]
+
 
 class BaselineRefusal(Exception):
     """Raised when a run cannot be promoted to baseline."""
@@ -32,7 +34,7 @@ def run(
     """
     run_dir = Path(run_dir)
     if output is None:
-        output = Path("bench/baseline.json")
+        output = REPO / "bench" / "baseline.json"
     else:
         output = Path(output)
 

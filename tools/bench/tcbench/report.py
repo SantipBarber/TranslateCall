@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -245,6 +246,12 @@ def run(
                 r["audioOmitted"] = bool(cost)
         html = render()
         if len(html.encode()) <= MAX_BYTES:
+            break
+        if used == 0:  # nothing embedded left to drop
+            print(
+                "WARNING: report exceeds size cap even with all audio omitted",
+                file=sys.stderr,
+            )
             break
         budget = int(budget * 0.95)
     out = run_dir / "report.html"

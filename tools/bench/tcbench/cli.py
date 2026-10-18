@@ -109,7 +109,7 @@ def _repo_is_dirty(repo_dir: Path | str | None = None) -> bool:
             check=True,
             cwd=repo_dir,
         )
-    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         print("cannot check git status — refusing", file=sys.stderr)
         return True
     return bool(result.stdout.strip())
@@ -160,6 +160,12 @@ def _cmd_compare(args: argparse.Namespace) -> int:
             "macOS": base_meta.get("macOS"),
             "aggregates": base_metrics,
         }
+        if base_meta.get("set") == "pr":
+            baseline_doc["prAggregates"] = base_metrics
+        else:
+            pr_aggregates = runs.load_pr_aggregates(args.baseline_from_run)
+            if pr_aggregates is not None:
+                baseline_doc["prAggregates"] = pr_aggregates
     else:
         baseline_path = Path(args.baseline)
         if not baseline_path.exists():
@@ -231,16 +237,16 @@ def main(argv: list[str] | None = None) -> int:
 
     r = sub.add_parser("report", help="write report.html (self-contained) into a run directory")
     r.add_argument("run", help="Path to the run directory (analyzed: has metrics.json)")
-    r.add_argument("--history", default="build/bench/runs", help="Directory of previous runs for the trend")
+    r.add_argument("--history", default=str(REPO / "build" / "bench" / "runs"), help="Directory of previous runs for the trend")
     r.add_argument("--last", type=int, default=10, help="Number of runs in the trend")
     r.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
     r.set_defaults(func=_cmd_report)
 
     compare_parser = sub.add_parser("compare")
     compare_parser.add_argument("run", help="Path to a run directory containing metrics.json")
-    compare_parser.add_argument("--baseline", default="bench/baseline.json", help="Path to baseline.json")
+    compare_parser.add_argument("--baseline", default=str(REPO / "bench" / "baseline.json"), help="Path to baseline.json")
     compare_parser.add_argument("--baseline-from-run", help="Use another run's aggregates as baseline")
-    compare_parser.add_argument("--thresholds", default="bench/thresholds.json", help="Path to thresholds.json")
+    compare_parser.add_argument("--thresholds", default=str(REPO / "bench" / "thresholds.json"), help="Path to thresholds.json")
     compare_parser.set_defaults(func=_cmd_compare)
 
     baseline_parser = sub.add_parser("baseline")

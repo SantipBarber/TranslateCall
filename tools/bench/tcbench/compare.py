@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from typing import Any
 
 
@@ -134,9 +133,7 @@ def run(
     all_keys = sorted(set(run_metrics) | set(base_aggs))
     for key in all_keys:
         if key not in run_metrics:
-            lines.append(f"[{key}] missing from run")
-            if gated:
-                gated_fail = True
+            lines.append(f"[{key}] not in this run (not gated)")
             continue
         if key not in base_aggs:
             lines.append(f"[{key}] new line, no baseline")

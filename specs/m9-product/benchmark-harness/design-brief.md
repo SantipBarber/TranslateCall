@@ -74,7 +74,7 @@ This is project 1 of 2 in the latency thread:
   `LatencyReport` / `latency.json` (REQ-W-24) gets superseded or extended, never left as a second, conflicting format.
 - Real-time pacing is required for latency runs, because the VAD and turn timing depend on wall-clock time. A full run therefore takes about as long as its audio.
 - Allowed licences:
-  - FLEURS (CC BY 4.0), VoxPopuli (CC0), Common Voice Scripted (CC0), Smart Turn v3 test (CC BY 4.0) and NTREX (CC BY-SA 4.0) are usable.
+  - FLEURS (CC BY 4.0), Common Voice 27.0 es (CC0, local archive; es-ES source), Smart Turn v3 test (CC BY 4.0) and NTREX (CC BY-SA 4.0) are usable. VoxPopuli (CC0) was tried and dropped for phase 1 because its segments lack lead/tail silence.
   - Europarl-ST may be used only after its licence is confirmed.
   - Downloads go to a local cache outside git; only manifests (clip ids, dataset revision, checksums) are versioned.
 - Data formats, the dataset manifest, the result schema and the reporting/compare tooling must not depend on macOS, so a future Windows build could produce comparable runs. Only the runner that drives the app is macOS-specific.
@@ -85,7 +85,7 @@ This is project 1 of 2 in the latency thread:
 | Set | Variant / language | Source | Gives | Used for |
 |---|---|---|---|---|
 | FLEURS test, ES/EN common sentence ids | `es-419`, `en` | `google/fleurs` (CC BY) | Read speech, transcript, N-way parallel reference translations | Latency, WER, translation quality (es-419↔en, en→es) |
-| Spain Spanish read/semi-spontaneous | `es-ES` | VoxPopuli es (CC0), Common Voice es filtered by accent "España" (CC0) | Audio + transcript, no translation | Latency, WER, cuts on Spain Spanish |
+| Spain Spanish read/semi-spontaneous | `es-ES` | Common Voice 27.0 es, `test` split, Spain accents only (local archive; VoxPopuli was tried and dropped) | Audio + transcript, no translation | Latency, WER, cuts on Spain Spanish |
 | Text-only MT | es, en | FLEURS text, NTREX | Reference translations | Translation quality of the MT stage alone |
 | End of turn | es, en | Smart Turn v3 test, filtered to spa/eng | Complete/incomplete labels, mid-utterance fillers | Premature-cut rate of today's VAD; base for project 2 |
 | Own recordings | `es-ES` (user), `en` (user, non-native, labelled as such) | Scripts prepared by Claude, read aloud by the user | Long sentences, mid-sentence hesitations, turns that end vs. turns that pause, multi-sentence turns; with reference translations written by Claude and checked by the user | Cuts, end of turn and latency on realistic delivery |
@@ -168,14 +168,14 @@ Notes:
   - `es-ES` translation quality joins the baseline when the own recordings land, as a re-baseline.
 - **Licences also cover metric models and gated data.**
   - Only commercially usable metric models are allowed: `Unbabel/wmt22-comet-da` (Apache 2.0) is fine; CometKiwi and XCOMET (non-commercial) are not.
-  - VoxPopuli (open) is the first `es-ES` source.
-  - Common Voice is optional, because it needs a one-time manual token or terms acceptance by the user. The fetch script reports clearly when that step is missing.
+  - Common Voice 27.0 es (local archive) is the `es-ES` source; VoxPopuli was tried and dropped.
+  - Common Voice needs a one-time manual download by the user (terms accepted on Mozilla Data Collective, no API key). The fetch step fails clearly, naming the path and the download page, when the archive is missing.
 
 ## Left to the builder
 
 - Exact JSON result schema and its versioning, and the migration from `latency.json`.
 - How the runner drives `AudioCoordinator` end to end (test seams, fakes for the audio outputs) without changing user-visible behaviour.
-- Which FLEURS / VoxPopuli / Common Voice clip ids form the PR subset and the full set (fixed seed, pinned in the manifest).
+- Which FLEURS / Common Voice clip ids form the PR subset and the full set (fixed seed, pinned in the manifest).
 - Forced-alignment or trim method for the ground-truth speech end.
 - HTML report layout and charting library.
 - Prompt sheet contents for the own recordings, within the goals above.

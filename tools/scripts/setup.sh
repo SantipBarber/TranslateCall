@@ -32,6 +32,7 @@ install_opengrep() {
 # uv runs the Python benchmark tooling (tools/bench). Official installer at the pinned version, not brew.
 install_uv() {
   export PATH="$HOME/.local/bin:$PATH"
+  export UV_NO_MODIFY_PATH=1
   if [[ "$(uv --version 2>/dev/null)" == "uv $UV_VERSION"* ]]; then
     ok "uv $UV_VERSION"; return
   fi

@@ -65,9 +65,13 @@ bench set="pr" profile="all" edge="0" lines="":
 bench-ingest dir variant native="false":
     uv run --locked --extra vad --project tools/bench tcbench ingest {{quote(dir)}} --variant {{quote(variant)}} --native {{quote(native)}}
 
-# Compare a run (default: the latest) with bench/baseline.json
-bench-compare run="build/bench/runs/latest":
-    uv run --locked --project tools/bench tcbench compare {{quote(run)}}
+# Compare a run with bench/baseline.json (default: latest). Pass baseline=... to override.
+bench-compare run="build/bench/runs/latest" baseline="":
+    if [ -n {{quote(baseline)}} ]; then \
+      uv run --locked --project tools/bench tcbench compare {{quote(run)}} --baseline {{quote(baseline)}}; \
+    else \
+      uv run --locked --project tools/bench tcbench compare {{quote(run)}}; \
+    fi
 
 # Rewrite report.html of a run (default: the latest)
 bench-report run="build/bench/runs/latest":

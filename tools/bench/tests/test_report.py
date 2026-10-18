@@ -188,6 +188,15 @@ def test_trend_only_same_set(tmp_path, monkeypatch):
     assert sorted({p["run"] for p in trend}) == ["2026-01-01", "2026-02-01"]
 
 
+def test_report_size_cap_terminates_when_base_exceeds_cap(tmp_path, monkeypatch, capsys):
+    run_dir, manifest = _build(tmp_path, monkeypatch)
+    monkeypatch.setattr(report, "MAX_BYTES", 1024)  # base html already exceeds the cap
+    out = _go(run_dir, manifest, tmp_path)
+    html = out.read_text()
+    assert "audio omitted (size cap)" in html
+    assert "WARNING: report exceeds size cap even with all audio omitted" in capsys.readouterr().err
+
+
 def test_cli_report(tmp_path, monkeypatch, capsys):
     run_dir, manifest = _build(tmp_path, monkeypatch)
     mpath = tmp_path / "m.json"

@@ -28,7 +28,7 @@ Phase 1 covers ES→EN and EN→ES, with Spain Spanish (`es-ES`) and Latin Ameri
 | ID | Decision |
 |----|----------|
 | D-1 | Measure before improving. No latency change (project 2) is accepted without harness numbers. Real-call tests come after. |
-| D-2 | Public datasets first: FLEURS (CC BY 4.0), Common Voice 27.0 es (CC0, from the user's local download; es-ES source, `test` split only, Spain accents), Smart Turn v3 test (CC BY 4.0, deferred), NTREX (CC BY-SA 4.0). VoxPopuli (CC0) was tried for es-ES and dropped because its segments lack lead/tail silence. Europarl-ST may be used only once its licence is confirmed. Non-commercial or no-derivatives data (CoVoST 2, MuST-C, mTEDx) and metric models (CometKiwi, XCOMET) are excluded. |
+| D-2 | Public datasets first: FLEURS (CC BY 4.0), Common Voice 27.0 es (CC0, from the user's local download; es-ES source, `test` split only, Spain accents), Smart Turn v3 test (CC BY 4.0, deferred), NTREX (CC BY-SA 4.0). VoxPopuli (CC0) was tried for es-ES and dropped because its segments lack lead/tail silence; es-ES in phase 1 therefore comes from Common Voice 27.0. Europarl-ST may be used only once its licence is confirmed. Non-commercial or no-derivatives data (CoVoST 2, MuST-C, mTEDx) and metric models (CometKiwi, XCOMET) are excluded. |
 | D-3 | The user records gap-filling clips from prompt sheets that Claude prepares: `es-ES` by the user; `en` by the user, labelled non-native. |
 | D-4 | Phase 1 pairs are ES→EN and EN→ES only. Adding a language or pair costs data and manifest entries, not code. |
 | D-5 | `es-ES` and `es-419` are separate variants in data and results. `es-ES` is primary. An app-level variant selector is backlog. |

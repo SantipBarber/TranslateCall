@@ -48,8 +48,14 @@ never skip. Disabling a test needs `.disabled("F<x.y>: reason")`; a known produc
 ## Pull requests
 
 `just pr` refuses to run on `main` or with uncommitted changes. It pushes the branch, runs
-build → check → unit → integration, publishes the commit status `local/just-pr` on that exact SHA
+build → check → unit → integration → `just bench pr basic` (quality-gated against
+`bench/baseline.json`, ~9 min), publishes the commit status `local/just-pr` on that exact SHA
 and opens the PR if needed. A new commit invalidates the status: run `just pr` again.
+
+Benchmark recipes live behind the `bench-*` namespace: `just bench`, `just bench-fetch`,
+`just bench-compare`, `just bench-baseline`. A benchmark run needs the Common Voice es archive
+in `~/Library/Caches/TranslateCallBench/_downloads/commonvoice/` and the models downloaded in the
+app; the harness does not download models or datasets during a run.
 
 `main` is protected: PRs need the GitHub `check` job (Linux: opengrep + SwiftLint) and
 `local/just-pr` to be green. Merge with **squash**; the branch is deleted automatically.

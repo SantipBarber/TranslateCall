@@ -71,7 +71,8 @@ struct BenchModelPresence: Sendable {
         kokoro: {
             let folder = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".cache/fluidaudio/Models/kokoro")
-            return ModelNames.TTS.Variant.allCases.contains {
+            // Every variant, not any: loading the default config must never fall back to a download (NFR-BH-03).
+            return ModelNames.TTS.Variant.allCases.allSatisfy {
                 FileManager.default.fileExists(atPath: folder.appendingPathComponent($0.fileName).path)
             }
         },

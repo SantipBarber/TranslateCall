@@ -164,6 +164,20 @@ def test_cut_rate_rule():
     assert code == 1
 
 
+def test_cut_rate_uses_baseline_plus_increase():
+    # Baseline 4 %; allowed is max(5 % absolute, 4 % + 2 pp = 6 %).
+    baseline_metrics = _make_metrics(cut_rate=0.04)
+    run_fail = _make_metrics(cut_rate=0.065)  # 6.5 % > 6 %
+    table, code = compare.run(run_fail, _make_baseline(baseline_metrics), THRESHOLDS, _make_run_meta())
+    assert code == 1
+    assert "❌" in table
+
+    run_pass = _make_metrics(cut_rate=0.059)  # 5.9 % <= 6 %
+    table, code = compare.run(run_pass, _make_baseline(baseline_metrics), THRESHOLDS, _make_run_meta())
+    assert code == 0
+    assert "✅" in table
+
+
 def test_comet_never_gated():
     baseline_metrics = _make_metrics(comet_pipeline=0.5, comet_mt_only=0.6)
     # Drop well above 2.0 points would fail chrF but COMET must stay ungated.
@@ -190,19 +204,19 @@ def test_new_line_no_baseline():
     assert code == 0
 
 
-def test_missing_from_run_fails():
+def test_missing_from_run_is_not_gated():
     baseline_metrics = {"old/profile": _make_entry(), "basic/outgoing es-ES>en": _make_entry()}
     run = _make_metrics()
     table, code = compare.run(run, _make_baseline(baseline_metrics), THRESHOLDS, _make_run_meta())
-    assert "missing from run" in table
-    assert code == 1
+    assert "not in this run (not gated)" in table
+    assert code == 0
 
 
-def test_missing_from_run_does_not_gate_informative():
+def test_missing_from_run_informative_is_not_gated():
     baseline_metrics = {"old/profile": _make_entry(), "basic/outgoing es-ES>en": _make_entry()}
     run = _make_metrics()
     table, code = compare.run(run, _make_baseline(baseline_metrics), THRESHOLDS, _make_run_meta(informative=True))
-    assert "missing from run" in table
+    assert "not in this run (not gated)" in table
     assert code == 0
 
 

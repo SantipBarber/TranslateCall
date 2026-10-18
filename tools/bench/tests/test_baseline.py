@@ -88,3 +88,11 @@ def test_baseline_roundtrip(tmp_path, monkeypatch):
     assert data["set"] == "full"
     assert "basic/outgoing es-ES>en" in data["aggregates"]
     assert data["prAggregates"] == pr_aggregates
+
+
+def test_default_output_is_the_repo_baseline():
+    # The default must be <repo>/bench/baseline.json whatever the cwd (a wrong parents[] index wrote under tools/).
+    from tcbench import cli
+
+    assert baseline.REPO == cli.REPO
+    assert (baseline.REPO / "bench" / "thresholds.json").is_file()
