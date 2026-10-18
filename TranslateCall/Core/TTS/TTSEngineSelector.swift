@@ -106,6 +106,17 @@ final class TTSEngineSelector: ObservableObject {
         resolvedEngine(for: locale, direction: direction, availability: availability)
     }
 
+    /// The engine speaking `locale` when "Use my voice" is off, for Settings › Voices (REQ-ST-22). Kokoro
+    /// stays blocked while the voice clone is ready (NF-04), as the clone's model is still the one loaded.
+    func standardEngine(for locale: Locale, direction: TranscriptDirection) -> TTSEngine {
+        var now = availability
+        if resolvedEngine(for: locale, direction: direction, availability: now) == .voiceClone {
+            now.voiceCloneReady = false
+            now.kokoroCached = false
+        }
+        return resolvedEngine(for: locale, direction: direction, availability: now)
+    }
+
     /// Edge speaks my voice in `target` or theirs in `source`; the disk and the cloud rules are read once.
     func usesEdge(source: Locale, target: Locale) -> Bool {
         let now = availability

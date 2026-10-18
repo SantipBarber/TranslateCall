@@ -150,4 +150,18 @@ struct TTSEngineSelectorTests {
         #expect(!TTSEngine.voiceClone.supports(locale: Locale(identifier: "hi-IN")))
         #expect(!TTSEngine.voiceClone.supports(locale: Locale(identifier: "ar-SA")))
     }
+
+    @Test("the standard voice engine ignores the voice clone: Kokoro stays blocked while it is ready")
+    func standardEngineIgnoresTheClone() {
+        let selector = makeSelector(probe: kokoroOnDisk)
+        let english = Locale(identifier: "en-US")
+        selector.setProfileStore(MockVoiceProfileStore())
+        selector.voiceCloningEnabled = true
+        selector.activeVoiceProfileId = UUID()
+        #expect(selector.standardEngine(for: english, direction: .outgoing) == .avSpeech)
+        #expect(selector.standardEngine(for: Locale(identifier: "es-ES"), direction: .outgoing) == .avSpeech)
+        #expect(selector.standardEngine(for: english, direction: .incoming) == .avSpeech)
+        selector.voiceCloningEnabled = false
+        #expect(selector.standardEngine(for: english, direction: .outgoing) == .kokoro)
+    }
 }
