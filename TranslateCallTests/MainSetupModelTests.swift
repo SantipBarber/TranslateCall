@@ -142,4 +142,17 @@ struct MainSetupModelTests {
         #expect(await waitUntil { harness.model.modelsLabel == "Models: Custom · Cloud" })
         #expect(ModelsLabel.text(hasChoice: false, usesCloud: true) == "Models: Recommended · Cloud")
     }
+
+    @Test("a session tick does not recompute the models line (no disk or voice probes mid-call)")
+    func sessionTickSkipsModelsLabel() async {
+        let harness = SetupHarness()
+        await mainQueueHop()
+        let probes = CallCounter()
+        harness.tts.hasSystemVoice = { _ in probes.increment(); return true }
+        harness.model.session.objectWillChange.send()
+        await mainQueueHop()
+        #expect(probes.value == 0)
+        harness.models.cloud.allowed = true
+        #expect(await waitUntil { probes.value > 0 }, "its own inputs still recompute it")
+    }
 }

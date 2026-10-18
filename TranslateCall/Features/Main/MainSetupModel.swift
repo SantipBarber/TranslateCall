@@ -47,18 +47,17 @@ final class MainSetupModel: ObservableObject {
         modelsLabel = ModelsLabel.text(hasChoice: false, usesCloud: false)
         readiness = Readiness.derive(permissions: current, blackHolePresent: setupManager.isBlackHolePresent,
                                      pair: .checking, app: nil, phase: session.phase)
-        var changes: [ObservableObjectPublisher] = [
+        let changes: [ObservableObjectPublisher] = [
             monitor.objectWillChange, session.objectWillChange, languagePairManager.objectWillChange,
             setupManager.objectWillChange
         ]
-        if let models { changes += [models.choices.objectWillChange, models.cloud.objectWillChange] }
-        if let tts { changes.append(tts.objectWillChange) }
         for publisher in changes {
             publisher.receive(on: DispatchQueue.main)
                 .sink { [weak self] _ in self?.recompute() }
                 .store(in: &cancellables)
         }
         recompute()
+        observeModelsLabelInputs()
     }
 
     // MARK: Actions
@@ -108,19 +107,33 @@ final class MainSetupModel: ObservableObject {
         let derived = Readiness.derive(permissions: permissions, blackHolePresent: setupManager.isBlackHolePresent,
                                        pair: pair, app: selectedRow, phase: session.phase)
         if derived != readiness { readiness = derived }
-        let label = currentModelsLabel()
-        if label != modelsLabel { modelsLabel = label }
+    }
+
+    /// The label probes the disk and the system voices, so it follows only its own inputs (the pair, its
+    /// choice, the cloud switch, the voice selector), never the per-sentence session ticks.
+    private func observeModelsLabelInputs() {
+        guard let models, let tts else { return }
+        let inputs: [ObservableObjectPublisher] = [
+            languagePairManager.objectWillChange, models.choices.objectWillChange, models.cloud.objectWillChange,
+            tts.objectWillChange
+        ]
+        for publisher in inputs {
+            publisher.receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in self?.refreshModelsLabel() }
+                .store(in: &cancellables)
+        }
+        refreshModelsLabel()
     }
 
     /// Custom when the pair has a stored choice; Cloud when Edge speaks either direction (P12).
-    private func currentModelsLabel() -> String {
-        guard let models, let tts else { return ModelsLabel.text(hasChoice: false, usesCloud: false) }
+    private func refreshModelsLabel() {
+        guard let models, let tts else { return }
         let source = languagePairManager.sourceLanguage
         let target = languagePairManager.targetLanguage
-        let hasChoice = !models.choices.choice(for: PairKey(source, target)).isEmpty
-        let usesCloud = tts.resolvedEngine(for: Locale(identifier: target.minimalIdentifier), direction: .outgoing)
-            == .edgeTTS
-            || tts.resolvedEngine(for: Locale(identifier: source.minimalIdentifier), direction: .incoming) == .edgeTTS
-        return ModelsLabel.text(hasChoice: hasChoice, usesCloud: usesCloud)
+        let usesCloud = tts.usesEdge(source: Locale(identifier: source.minimalIdentifier),
+                                     target: Locale(identifier: target.minimalIdentifier))
+        let label = ModelsLabel.text(hasChoice: !models.choices.choice(for: PairKey(source, target)).isEmpty,
+                                     usesCloud: usesCloud)
+        if label != modelsLabel { modelsLabel = label }
     }
 }

@@ -103,10 +103,23 @@ final class TTSEngineSelector: ObservableObject {
     /// The engine the next session speaks with for `locale` in `direction` (P5): what the factories
     /// build, what the preloader loads and what the models line reads.
     func resolvedEngine(for locale: Locale, direction: TranscriptDirection) -> TTSEngine {
+        resolvedEngine(for: locale, direction: direction, availability: availability)
+    }
+
+    /// Edge speaks my voice in `target` or theirs in `source`; the disk and the cloud rules are read once.
+    func usesEdge(source: Locale, target: Locale) -> Bool {
+        let now = availability
+        return resolvedEngine(for: target, direction: .outgoing, availability: now) == .edgeTTS
+            || resolvedEngine(for: source, direction: .incoming, availability: now) == .edgeTTS
+    }
+
+    private func resolvedEngine(for locale: Locale, direction: TranscriptDirection,
+                                availability: ModelAvailability) -> TTSEngine {
         let engine = ModelChoice.tts(for: locale, direction: direction, pairChoice: pairChoice().voice,
                                      catalog: catalog, availability: availability)
         switch engine {
-        case .voiceClone where profileStore == nil, .avSpeech: return systemOrEdgeEngine(for: locale)
+        case .voiceClone where profileStore == nil, .avSpeech:
+            return systemOrEdgeEngine(for: locale, availability.cloud)
         default: return engine
         }
     }
@@ -206,9 +219,9 @@ final class TTSEngineSelector: ObservableObject {
 
     /// AVSpeech when a system voice exists, else Edge when the cloud rules permit it, else AVSpeech, which
     /// then skips each sentence with a visible "No voice" notice.
-    private func systemOrEdgeEngine(for locale: Locale) -> TTSEngine {
+    private func systemOrEdgeEngine(for locale: Locale, _ cloud: CloudSnapshot) -> TTSEngine {
         if hasSystemVoice(locale) { return .avSpeech }
-        if cloudSnapshot.permits(.edgeTTS), EdgeTTSVoiceCatalog.supports(locale) { return .edgeTTS }
+        if cloud.permits(.edgeTTS), EdgeTTSVoiceCatalog.supports(locale) { return .edgeTTS }
         return .avSpeech
     }
 
