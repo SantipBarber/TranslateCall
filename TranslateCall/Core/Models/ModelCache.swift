@@ -63,9 +63,11 @@ nonisolated enum ModelCache {
 
     // MARK: Per model (production paths)
 
-    static func isParakeetCached(_ config: ParakeetConfiguration = .default) -> Bool {
+    static func isParakeetCached(_ config: ParakeetConfiguration = .default,
+                                 directory: URL? = nil) -> Bool {
         let version = config.modelVersion
-        return AsrModels.modelsExist(at: AsrModels.defaultCacheDirectory(for: version), version: version)
+        return AsrModels.modelsExist(at: directory ?? AsrModels.defaultCacheDirectory(for: version),
+                                     version: version)
     }
 
     /// The size the app loads (`WhisperConfiguration.default`; the size is not persisted).
