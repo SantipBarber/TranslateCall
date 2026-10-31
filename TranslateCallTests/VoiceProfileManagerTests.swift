@@ -184,4 +184,19 @@ struct VoiceProfileManagerTests {
         let (manager, _) = makeManager()
         #expect(manager.recordingState.isIdle)
     }
+
+    @Test func saveMakesActive() async throws {
+        let (manager, _) = makeManager()
+        try await manager.saveProfile(
+            name: "Guided", transcript: "Hi", result: makeResult(), makeActive: true
+        )
+        #expect(manager.activeProfileId != nil)
+        #expect(manager.activeProfileId == manager.profiles.first?.id)
+    }
+
+    @Test func saveWithoutMakeActiveKeepsSelection() async throws {
+        let (manager, _) = makeManager()
+        try await manager.saveProfile(name: "A", transcript: "Hi", result: makeResult())
+        #expect(manager.activeProfileId == nil)
+    }
 }

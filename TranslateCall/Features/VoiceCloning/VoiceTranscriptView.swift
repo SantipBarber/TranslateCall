@@ -16,7 +16,7 @@ struct VoiceTranscriptView: View {
     }
 
     private var isQualityBlocked: Bool {
-        result.quality.grade == .poor && result.quality.voicedDurationSeconds < 8
+        VoiceQualityRules.isSaveBlocked(result.quality, mode: profileManager.recordingMode)
     }
 
     var body: some View {
@@ -98,6 +98,11 @@ struct VoiceTranscriptView: View {
             }
         }
         .padding(24)
+        .onAppear {
+            if transcript.isEmpty, let guided = profileManager.recordingMode.guidedText {
+                transcript = guided
+            }
+        }
     }
 
     // MARK: - Quality summary

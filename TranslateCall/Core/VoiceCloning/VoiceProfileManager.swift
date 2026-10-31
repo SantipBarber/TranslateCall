@@ -48,6 +48,7 @@ final class VoiceProfileManager: ObservableObject {
     @Published private(set) var profiles: [VoiceProfileHeader] = []
     @Published private(set) var recordingState: RecordingState = .idle
     @Published var activeProfileId: UUID?
+    @Published private(set) var recordingMode: RecordingMode = .free
 
     var activeProfile: VoiceProfileHeader? {
         profiles.first { $0.id == activeProfileId }
@@ -108,11 +109,12 @@ final class VoiceProfileManager: ObservableObject {
 
     // MARK: - Recording Flow
 
-    func startRecording() async {
+    func startRecording(mode: RecordingMode = .free) async {
         guard !isSessionActive() else {
             recordingState = .error(VoiceProfileRecorderError.sessionConflict.localizedDescription)
             return
         }
+        recordingMode = mode
         recordingState = .recording(elapsedSeconds: 0)
         elapsedSeconds = 0
         startElapsedTimer()
@@ -128,7 +130,7 @@ final class VoiceProfileManager: ObservableObject {
         stopElapsedTimer()
         recordingState = .processing
         do {
-            let result = try await recorder.stopRecording()
+            let result = try await recorder.stopRecording(mode: recordingMode)
             recordingState = .reviewing(result)
         } catch {
             recordingState = .error(error.localizedDescription)
@@ -140,7 +142,8 @@ final class VoiceProfileManager: ObservableObject {
     func saveProfile(
         name: String,
         transcript: String,
-        result: RecordingResult
+        result: RecordingResult,
+        makeActive: Bool = false
     ) async throws {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -167,6 +170,7 @@ final class VoiceProfileManager: ObservableObject {
         do {
             try await profileStore.save(profile: profile)
             await loadProfiles()
+            if makeActive { setActiveProfile(id) }
             recordingState = .idle
             logger.info("Saved voice profile '\(name)' (\(id))")
         } catch {
@@ -220,8 +224,8 @@ final class VoiceProfileManager: ObservableObject {
                 guard let self else { return }
                 self.elapsedSeconds += 0.1
                 self.recordingState = .recording(elapsedSeconds: self.elapsedSeconds)
-                // Auto-stop at 30 s
-                if self.elapsedSeconds >= 30 {
+                // Auto-stop at the mode's limit (P5)
+                if Double(self.elapsedSeconds) >= self.recordingMode.maxSeconds {
                     await self.stopRecording()
                     return
                 }
