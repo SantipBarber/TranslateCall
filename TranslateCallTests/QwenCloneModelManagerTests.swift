@@ -339,4 +339,35 @@ struct QwenCloneModelManagerTests {
         inferrer.gate.open()
         #expect(await waitUntil { !(await gate.isBusy) })
     }
+
+    @Test("two warm-ups after one load run one inference; unload and load warm again")
+    func warmUpOncePerLoad() async throws {
+        let inferrer = MockQwenCloneInferrer()
+        await inferrer.setStubStream([.audio([0.1]), .info(tokens: 4, tokensPerSecond: 20)])
+        let manager = makeManager(inferrer: inferrer, gate: MLXInferenceGate(clock: TestClock()))
+        let store = await profileStore()
+        let locale = Locale(identifier: "en-US")
+        try await manager.ensureReady()
+
+        await manager.warmUp(profileStore: store, activeProfileId: profileId, locale: locale)
+        await manager.warmUp(profileStore: store, activeProfileId: profileId, locale: locale)
+        #expect(inferrer.streamCallCount == 1)
+
+        await manager.unload()
+        try await manager.ensureReady()
+        await manager.warmUp(profileStore: store, activeProfileId: profileId, locale: locale)
+        #expect(inferrer.streamCallCount == 2)
+    }
+
+    @Test("a warm-up that produced no audio does not count as warmed")
+    func emptyWarmUpIsRetried() async throws {
+        let inferrer = MockQwenCloneInferrer()
+        await inferrer.setStubStream([])
+        let manager = makeManager(inferrer: inferrer, gate: MLXInferenceGate(clock: TestClock()))
+        let store = await profileStore()
+        try await manager.ensureReady()
+        await manager.warmUp(profileStore: store, activeProfileId: profileId, locale: Locale(identifier: "en-US"))
+        await manager.warmUp(profileStore: store, activeProfileId: profileId, locale: Locale(identifier: "en-US"))
+        #expect(inferrer.streamCallCount == 2)
+    }
 }

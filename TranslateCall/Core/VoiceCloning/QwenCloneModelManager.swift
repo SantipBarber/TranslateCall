@@ -39,6 +39,8 @@ actor QwenCloneModelManager {
     private(set) var state: ModelState = .idle
     private var loadTask: Task<Void, Error>?
     private var inferrer: (any QwenCloneInferring)?
+    /// The loaded model already ran its warm-up (REQ-QS-31): one per load, not one per session.
+    private var warmedSinceLoad = false
 
     private let stateContinuation: AsyncStream<ModelState>.Continuation
     nonisolated let stateStream: AsyncStream<ModelState>
@@ -145,7 +147,7 @@ actor QwenCloneModelManager {
     /// rules (REQ-QS-03/07a). Drained to its end, output and errors ignored; a no-op when the model is not
     /// loaded. Cancelling the caller stops listening only: the gate still drains the model (REQ-QS-06).
     func warmUp(profileStore: any VoiceProfileStoring, activeProfileId: UUID, locale: Locale) async {
-        guard case .ready = state else { return }
+        guard case .ready = state, !warmedSinceLoad else { return }
         let start = ContinuousClock.now
         var failure: Error?
         do {
@@ -159,7 +161,12 @@ actor QwenCloneModelManager {
                 referenceTranscript: transcript,
                 language: QwenCloneConfiguration.language(for: locale) ?? "english"
             )
-            for try await _ in events {}
+            var audioSeen = false
+            for try await event in events {
+                if case .audio = event { audioSeen = true }
+            }
+            // Warm only once the model produced audio: a warm-up cancelled or failed before that is retried.
+            if audioSeen { warmedSinceLoad = true }
         } catch {
             failure = error
         }
@@ -201,6 +208,7 @@ actor QwenCloneModelManager {
     func unload() async {
         loadTask?.cancel()
         loadTask = nil
+        warmedSinceLoad = false
         transition(to: .idle)
         await gate.waitUntilIdle()
         if case .idle = state { inferrer = nil }   // a reload during the wait keeps its new client
@@ -229,6 +237,7 @@ actor QwenCloneModelManager {
         let task = Task<Void, Error> {
             let client = try await loader(repo)
             self.inferrer = client
+            self.warmedSinceLoad = false
             self.transition(to: .ready)
         }
         loadTask = task
