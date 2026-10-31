@@ -148,6 +148,9 @@ final class AudioCoordinator: ObservableObject {
     var incomingSTT: (any SpeechRecognizerService)?
     var outgoingTTS: (any SynthesisService)?
     var incomingTTS: (any SynthesisService)?
+    /// Hold tentative sentences until their commit (FR-QS.5); one per direction, per pipeline start.
+    var outgoingCommitter: TurnCommitter?
+    var incomingCommitter: TurnCommitter?
 
     // MARK: - Observation tasks
 

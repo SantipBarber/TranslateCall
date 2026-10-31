@@ -4,15 +4,9 @@ import OSLog
 private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "AudioCoordinator")
 
 // MARK: - Translation handlers: translate, then deliver (show + speak)
+// Each direction's `TurnCommitter` (AudioCoordinator+Committer.swift) calls the two halves.
 
 extension AudioCoordinator {
-    func handleOutgoingTranslation(of text: String) async {
-        await deliverOutgoing(text)
-    }
-
-    func handleIncomingTranslation(of text: String) async {
-        await deliverIncoming(text)
-    }
 
     // MARK: - Translate
 
@@ -57,6 +51,8 @@ extension AudioCoordinator {
         // No stopSpeaking() first: sentences queue and are coalesced, never cut or dropped (F8.5.3 D-5).
         do {
             let translated = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+            // A translator that ignores cancellation (the Apple bridge) must not speak after teardown.
+            try Task.checkCancellation()
             outgoingTranslation = translated
             completeTranscript(entry, translation: translated)
             guard !isPaused else { return }   // paused while translating: shown, not spoken
@@ -82,6 +78,8 @@ extension AudioCoordinator {
         defer { isIncomingTranslating = false }
         do {
             let translated = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+            // A translator that ignores cancellation (the Apple bridge) must not speak after teardown.
+            try Task.checkCancellation()
             incomingTranslation = translated
             completeTranscript(entry, translation: translated)
             guard !isPaused else { return }   // paused while translating: shown, not spoken

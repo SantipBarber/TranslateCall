@@ -34,6 +34,8 @@ extension AudioCoordinator {
             logger.warning("Outgoing: VAD failed — \(error.localizedDescription)")
         }
 
+        startOutgoingCommitter(boundaries: vad.boundaryEvents)
+
         // STT (non-fatal)
         let sourceLocale = Locale(identifier: languagePairManager.sourceLanguage.minimalIdentifier)
         let stt = outgoingSTTFactory(sourceLocale)
@@ -72,6 +74,8 @@ extension AudioCoordinator {
     func teardownOutgoingServices() async {
         outgoingTasks.forEach { $0.cancel() }
         outgoingTasks.removeAll()
+        outgoingCommitter?.cancelAll()   // held and in-flight sentences are never shown nor spoken
+        outgoingCommitter = nil
         let (stt, vad, tts) = (outgoingSTT, outgoingVAD, outgoingTTS)
         outgoingSTT = nil
         outgoingVAD = nil
@@ -108,6 +112,7 @@ extension AudioCoordinator {
             try await vad.activate(stream: pauseGate?.gate(systemStream, label: "incoming-pause") ?? systemStream)
             try ensureCurrent(generation)
             observeIncomingVADState(vad)
+            startIncomingCommitter(boundaries: vad.boundaryEvents)
 
             let targetLocale = Locale(identifier: languagePairManager.targetLanguage.minimalIdentifier)
             let stt = incomingSTTFactory(targetLocale)
@@ -189,6 +194,8 @@ extension AudioCoordinator {
     func teardownIncomingServices() async {
         incomingTasks.forEach { $0.cancel() }
         incomingTasks.removeAll()
+        incomingCommitter?.cancelAll()
+        incomingCommitter = nil
         isIncomingSpeaking = false
         isIncomingSpeechActive = false
         reopenMicEchoGate()
@@ -207,30 +214,6 @@ extension AudioCoordinator {
         outgoingTasks.append(Task { [weak self] in
             for await active in vad.vadStateEvents {
                 self?.isSpeechActive = active
-            }
-        })
-    }
-
-    private func observeOutgoingTranscriptions(_ stt: some SpeechRecognizerService) {
-        outgoingTasks.append(Task { [weak self] in
-            guard let self else { return }
-            for await result in stt.transcriptionStream {
-                // Engines yield an empty result for every segment (FR-QS.5); nothing to show or translate.
-                guard !result.text.isEmpty else { continue }
-                self.outgoingTranscription = result.text
-                await self.handleOutgoingTranslation(of: result.text)
-            }
-        })
-    }
-
-    private func observeIncomingTranscriptions(_ stt: some SpeechRecognizerService) {
-        incomingTasks.append(Task { [weak self] in
-            guard let self else { return }
-            for await result in stt.transcriptionStream {
-                // Engines yield an empty result for every segment (FR-QS.5); nothing to show or translate.
-                guard !result.text.isEmpty else { continue }
-                self.incomingTranscription = result.text
-                await self.handleIncomingTranslation(of: result.text)
             }
         })
     }
