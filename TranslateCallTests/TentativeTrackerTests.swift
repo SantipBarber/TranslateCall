@@ -69,3 +69,38 @@ struct TentativeTrackerTests {
         #expect(tracker.ended() == .commit(2))
     }
 }
+
+/// Trailing zeros added to a tentative's STT copy so it carries a final's silence (G3 I1).
+struct TentativePaddingTests {
+
+    @Test func roundsUpToWholeSteps() {
+        #expect(TentativePadding.roundedUp(9_600, step: 1_600) == 9_600)
+        #expect(TentativePadding.roundedUp(9_601, step: 1_600) == 11_200)
+        #expect(TentativePadding.roundedUp(5_504, step: 4_096) == 8_192)
+        #expect(TentativePadding.roundedUp(0, step: 4_096) == 0)
+        #expect(TentativePadding.roundedUp(100, step: 0) == 100)
+    }
+
+    @Test func padsUpToTheFinalSilence() {
+        let utterance = [Float](repeating: 0.5, count: 10)
+        let padded = TentativePadding.padded(utterance, silenceInBuffer: 2, finalSilence: 6)
+        #expect(padded.count == 14)
+        #expect(Array(padded.prefix(10)) == utterance, "the real audio is untouched")
+        #expect(padded.suffix(4).allSatisfy { $0 == 0 })
+    }
+
+    @Test func neverTrims() {
+        let utterance = [Float](repeating: 0.5, count: 10)
+        #expect(TentativePadding.padded(utterance, silenceInBuffer: 6, finalSilence: 2) == utterance)
+    }
+
+    /// Silero's final carries the first silent chunk plus whole chunks up to FluidAudio's pause
+    /// (`minSilenceDuration` − one chunk): 3 chunks (0.768 s) at the 0.6 s default. The tentative holds
+    /// the first silent chunk, so it gets the other two.
+    @Test func sileroPaddingMatchesTodaysFinal() {
+        #expect(SileroVADService.tentativePaddingSamples(for: .default) == 2 * 4_096)
+        var oneChunkPause = VADConfiguration()
+        oneChunkPause.minSilenceDuration = 0.256
+        #expect(SileroVADService.tentativePaddingSamples(for: oneChunkPause) == 0)
+    }
+}

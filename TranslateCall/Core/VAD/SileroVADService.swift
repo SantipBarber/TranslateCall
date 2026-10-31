@@ -46,6 +46,8 @@ actor SileroVADService: VADService {
     private let historyCapacity: Int  // speechPadding samples + 1 chunk ≈ 5700
     /// FluidAudio's silence threshold (`threshold − 0.15`): chunks at or above it are not clear silence.
     private let negativeThreshold: Float
+    /// Zeros appended to each tentative's STT copy (`tentativePaddingSamples(for:)`).
+    private let tentativePadding: Int
 
     // MARK: - Init
 
@@ -55,6 +57,7 @@ actor SileroVADService: VADService {
         self.historyCapacity = Int(config.speechPadding * 16_000) + VadManager.chunkSize + 512
         self.negativeThreshold = config.fluidSegmentationConfig
             .effectiveNegativeThreshold(baseThreshold: config.sileroThreshold)
+        self.tentativePadding = Self.tentativePaddingSamples(for: config)
 
         var segCont: AsyncStream<SpeechSegment>.Continuation?
         var stateCont: AsyncStream<Bool>.Continuation?
@@ -218,8 +221,12 @@ actor SileroVADService: VADService {
     }
 
     /// The utterance so far as a `.tentative` (kept buffered: the final audio still grows from it).
+    /// Its STT copy is zero-padded to the trailing silence today's final would carry (G3 I1).
     private func yieldTentative() {
-        guard hasMinimumSpeech, let pcmBuffer = makePCMBuffer(from: utteranceBuffer),
+        let chunk = VadManager.chunkSize   // the silent chunk that opened it is already buffered
+        let audio = TentativePadding.padded(utteranceBuffer, silenceInBuffer: chunk,
+                                            finalSilence: chunk + tentativePadding)
+        guard hasMinimumSpeech, let pcmBuffer = makePCMBuffer(from: audio),
               let id = tentatives.silenceStarted() else { return }
         segmentContinuation?.yield(SpeechSegment(audio: pcmBuffer, capturedAt: utteranceStartDate ?? Date(),
                                                  id: id, kind: .tentative))
@@ -249,5 +256,18 @@ actor SileroVADService: VADService {
         yieldBoundary(tentatives.forced())
         await yieldUtterance()
         stateContinuation?.yield(false)
+    }
+}
+
+// MARK: - Tentative padding (G3 I1)
+
+extension SileroVADService {
+    /// Zeros appended to a tentative's STT copy. The tentative holds one silent chunk (the one that set
+    /// `tempEndSample`); today's final also holds the whole chunks FluidAudio needs to reach its pause
+    /// (`sileroMinSilenceDuration`), so those are the padding.
+    nonisolated static func tentativePaddingSamples(for config: VADConfiguration) -> Int {
+        // Same truncation as FluidAudio's `minSilenceSamples` (VadManager+Streaming).
+        let pause = Int(config.validated().sileroMinSilenceDuration * 16_000)
+        return TentativePadding.roundedUp(pause, step: VadManager.chunkSize)
     }
 }

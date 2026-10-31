@@ -74,3 +74,25 @@ nonisolated struct TentativeTracker: Sendable {
         return openID
     }
 }
+
+// MARK: - TentativePadding
+
+/// Trailing digital silence for a `.tentative` (G3 I1). A tentative is cut at the first silence, so
+/// it carries less trailing silence than the final it stands for; an engine may clip the last word or
+/// drop below its confidence floor. The copy handed to STT gets zeros up to the silence that final
+/// would have held. The VAD's own buffer is left as real audio, so a retract continues from it.
+nonisolated enum TentativePadding {
+    /// `samples` rounded up to a whole number of `step`s: a final ends on the first buffer or chunk
+    /// that reaches the pause, so its trailing silence is the pause at that granularity.
+    static func roundedUp(_ samples: Int, step: Int) -> Int {
+        guard step > 0 else { return max(0, samples) }
+        return (max(0, samples) + step - 1) / step * step
+    }
+
+    /// `utterance` followed by zeros so its trailing silence goes from `silenceInBuffer` to `finalSilence`.
+    static func padded(_ utterance: [Float], silenceInBuffer: Int, finalSilence: Int) -> [Float] {
+        let zeros = max(0, finalSilence - silenceInBuffer)
+        guard zeros > 0 else { return utterance }
+        return utterance + [Float](repeating: 0, count: zeros)
+    }
+}

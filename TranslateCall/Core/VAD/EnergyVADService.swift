@@ -151,7 +151,7 @@ actor EnergyVADService: VADService {
         let tentativeSamples = Int(Self.tentativeSilence * sampleRate)
         let reachedTentative = silenceSamples < tentativeSamples && silenceSamples + count >= tentativeSamples
         silenceSamples += count
-        if reachedTentative { yieldTentative() }
+        if reachedTentative { yieldTentative(bufferSamples: count, sampleRate: sampleRate) }
         guard silenceSamples >= Int(config.minSilenceDuration * sampleRate) else { return .continuing }
         // No `observe` here: any buffer above the energy threshold already retracted the tentative.
         if let commit = tentatives.ended() {
@@ -183,12 +183,19 @@ actor EnergyVADService: VADService {
     }
 
     /// The utterance so far as a `.tentative` (kept buffered: the final audio still grows from it).
-    private func yieldTentative() {
-        guard hasMinimumSpeech, let pcmBuffer = makePCMBuffer(from: utteranceBuffer),
+    /// Its STT copy is zero-padded to the trailing silence a final would carry: the pause, rounded up
+    /// to whole buffers (G3 I1).
+    private func yieldTentative(bufferSamples: Int, sampleRate: Double) {
+        let pause = Int(config.minSilenceDuration * sampleRate)
+        let audio = TentativePadding.padded(
+            utteranceBuffer, silenceInBuffer: silenceSamples,
+            finalSilence: TentativePadding.roundedUp(pause, step: bufferSamples)
+        )
+        guard hasMinimumSpeech, let pcmBuffer = makePCMBuffer(from: audio),
               let id = tentatives.silenceStarted() else { return }
         segmentContinuation?.yield(SpeechSegment(audio: pcmBuffer, capturedAt: utteranceStartDate ?? Date(),
                                                  id: id, kind: .tentative))
-        logger.debug("Yielded tentative \(id): \(self.utteranceBuffer.count) samples")
+        logger.debug("Yielded tentative \(id): \(self.utteranceBuffer.count) samples, \(audio.count) padded")
     }
 
     private func yieldBoundary(_ boundary: SegmentBoundary?) {

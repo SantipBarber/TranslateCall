@@ -24,7 +24,9 @@ struct EnergyVADTentativeTests {
         #expect(segments.map(\.kind) == [.tentative])
         #expect(segments.map(\.id) == [1])
         #expect(boundaries == [.commit(1)])
-        #expect(abs((segments.first?.seconds ?? 0) - 1.2) < 0.01, "1 s of tone + the 0.2 s that opened it")
+        // Today's final for this input ends on the buffer where the silence reaches the 0.6 s pause:
+        // 1.0 s tone + 0.6 s. The tentative (cut at 0.2 s) is padded with zeros to the same length (G3 I1).
+        #expect(abs((segments.first?.seconds ?? 0) - 1.6) < 0.01, "1 s of tone + the 0.6 s a final would carry")
     }
 
     @Test func hesitation() async throws {
@@ -33,7 +35,8 @@ struct EnergyVADTentativeTests {
         #expect(segments.map(\.kind) == [.tentative, .tentative])
         #expect(segments.map(\.id) == [1, 2])
         #expect(boundaries == [.retract(1), .commit(2)])
-        #expect((segments.last?.seconds ?? 0) >= 2.2, "the second tentative covers the whole utterance")
+        // The whole utterance from real audio (2.3 s + 0.2 s) plus zeros up to the 0.6 s pause.
+        #expect(abs((segments.last?.seconds ?? 0) - 2.9) < 0.01, "the second tentative covers the whole utterance")
     }
 
     @Test func maxDurationForces() async throws {
@@ -51,6 +54,8 @@ struct EnergyVADTentativeTests {
         #expect(segments.map(\.kind) == [.tentative, .final])
         #expect(segments.map(\.id) == [1, 2])
         #expect(boundaries == [.retract(1)])
+        #expect(abs((segments.first?.seconds ?? 0) - 1.6) < 0.01, "the tentative is padded")
+        #expect(abs((segments.last?.seconds ?? 0) - 1.3) < 0.01, "the final is the VAD's real audio, unpadded")
     }
 
     @Test func forceEmitWithOpenTentative() async throws {
