@@ -109,6 +109,33 @@ def _heard(utt: dict) -> bool:
     return bool(utt.get("detail", {}).get("sttFinal", {}).get("text", "").strip())
 
 
+def _clone_stats(utts: list[dict]) -> dict[str, Any] | None:
+    """Voice-clone path of a line (informative; never in ``compare``): first chunk and playback gaps.
+
+    ``None`` when no utterance was spoken by the clone.  ``playback`` is absent in older runs.
+    """
+    clone = [
+        u for u in utts
+        if not _dropped(u)
+        and "ttsFirstBuffer" in u["events"]
+        and u.get("detail", {}).get("ttsFirstBuffer", {}).get("engine") == "voiceClone"
+    ]
+    if not clone:
+        return None
+    first_chunk = [
+        (u["events"]["ttsFirstBuffer"] - u["events"]["translated"]) * 1e-6
+        for u in clone if "translated" in u["events"]
+    ]
+    playbacks = [u.get("playback") or {} for u in clone]
+    gapped = sum(1 for p in playbacks if p.get("gapCount", 0) > 0)
+    return {
+        "firstChunkMs": summary(first_chunk),
+        "gapSentencesPct": gapped / len(clone) * 100.0,
+        "gapMsTotal": sum(p.get("gapMs", 0) for p in playbacks),
+        "sentences": len(clone),
+    }
+
+
 def _joined(utts: list[dict], stage: str) -> str:
     texts = (u.get("detail", {}).get(stage, {}).get("text", "").strip() for u in utts)
     return " ".join(t for t in texts if t)
@@ -217,6 +244,7 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False, tier: str | Non
         "comet": comet_result,
         "fallbacks": fallbacks,
         "unassigned": unassigned,
+        **({"clone": clone} if (clone := _clone_stats(included_utts)) else {}),
     }
 
 

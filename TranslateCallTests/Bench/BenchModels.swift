@@ -61,6 +61,12 @@ struct RawRun: Codable, Equatable {
         let speechEndNs: Int64
     }
 
+    /// Playback gaps of an utterance's streamed audio (REQ-QS-22). Absent in runs before the clone streamed.
+    struct Playback: Codable, Equatable {
+        let gapCount: Int
+        let gapMs: Int
+    }
+
     struct Utterance: Codable, Equatable {
         let seq: Int
         /// Stage → ns; stages the utterance never reached are absent.
@@ -68,6 +74,8 @@ struct RawRun: Codable, Equatable {
         /// Detail of each stage's event (`text`, `engine`, `reason`, `mergedSeqs`…).
         let detail: [String: [String: String]]
         let audio: String?
+        /// Optional: older runs lack it. Set on the seq that owns the attempt's audio.
+        var playback: Playback? = nil
     }
 
     struct MTResult: Codable, Equatable {
@@ -93,7 +101,8 @@ struct RawRun: Codable, Equatable {
 extension RawRun.Utterance {
     /// Groups `events` of one direction by seq, as offsets from `origin`.
     static func from(_ events: [TraceEvent], origin: ContinuousClock.Instant,
-                     audio: (Int) -> String? = { _ in nil }) -> [RawRun.Utterance] {
+                     audio: (Int) -> String? = { _ in nil },
+                     playback: (Int) -> RawRun.Playback? = { _ in nil }) -> [RawRun.Utterance] {
         Dictionary(grouping: events, by: \.seq).keys.sorted().map { seq in
             let mine = events.filter { $0.seq == seq }
             return RawRun.Utterance(
@@ -102,7 +111,8 @@ extension RawRun.Utterance {
                                    uniquingKeysWith: { first, _ in first }),
                 detail: Dictionary(mine.filter { !$0.detail.isEmpty }.map { ($0.stage.rawValue, $0.detail) },
                                    uniquingKeysWith: { first, _ in first }),
-                audio: audio(seq)
+                audio: audio(seq),
+                playback: playback(seq)
             )
         }
     }

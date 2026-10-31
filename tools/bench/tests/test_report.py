@@ -205,3 +205,23 @@ def test_cli_report(tmp_path, monkeypatch, capsys):
     assert code == 0
     assert (run_dir / "report.html").exists()
     assert main(["report", str(tmp_path / "nope")]) == 2
+
+
+def test_clone_table_rendered(tmp_path, monkeypatch):
+    run_dir, manifest = _build(tmp_path, monkeypatch)
+    raw_path = next(run_dir.rglob("raw.json"))
+    raw = json.loads(raw_path.read_text())
+    for i, u in enumerate(raw["utterances"]):
+        u["detail"]["ttsFirstBuffer"]["engine"] = "voiceClone"
+        if i == 0:
+            u["playback"] = {"gapCount": 1, "gapMs": 120}
+    raw_path.write_text(json.dumps(raw))
+    analyze.run(run_dir, manifest)
+    html = _go(run_dir, manifest, tmp_path).read_text()
+    assert "Voice clone" in html
+    assert "gap sentences" in html
+
+
+def test_no_clone_table_without_clone(tmp_path, monkeypatch):
+    run_dir, manifest = _build(tmp_path, monkeypatch)
+    assert "Voice clone" not in _go(run_dir, manifest, tmp_path).read_text()

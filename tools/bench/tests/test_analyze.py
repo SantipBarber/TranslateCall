@@ -19,7 +19,7 @@ def _clip(cid, feed, feed_end, ss, se):
 
 
 def _utt(seq, start, vad_end=None, stt=None, tr=None, tts=None, text=None, seg_ms=None, translated=None,
-         stt_engine="STT", tts_engine="TTS", merged=None, dropped=None):
+         stt_engine="STT", tts_engine="TTS", merged=None, dropped=None, playback=None):
     events = {"speechStart": start}
     detail = {}
     if vad_end is not None:
@@ -38,7 +38,10 @@ def _utt(seq, start, vad_end=None, stt=None, tr=None, tts=None, text=None, seg_m
     if dropped:
         events["dropped"] = start + S
         detail["dropped"] = {"reason": dropped}
-    return {"seq": seq, "events": events, "detail": detail}
+    utt = {"seq": seq, "events": events, "detail": detail}
+    if playback is not None:
+        utt["playback"] = playback
+    return utt
 
 
 def _raw(clips, utterances, mt_only=(), **over):
@@ -389,3 +392,45 @@ def test_run_writes_pr_aggregates_for_full_set_only(tmp_path):
     result_pr = analyze.run(pr_dir, manifest, comet=False)
     assert "prAggregates" not in result_pr
     assert "prAggregates" not in json.loads((pr_dir / "metrics.json").read_text())
+
+
+def _clone_line(playbacks):
+    """One clip per utterance; the clone answers `translated + (100 + 100 * i) ms` after translation."""
+    clips, utts = [], []
+    for i, pb in enumerate(playbacks):
+        feed = i * 4 * S
+        clips.append(_clip(f"c{i}", feed, feed + 4 * S, feed + S, feed + 2 * S))
+        end = feed + 2 * S
+        utts.append(_utt(i, feed + S, vad_end=end, stt=end + 100 * MS, tr=end + 200 * MS,
+                         tts=end + (300 + 100 * i) * MS, text="x", tts_engine="voiceClone", playback=pb))
+    manifest = _manifest(*[(f"c{i}", "hola", None) for i in range(len(playbacks))])
+    raw = _raw(clips, utts)
+    raw["meta"]["engines"]["expectedTTS"] = "voiceClone"
+    return raw, manifest
+
+
+def test_clone_playback_stats():
+    raw, manifest = _clone_line([None, {"gapCount": 2, "gapMs": 300}, {"gapCount": 0, "gapMs": 0}, None])
+    clone = _agg(raw, manifest)["clone"]
+    assert clone["gapSentencesPct"] == 25.0
+    assert clone["gapMsTotal"] == 300
+    assert clone["firstChunkMs"]["p50"] == pytest.approx(250.0)
+    assert clone["firstChunkMs"]["count"] == 4
+
+
+def test_no_clone_stats_without_clone_utterances():
+    raw = _raw(TWO, [_utt(0, 1 * S, vad_end=3 * S, stt=3 * S, tr=3 * S, tts=3 * S, text="x")])
+    assert "clone" not in _agg(raw, M2)
+
+
+def test_old_runs_without_playback():
+    raw, manifest = _clone_line([None, None])
+    assert all("playback" not in u for u in raw["utterances"])
+    clone = _agg(raw, manifest)["clone"]
+    assert clone["gapSentencesPct"] == 0.0
+    assert clone["gapMsTotal"] == 0
+
+
+def test_clone_stats_do_not_enter_compare():
+    import inspect
+    assert "clone" not in inspect.getsource(compare)
