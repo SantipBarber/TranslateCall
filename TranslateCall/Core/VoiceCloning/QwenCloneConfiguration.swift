@@ -20,6 +20,17 @@ nonisolated struct QwenCloneConfiguration: Sendable {
 
     nonisolated static let `default` = QwenCloneConfiguration()
 
+    // MARK: - Reference recording (REQ-QS-12/13)
+
+    /// Length of the guided reading (user pick P-1).
+    static let guidedTargetSeconds: Double = 8
+    /// Longest guided recording before it stops by itself.
+    static let guidedMaxSeconds: Double = 15
+    /// Longest free recording.
+    static let freeMaxSeconds: Double = 30
+    /// A reference longer than this is considered long (slower to prefill).
+    static let longReferenceSeconds: Double = 12
+
     static let voiceCloningEnabledKey = "tlk.voiceCloning.enabled"
 
     // MARK: - Supported languages
