@@ -9,6 +9,7 @@ import Foundation
 actor TracingVADService: VADService {
     nonisolated let speechSegments: AsyncStream<SpeechSegment>
     nonisolated let vadStateEvents: AsyncStream<Bool>
+    nonisolated let boundaryEvents: AsyncStream<SegmentBoundary>
     nonisolated let engine: VADEngine
     private let inner: any VADService
     private let tracer: PipelineTracer
@@ -19,6 +20,7 @@ actor TracingVADService: VADService {
         self.inner = inner
         self.tracer = tracer
         vadStateEvents = inner.vadStateEvents
+        boundaryEvents = inner.boundaryEvents
         engine = inner.engine
         (speechSegments, continuation) = AsyncStream.makeStream(of: SpeechSegment.self)
     }
