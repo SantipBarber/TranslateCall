@@ -2,6 +2,13 @@ import Foundation
 import Synchronization
 @testable import TranslateCall
 
+// MARK: - MockQwenCloneError
+
+/// The error a stub stream ends with after `failAfter` events: distinct from real cancellation.
+enum MockQwenCloneError: Error, Equatable {
+    case failed
+}
+
 // MARK: - MockQwenCloneInferrer
 
 /// Test mock for `QwenCloneInferring`. Tracks calls and returns configurable stubs.
@@ -51,7 +58,8 @@ actor MockQwenCloneInferrer: QwenCloneInferring {
     }
 
     /// `synthesizeStream` yields `events`; it waits on `gate` before event `holdBefore` and throws
-    /// `CancellationError` after `failAfter` events.
+    /// `MockQwenCloneError.failed` after `failAfter` events. Without a stub stream it yields one `.audio`
+    /// of the stub samples, or throws the stub error.
     func setStubStream(_ events: [QwenStreamEvent], holdBefore: Int? = nil, failAfter: Int? = nil) {
         streamStub.withLock {
             $0.events = events
@@ -72,15 +80,22 @@ actor MockQwenCloneInferrer: QwenCloneInferring {
             current.callCount += 1
             return current
         }
-        let events = stub.events ?? [.audio(Array(repeating: 0.1, count: 2400))]
         let hold = gate
         let (stream, continuation) = AsyncThrowingStream.makeStream(of: QwenStreamEvent.self)
         // Not cancelled on termination: like the real model, it runs to its end once started.
         Task {
+            let events: [QwenStreamEvent]
+            let defaults = await recordStream(text: text, referenceAudioCount: referenceAudio.count, language: language)
+            do {
+                events = try stub.events ?? defaults.get()
+            } catch {
+                continuation.finish(throwing: error)
+                return
+            }
             for (index, event) in events.enumerated() {
                 if index == stub.holdBefore { await hold.wait() }
                 if index == stub.failAfter {
-                    continuation.finish(throwing: CancellationError())
+                    continuation.finish(throwing: MockQwenCloneError.failed)
                     return
                 }
                 continuation.yield(event)
@@ -88,6 +103,17 @@ actor MockQwenCloneInferrer: QwenCloneInferring {
             continuation.finish()
         }
         return stream
+    }
+
+    /// Records a stream call's arguments; returns the default events (the stub samples) or the stub error.
+    private func recordStream(
+        text: String, referenceAudioCount: Int, language: String
+    ) -> Result<[QwenStreamEvent], Error> {
+        lastText = text
+        lastLanguage = language
+        lastReferenceAudioCount = referenceAudioCount
+        if let error = stubError { return .failure(error) }
+        return .success([.audio(stubSamples)])
     }
 
     func synthesize(

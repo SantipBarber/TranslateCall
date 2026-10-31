@@ -21,6 +21,13 @@ struct QwenUtteranceSynthesizerTests {
         QwenUtteranceSynthesizer(activeProfileId: profileId, profileStore: store, inferrer: inferrer)
     }
 
+    /// A synthesizer over a store holding the default profile.
+    private func ready(_ inferrer: MockQwenCloneInferrer) async -> QwenUtteranceSynthesizer {
+        let store = MockVoiceProfileStore()
+        await store.forceStore(profile())
+        return make(inferrer, store: store)
+    }
+
     @Test("passes the profile's reference audio, transcript and language; yields one 24 kHz buffer")
     func synthesizesWithProfile() async throws {
         let inferrer = MockQwenCloneInferrer()
@@ -69,6 +76,7 @@ struct QwenUtteranceSynthesizerTests {
             _ = try await collect(make(inferrer, store: store).synthesize(text: "Hello", locale: english))
         }
         #expect(await inferrer.callCount == 0)
+        #expect(inferrer.streamCallCount == 0)
     }
 
     @Test("empty model output fails the stream instead of finishing silently")
@@ -87,5 +95,75 @@ struct QwenUtteranceSynthesizerTests {
         let synthesizer = make(MockQwenCloneInferrer(), store: MockVoiceProfileStore())
         #expect(synthesizer.canSpeak(Locale(identifier: "es-ES")))
         #expect(!synthesizer.canSpeak(Locale(identifier: "hi-IN")))
+    }
+}
+
+// MARK: - Streaming (REQ-QS-01/04)
+
+extension QwenUtteranceSynthesizerTests {
+    private static func audio(_ count: Int) -> QwenStreamEvent { .audio(Array(repeating: 0.1, count: count)) }
+
+    @Test("each streamed audio chunk becomes one 24 kHz buffer, in order")
+    func yieldsBufferPerChunk() async throws {
+        let inferrer = MockQwenCloneInferrer()
+        await inferrer.setStubStream([
+            Self.audio(2_400), Self.audio(4_800), Self.audio(2_400), .info(tokens: 12, tokensPerSecond: 30)
+        ])
+        let buffers = try #require(try await collect(await ready(inferrer).synthesize(text: "Hi", locale: english)))
+
+        #expect(buffers.map(\.frameLength) == [2_400, 4_800, 2_400])
+        #expect(buffers.allSatisfy { $0.format.sampleRate == 24_000 })
+        #expect(inferrer.streamCallCount == 1)
+    }
+
+    @Test("an empty audio chunk yields no buffer")
+    func emptyChunksSkipped() async throws {
+        let inferrer = MockQwenCloneInferrer()
+        await inferrer.setStubStream([Self.audio(2_400), .audio([]), Self.audio(1_200)])
+        let buffers = try #require(try await collect(await ready(inferrer).synthesize(text: "Hi", locale: english)))
+
+        #expect(buffers.map(\.frameLength) == [2_400, 1_200])
+    }
+
+    @Test("a stream with no audio at all fails with emptyOutput")
+    func noAudioThrowsEmpty() async {
+        let inferrer = MockQwenCloneInferrer()
+        await inferrer.setStubStream([.info(tokens: 0, tokensPerSecond: 0)])
+        let synthesizer = await ready(inferrer)
+        await #expect(throws: QwenCloneError.emptyOutput) {
+            _ = try await collect(synthesizer.synthesize(text: "Hi", locale: english))
+        }
+    }
+
+    @Test("an error after the first chunk reaches the consumer after that chunk's buffer")
+    func errorAfterFirstChunk() async {
+        let inferrer = MockQwenCloneInferrer()
+        await inferrer.setStubStream([Self.audio(2_400), Self.audio(2_400)], failAfter: 1)
+        let stream = await ready(inferrer).synthesize(text: "Hi", locale: english)
+
+        let seen = LockedArray<AVAudioFrameCount>()
+        await #expect(throws: MockQwenCloneError.failed) {
+            for try await buffer in stream { seen.append(buffer.frameLength) }
+        }
+        #expect(seen.values == [2_400])
+    }
+
+    @Test("cancelling the consumer stops the buffers; the model is asked once")
+    func consumerCancelStopsYielding() async throws {
+        let inferrer = MockQwenCloneInferrer()
+        await inferrer.setStubStream([Self.audio(2_400), Self.audio(2_400)], holdBefore: 1)
+        let stream = await ready(inferrer).synthesize(text: "Hi", locale: english)
+
+        let seen = LockedArray<AVAudioFrameCount>()
+        let consumer = Task { for try await buffer in stream { seen.append(buffer.frameLength) } }
+        #expect(await waitUntil { seen.values.count == 1 })
+        #expect(await waitUntil { inferrer.gate.waiterCount == 1 })
+        consumer.cancel()
+        _ = await consumer.result
+        inferrer.gate.open()
+        #expect(await waitUntil { inferrer.gate.waiterCount == 0 })
+
+        #expect(seen.values == [2_400])
+        #expect(inferrer.streamCallCount == 1)
     }
 }
