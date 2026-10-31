@@ -1,6 +1,6 @@
 # M9 voice-clone streaming and early end-of-turn — Requirements
 
-> Status: DRAFT (2026-10-31) — awaiting the user's review.
+> Status: APPROVED (2026-10-31).
 > Inputs: latency project 2 root cause (memory `m9-latency-project2-handoff`, probe `TranslateCallTests/Integration/QwenCloneProbeTests.swift`), ui-settings manual test S7 (2026-10-19), `specs/m9-product/benchmark-harness/`, backlog UI-S3.
 
 ## Overview

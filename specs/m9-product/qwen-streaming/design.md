@@ -1,6 +1,6 @@
 # M9 voice-clone streaming and early end-of-turn — Design
 
-> Status: DRAFT (2026-10-31). Implements `requirements.md` (REQ-QS-xx).
+> Status: APPROVED (2026-10-31). Implements `requirements.md` (REQ-QS-xx).
 
 ## 1. Where the time goes today
 
