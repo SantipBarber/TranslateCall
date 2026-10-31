@@ -108,9 +108,8 @@ actor ParakeetSpeechService: SpeechRecognizerService {
     private func runProcessingLoop(stream: AsyncStream<SpeechSegment>) async {
         for await segment in stream {
             guard !Task.isCancelled else { break }
-            if let result = await transcribeSegment(segment) {
-                continuation?.yield(result)
-            }
+            let result = await transcribeSegment(segment) ?? .empty(for: segment, locale: locale)
+            continuation?.yield(result)
         }
     }
 
@@ -158,7 +157,9 @@ actor ParakeetSpeechService: SpeechRecognizerService {
                 confidence: confidence,
                 locale: locale,
                 capturedAt: segment.capturedAt,
-                audioDuration: audioDuration
+                audioDuration: audioDuration,
+                segmentID: segment.id,
+                kind: segment.kind
             )
         } catch {
             parakeetLogger.error("Parakeet transcription error: \(error.localizedDescription)")

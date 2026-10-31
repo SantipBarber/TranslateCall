@@ -141,7 +141,7 @@ struct ParakeetSpeechServiceTests {
         #expect(results.first?.confidence == 0.95)
     }
 
-    @Test("Transcription discards low-confidence result")
+    @Test("Transcription turns a low-confidence result into an empty one")
     func transcriptionDiscardsLowConfidence() async throws {
         let mock = MockAsrTranscriber()
         // Default minimumConfidence is 0.60; stub below threshold
@@ -164,7 +164,9 @@ struct ParakeetSpeechServiceTests {
         await service.deactivate()
         streamTask.cancel()
 
-        #expect(results.isEmpty)
+        // The segment is not dropped silently: one empty result keeps its id accounted for.
+        #expect(results.count == 1)
+        #expect(results.first?.text.isEmpty == true)
     }
 
     @Test("Transcription result carries correct locale")
@@ -262,8 +264,9 @@ struct ParakeetSpeechServiceTests {
         await service.deactivate()
         streamTask.cancel()
 
-        // No crash; no result emitted on error
-        #expect(results.isEmpty)
+        // No crash; the error yields an empty result for the segment
+        #expect(results.count == 1)
+        #expect(results.first?.text.isEmpty == true)
     }
 
     // MARK: - Metrics

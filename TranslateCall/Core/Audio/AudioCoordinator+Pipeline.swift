@@ -215,6 +215,8 @@ extension AudioCoordinator {
         outgoingTasks.append(Task { [weak self] in
             guard let self else { return }
             for await result in stt.transcriptionStream {
+                // Engines yield an empty result for every segment (FR-QS.5); nothing to show or translate.
+                guard !result.text.isEmpty else { continue }
                 self.outgoingTranscription = result.text
                 await self.handleOutgoingTranslation(of: result.text)
             }
@@ -225,6 +227,8 @@ extension AudioCoordinator {
         incomingTasks.append(Task { [weak self] in
             guard let self else { return }
             for await result in stt.transcriptionStream {
+                // Engines yield an empty result for every segment (FR-QS.5); nothing to show or translate.
+                guard !result.text.isEmpty else { continue }
                 self.incomingTranscription = result.text
                 await self.handleIncomingTranslation(of: result.text)
             }
