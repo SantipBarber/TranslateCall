@@ -17,6 +17,7 @@ extension TTSPlaybackService {
         attemptBufferCount = 0
         attemptAudioSeconds = 0
         attemptLastHandle = nil
+        attemptCountsTowardBreaker = true
         setSpeaking(true)
         let stream = synthesizer.synthesize(text: utterance.text, locale: utterance.locale)
         let consumer = Task { await self.consume(stream, gen: gen) }
@@ -51,6 +52,7 @@ extension TTSPlaybackService {
             }
         } catch {
             guard gen == generation, !Task.isCancelled else { return .cancelled }
+            attemptCountsTowardBreaker = (error as? any TTSAttemptError)?.countsTowardBreaker ?? true
             return .failed(error.localizedDescription)
         }
         guard gen == generation, !Task.isCancelled else { return .cancelled }

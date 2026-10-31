@@ -116,3 +116,8 @@ nonisolated enum QwenCloneError: LocalizedError, Sendable, Equatable {
         }
     }
 }
+
+extension QwenCloneError: TTSAttemptError {
+    /// An abandoned generation still holds the gate: not the clone's fault, so the breaker ignores it.
+    nonisolated var countsTowardBreaker: Bool { self != .gateBusyAbandoned }
+}

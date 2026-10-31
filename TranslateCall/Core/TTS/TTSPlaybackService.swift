@@ -106,6 +106,7 @@ actor TTSPlaybackService: SynthesisService {
     var attemptBufferCount = 0
     var attemptAudioSeconds: Double = 0
     var attemptLastHandle: PlaybackHandle?
+    var attemptCountsTowardBreaker = true
 
     // MARK: Init
 
@@ -231,7 +232,7 @@ actor TTSPlaybackService: SynthesisService {
         let heardNothing = attemptBufferCount == 0
         switch end {
         case .finished: consecutiveFailures = 0
-        case .failed, .timedOut: if heardNothing { recordPrimaryFailure() }
+        case .failed, .timedOut: if heardNothing, attemptCountsTowardBreaker { recordPrimaryFailure() }
         case .outputFailed, .cancelled: break
         }
         if case .failed(let message) = end, heardNothing {
