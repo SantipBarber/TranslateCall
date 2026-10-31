@@ -61,6 +61,10 @@ bench-manifest:
 bench set="pr" profile="all" edge="0" lines="":
     tools/scripts/bench.sh {{quote(set)}} {{quote(profile)}} {{quote(edge)}} {{quote(lines)}}
 
+# Qwen reference-length probe (Release): times streaming per reference in build/qwen-probe/refs, writes WAVs + summary.md
+qwen-probe:
+    tools/scripts/qwen-probe.sh
+
 # Import recordings of a variant for the benchmark (e.g. native speakers)
 bench-ingest dir variant native="false":
     uv run --locked --extra vad --project tools/bench tcbench ingest {{quote(dir)}} --variant {{quote(variant)}} --native {{quote(native)}}
