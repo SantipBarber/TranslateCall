@@ -65,7 +65,8 @@ struct GuidedReadingSetupView: View {
                 .padding(Theme.Spacing.large)
                 .background(Theme.soft(Theme.accent), in: RoundedRectangle(cornerRadius: Theme.Radius.large))
 
-            Text("You will read this aloud for about 8 seconds, in a quiet room.")
+            let seconds = Int(QwenCloneConfiguration.guidedTargetSeconds)
+            Text("You will read this aloud for about \(seconds) seconds, in a quiet room.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
