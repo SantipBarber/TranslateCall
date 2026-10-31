@@ -52,12 +52,12 @@ nonisolated final class QwenUtteranceSynthesizer: UtteranceSynthesizer {
                     text: input, referenceAudio: samples, referenceTranscript: transcript, language: language
                 )
                 try await Self.relay(events, sampleRate: inferrer.sampleRate, to: continuation, stats: &stats)
-                stats.log()
+                stats.log(SentenceOutcome(ending: nil, cancelled: Task.isCancelled))
                 try Task.checkCancellation()
                 guard stats.hasAudio else { throw QwenCloneError.emptyOutput }
                 continuation.finish()
             } catch {
-                stats.log()
+                stats.log(SentenceOutcome(ending: error, cancelled: Task.isCancelled))
                 continuation.finish(throwing: error)
             }
         }
@@ -86,6 +86,22 @@ nonisolated final class QwenUtteranceSynthesizer: UtteranceSynthesizer {
     }
 }
 
+// MARK: - SentenceOutcome
+
+/// How a voice-clone sentence ended, for its log line (G1 M2): a stopped sentence also ends its relay
+/// loop without an error, so the cancellation is read from the task as well.
+nonisolated enum SentenceOutcome: String, Sendable {
+    case finished, cancelled, error
+
+    init(ending error: Error?, cancelled: Bool) {
+        if cancelled || error is CancellationError {
+            self = .cancelled
+        } else {
+            self = error == nil ? .finished : .error
+        }
+    }
+}
+
 // MARK: - SentenceStats
 
 /// One sentence's streaming timings, logged once at its end when it produced audio (P14: numbers only).
@@ -107,7 +123,7 @@ nonisolated private struct SentenceStats {
         audioSeconds += seconds
     }
 
-    mutating func log() {
+    mutating func log(_ outcome: SentenceOutcome) {
         guard !logged, let firstChunk = tracker.firstChunkAt else { return }
         logged = true
         let firstChunkMs = Int((firstChunk.secondsValue * 1_000).rounded())
@@ -116,10 +132,12 @@ nonisolated private struct SentenceStats {
         let gapMs = Int((tracker.gapSeconds * 1_000).rounded())
         let audio = String(format: "%.2f", audioSeconds)
         let rate = String(format: "%.1f", tokensPerSecond)
+        let ending = outcome.rawValue
         logger.info("""
-            Voice clone sentence: firstChunkMs=\(firstChunkMs, privacy: .public) totalMs=\(totalMs, privacy: .public) \
-            audioSeconds=\(audio, privacy: .public) tokensPerSecond=\(rate, privacy: .public) \
-            gapCount=\(gapCount, privacy: .public) gapMs=\(gapMs, privacy: .public)
+            Voice clone sentence: outcome=\(ending, privacy: .public) firstChunkMs=\(firstChunkMs, privacy: .public) \
+            totalMs=\(totalMs, privacy: .public) audioSeconds=\(audio, privacy: .public) \
+            tokensPerSecond=\(rate, privacy: .public) gapCount=\(gapCount, privacy: .public) \
+            gapMs=\(gapMs, privacy: .public)
             """)
     }
 }

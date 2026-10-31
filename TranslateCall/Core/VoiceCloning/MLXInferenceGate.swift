@@ -24,7 +24,8 @@ actor MLXInferenceGate {
     private var waiters: [Waiter] = []
     private var idleWaiters: [CheckedContinuation<Void, Never>] = []
     private var nextWaiterID: UInt64 = 0
-    /// The stream holding the gate, set when its pump starts and cleared by `release()`.
+    /// The stream holding the gate, set when its pump starts and cleared by `release()`. Only `startStream`
+    /// and `release()` write it.
     var currentStream: (any GateStreamLink)?
 
     init(clock: any Clock<Duration> = ContinuousClock()) {

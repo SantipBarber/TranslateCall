@@ -118,7 +118,10 @@ actor QwenCloneModelManager {
         language: String
     ) async -> AsyncThrowingStream<QwenStreamEvent, Error> {
         guard case .ready = state, let inferrer else { return Self.failingStream(.modelNotReady) }
-        if await gate.isHeldByAbandonedStream { return Self.failingStream(.gateBusyAbandoned) }
+        if await gate.isHeldByAbandonedStream {
+            logger.info("Voice clone sentence fails fast: a stream nobody listens to still holds the gate")
+            return Self.failingStream(.gateBusyAbandoned)
+        }
         return gate.runStream(
             firstElement: .seconds(config.firstChunkTimeoutSeconds),
             isFirst: { if case .audio = $0 { true } else { false } },

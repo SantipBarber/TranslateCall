@@ -167,3 +167,16 @@ extension QwenUtteranceSynthesizerTests {
         #expect(inferrer.streamCallCount == 1)
     }
 }
+
+@Suite("Voice clone sentence outcome")
+struct SentenceOutcomeTests {
+    @Test("the sentence log names how it ended: a stop is cancelled even when the relay ended without error (G1 M2)")
+    func outcomes() {
+        #expect(SentenceOutcome(ending: nil, cancelled: false) == .finished)
+        #expect(SentenceOutcome(ending: nil, cancelled: true) == .cancelled)
+        #expect(SentenceOutcome(ending: CancellationError(), cancelled: false) == .cancelled)
+        #expect(SentenceOutcome(ending: QwenCloneError.inferenceTimeout, cancelled: true) == .cancelled)
+        #expect(SentenceOutcome(ending: QwenCloneError.inferenceTimeout, cancelled: false) == .error)
+        #expect(SentenceOutcome.cancelled.rawValue == "cancelled")
+    }
+}

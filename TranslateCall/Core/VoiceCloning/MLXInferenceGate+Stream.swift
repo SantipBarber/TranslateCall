@@ -1,5 +1,8 @@
 import Foundation
+import OSLog
 import Synchronization
+
+nonisolated private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "MLXInferenceGate")
 
 // MARK: - GateStreamLink
 
@@ -88,6 +91,10 @@ extension MLXInferenceGate {
                 relay.end(throwing: error)            // nothing if the consumer or the timer ended it first
             }
         }
+        // Installed after the timer and the starter exist, so the closure can cancel them. Safe: no consumer
+        // holds the stream before this function returns, and if the timer or the starter ends it first, they
+        // do so through `relay.end`, which detaches the relay itself; the starter's `relay.isAttached` guard
+        // then sees a detached relay and releases the gate without starting the model.
         continuation.onTermination = { _ in
             relay.detach()
             starter.cancel()                          // a queued stream leaves the queue
@@ -112,14 +119,16 @@ extension MLXInferenceGate {
             return
         }
         currentStream = relay
+        let heldSince = ContinuousClock.now
         // Detached: the pump must not inherit any caller's executor or cancellation; it always drains.
         Task.detached { [self] in
-            await pump(relay: relay, timer: timer, isFirst: isFirst, work: work)
+            await pump(relay: relay, heldSince: heldSince, timer: timer, isFirst: isFirst, work: work)
         }
     }
 
     private nonisolated func pump<Element: Sendable>(
         relay: StreamRelay<Element>,
+        heldSince: ContinuousClock.Instant,
         timer: Task<Void, Never>,
         isFirst: @Sendable (Element) -> Bool,
         work: @Sendable () -> AsyncThrowingStream<Element, Error>
@@ -135,6 +144,10 @@ extension MLXInferenceGate {
             failure = error
         }
         timer.cancel()
+        if !relay.isAttached {                        // nobody listened any more: log how long it held the gate
+            let heldMs = Int(((ContinuousClock.now - heldSince).secondsValue * 1_000).rounded())
+            logger.info("Abandoned voice clone stream drained; it held the gate heldMs=\(heldMs, privacy: .public)")
+        }
         // Release before ending the relay: a caller that saw the end finds the gate open, and the gate is
         // never "held by an abandoned stream" just because the pump itself ended the relay.
         await release()
