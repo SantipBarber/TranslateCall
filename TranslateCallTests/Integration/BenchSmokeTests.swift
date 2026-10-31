@@ -6,6 +6,8 @@ import Testing
 extension IntegrationTests {
     @Suite("Bench smoke") @MainActor
     struct BenchSmokeTests {
+        /// A delivered sentence, without `.committed`: a committed tentative stamps it once, anywhere after
+        /// `.vadEnd` (the commit lands at the end of the pause, before or after STT); a final has none.
         private static let stages: [TraceStage] = [
             .speechStart, .vadEnd, .sttFinal, .translated, .ttsFirstBuffer, .ttsEnd
         ]
@@ -37,9 +39,23 @@ extension IntegrationTests {
 
             #expect(drained, "utterances still open after 20 s: \(events.map { "\($0.seq):\($0.stage)" })")
             let seqs = Set(events.filter { $0.stage == .vadEnd }.map(\.seq)).sorted()
-            #expect(seqs.count >= 2, "expected at least 2 utterances, got \(seqs.count)")
+            let stagesBySeq = Dictionary(uniqueKeysWithValues: seqs.map { seq in
+                (seq, events.filter { $0.seq == seq }.map(\.stage))
+            })
+            // Early processing (FR-QS.5): a tentative withdrawn when speech resumed ends as `.retracted`.
+            let delivered = seqs.filter { stagesBySeq[$0]?.last != .retracted }
+            #expect(delivered.count >= 2, "expected at least 2 delivered utterances, got \(delivered.count)")
             for seq in seqs {
-                #expect(events.filter { $0.seq == seq }.map(\.stage) == Self.stages, "seq \(seq)")
+                let stages = stagesBySeq[seq] ?? []
+                if stages.last == .retracted {
+                    #expect(Array(stages.prefix(2)) == [.speechStart, .vadEnd], "retracted seq \(seq): \(stages)")
+                    continue
+                }
+                #expect(stages.filter { $0 == .committed }.count <= 1, "seq \(seq): \(stages)")
+                #expect(stages.filter { $0 != .committed } == Self.stages, "seq \(seq): \(stages)")
+                if let commit = stages.firstIndex(of: .committed) {
+                    #expect(commit > 1, "seq \(seq): committed before vadEnd: \(stages)")
+                }
             }
         }
 

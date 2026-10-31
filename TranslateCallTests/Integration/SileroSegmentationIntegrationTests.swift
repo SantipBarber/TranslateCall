@@ -7,6 +7,32 @@ import Testing
 struct SegmentArrival: Sendable {
     let at: ContinuousClock.Instant
     let frames: Int
+    var id: UInt64 = 0
+    var kind: SegmentKind = .final
+}
+
+/// What one Silero run yielded: every segment, every boundary (with its arrival), and the start.
+struct SegmentationRun: Sendable {
+    let arrivals: [SegmentArrival]
+    let boundaries: [(boundary: SegmentBoundary, at: ContinuousClock.Instant)]
+    let start: ContinuousClock.Instant
+
+    /// The sentences the pipeline delivers (FR-QS.5): finals, and tentatives later committed, each
+    /// at the moment it is delivered (a committed tentative at its commit). Retracted ones are not.
+    var delivered: [SegmentArrival] {
+        Self.delivered(arrivals, boundaries)
+    }
+
+    static func delivered(_ arrivals: [SegmentArrival],
+                          _ boundaries: [(boundary: SegmentBoundary, at: ContinuousClock.Instant)])
+        -> [SegmentArrival] {
+        arrivals.compactMap { segment in
+            if segment.kind == .final { return segment }
+            guard let commit = boundaries.first(where: { $0.boundary == .commit(segment.id) }) else { return nil }
+            return SegmentArrival(at: max(commit.at, segment.at), frames: segment.frames,
+                                  id: segment.id, kind: segment.kind)
+        }.sorted { $0.at < $1.at }
+    }
 }
 
 /// Spliced speech fixtures, fed at real-time pace (F8.5.3 NFR-H-01/02, AC 3).
@@ -73,27 +99,39 @@ extension IntegrationTests {
             }
         }
 
-        /// Runs `vad` over `audio` and returns the segments that arrived, once no more are coming.
+        /// Runs `vad` over `audio` and returns what it yielded, once no more sentences are coming:
+        /// `count` delivered sentences (finals + committed tentatives), then a bounded wait for an extra one.
         func segments(of audio: [Float], through vad: SileroVADService, expecting count: Int,
                       gate: MicEchoGate? = nil,
                       beforeBuffer: @escaping @Sendable (Int) -> Void = { _ in })
-            async throws -> (arrivals: [SegmentArrival], start: ContinuousClock.Instant) {
+            async throws -> SegmentationRun {
             let arrivals = Mutex<[SegmentArrival]>([])
+            let boundaries = Mutex<[(boundary: SegmentBoundary, at: ContinuousClock.Instant)]>([])
             let collector = Task {
                 for await segment in vad.speechSegments {
-                    let arrival = SegmentArrival(at: .now, frames: Int(segment.audio.frameLength))
+                    let arrival = SegmentArrival(at: .now, frames: Int(segment.audio.frameLength),
+                                                 id: segment.id, kind: segment.kind)
                     arrivals.withLock { $0.append(arrival) }
                 }
             }
+            let boundaryCollector = Task {
+                for await boundary in vad.boundaryEvents {
+                    let stamped = (boundary: boundary, at: ContinuousClock.now)
+                    boundaries.withLock { $0.append(stamped) }
+                }
+            }
+            let delivered = { SegmentationRun.delivered(arrivals.withLock { $0 }, boundaries.withLock { $0 }).count }
             let feed = SplicedSpeech.paced(audio, beforeBuffer: beforeBuffer)
             try await vad.activate(stream: gate?.gate(feed.stream) ?? feed.stream)
             await feed.feeder.value
-            _ = await waitUntil(timeout: .seconds(3)) { arrivals.withLock { $0.count } >= count }
-            // Negative check: bounded wait; no extra segment may follow.
-            _ = await waitUntil(timeout: .milliseconds(500)) { arrivals.withLock { $0.count } > count }
+            _ = await waitUntil(timeout: .seconds(3)) { delivered() >= count }
+            // Negative check: bounded wait; no extra sentence may follow.
+            _ = await waitUntil(timeout: .milliseconds(500)) { delivered() > count }
             await vad.deactivate()
             collector.cancel()
-            return (arrivals.withLock { $0 }, feed.start)
+            boundaryCollector.cancel()
+            return SegmentationRun(arrivals: arrivals.withLock { $0 }, boundaries: boundaries.withLock { $0 },
+                                   start: feed.start)
         }
 
         @Test("a 1.0 s gap with a 0.6 s pause splits two sentences, within pause + 0.5 s (NFR-H-01)")
@@ -106,10 +144,15 @@ extension IntegrationTests {
 
             let run = try await segments(of: audio, through: try await makeSilero(pause: pause), expecting: 2)
 
-            #expect(run.arrivals.count == 2, "segments: \(run.arrivals.map(\.frames))")
-            guard let closed = run.arrivals.first?.at else { return }
+            // The sentence closes when it is delivered: its commit (or its final), not its tentative.
+            let sentences = run.delivered
+            #expect(sentences.count == 2, "sentences: \(sentences.map(\.frames)), segments: \(run.arrivals)")
+            guard let closed = sentences.first else { return }
+            if closed.kind == .tentative, let tentative = run.arrivals.first(where: { $0.id == closed.id }) {
+                #expect(tentative.at <= closed.at, "the tentative arrives before its commit")
+            }
             let speechEnd = run.start + SplicedSpeech.seconds(lead.count + first.count)
-            let latency = speechEnd.duration(to: closed)
+            let latency = speechEnd.duration(to: closed.at)
             print("LATENCY silero-pause-0.6 vad \(latency.milliseconds) ms")
             #expect(latency <= .seconds(pause + 0.5), "segment closed \(latency) after the end of speech")
             #expect(latency >= .seconds(pause - 0.35), "segment closed before the pause: \(latency)")
@@ -122,7 +165,8 @@ extension IntegrationTests {
 
             let run = try await segments(of: audio, through: try await makeSilero(pause: 0.6), expecting: 1)
 
-            #expect(run.arrivals.count == 1, "segments: \(run.arrivals.map(\.frames))")
+            // One delivered sentence; a tentative retracted at the micro-pause does not count.
+            #expect(run.delivered.count == 1, "sentences: \(run.delivered.map(\.frames)), segments: \(run.arrivals)")
         }
 
         @Test("speakers mode: speech while incoming 'speaks' never becomes a segment; before and after do (A6)")
@@ -146,8 +190,8 @@ extension IntegrationTests {
                 }
             }
 
-            let frames = run.arrivals.map(\.frames)
-            #expect(frames.count == 2, "segments: \(frames)")
+            let frames = run.delivered.map(\.frames)
+            #expect(frames.count == 2, "sentences: \(frames), segments: \(run.arrivals)")
             // A leaked echo merged into a segment would add the 1 s gap and its speech: each segment must
             // match its own sentence plus what Silero adds (0.1 s padding + the 0.6 s pause), within ±35 %.
             guard frames.count == 2 else { return }
