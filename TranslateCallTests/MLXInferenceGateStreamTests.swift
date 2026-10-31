@@ -229,4 +229,20 @@ struct MLXInferenceGateStreamTests {
         #expect(!(await gate.isBusy))
         _ = try? await caller.value
     }
+
+    @Test("admission refused once the gate is held: the gate opens, work never runs, the caller gets the error")
+    func admissionRefusedReleasesGate() async throws {
+        let gate = MLXInferenceGate(clock: TestClock())
+        let inner = InnerStream()
+        let stream = gate.runStream(
+            firstElement: .seconds(3),
+            admit: { () async throws -> Int in throw QwenCloneError.modelNotReady },
+            work: { _ in inner.work() }
+        )
+        let caller = consume(stream, into: LockedArray())
+
+        await #expect(throws: QwenCloneError.modelNotReady) { try await caller.value }
+        #expect(inner.callCount == 0)
+        #expect(await waitUntil { !(await gate.isBusy) })
+    }
 }

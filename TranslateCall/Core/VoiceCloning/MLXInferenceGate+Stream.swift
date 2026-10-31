@@ -76,6 +76,20 @@ extension MLXInferenceGate {
         isFirst: @escaping @Sendable (Element) -> Bool = { _ in true },
         work: @escaping @Sendable () -> AsyncThrowingStream<Element, Error>
     ) -> AsyncThrowingStream<Element, Error> {
+        runStream(wait: wait, firstElement: firstElement, isFirst: isFirst, admit: {}, work: { _ in work() })
+    }
+
+    /// `runStream` with an admission step: once the gate is held, and before the model starts, `admit` runs
+    /// and hands `work` what it needs (REQ-QS-08: the model's owner re-checks it is still loaded, as an unload
+    /// may have slipped in while the caller queued). If `admit` throws, the gate is released and the caller's
+    /// stream ends with that error; the model never starts.
+    nonisolated func runStream<Admitted: Sendable, Element: Sendable>(
+        wait: Duration = .seconds(2),
+        firstElement: Duration,
+        isFirst: @escaping @Sendable (Element) -> Bool = { _ in true },
+        admit: @escaping @Sendable () async throws -> Admitted,
+        work: @escaping @Sendable (Admitted) -> AsyncThrowingStream<Element, Error>
+    ) -> AsyncThrowingStream<Element, Error> {
         let (stream, continuation) = AsyncThrowingStream<Element, Error>.makeStream()
         let relay = StreamRelay(continuation)
         let clock = self.clock
@@ -85,7 +99,10 @@ extension MLXInferenceGate {
         }
         let starter = Task { [self] in
             do {
-                try await startStream(relay: relay, wait: wait, timer: timer, isFirst: isFirst, work: work)
+                try await startStream(relay: relay, wait: wait, timer: timer, isFirst: isFirst) {
+                    let admitted = try await admit()
+                    return { work(admitted) }
+                }
             } catch {
                 timer.cancel()
                 relay.end(throwing: error)            // nothing if the consumer or the timer ended it first
@@ -105,14 +122,22 @@ extension MLXInferenceGate {
 
     // MARK: Private
 
+    /// `admit` runs once the gate is held and returns the model's work, or throws to refuse it.
     private func startStream<Element: Sendable>(
         relay: StreamRelay<Element>,
         wait: Duration,
         timer: Task<Void, Never>,
         isFirst: @escaping @Sendable (Element) -> Bool,
-        work: @escaping @Sendable () -> AsyncThrowingStream<Element, Error>
+        admit: @escaping @Sendable () async throws -> @Sendable () -> AsyncThrowingStream<Element, Error>
     ) async throws {
         try await acquire(waitLimit: wait)
+        let work: @Sendable () -> AsyncThrowingStream<Element, Error>
+        do {
+            work = try await admit()                  // with the gate held: nothing can unload under the model
+        } catch {
+            release()
+            throw error                               // the starter ends the caller's stream with it
+        }
         guard relay.isAttached else {                 // ended while being handed the gate: never start MLX
             release()
             timer.cancel()

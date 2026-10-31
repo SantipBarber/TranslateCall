@@ -110,14 +110,16 @@ actor QwenCloneModelManager {
     }
 
     /// A streamed Qwen3-TTS inference through the gate (REQ-QS-02/03). Fails fast, as a stream that throws,
-    /// when the model is not loaded or a previous sentence nobody listens to still holds the gate.
+    /// when the model is not loaded or a previous sentence nobody listens to still holds the gate. Once the
+    /// gate admits it, the model is checked again (REQ-QS-08): an unload that slipped in while it queued ends
+    /// it with `.modelNotReady`, and the released client is never used.
     func synthesizeStream(
         text: String,
         referenceAudio: [Float],
         referenceTranscript: String,
         language: String
     ) async -> AsyncThrowingStream<QwenStreamEvent, Error> {
-        guard case .ready = state, let inferrer else { return Self.failingStream(.modelNotReady) }
+        guard case .ready = state, inferrer != nil else { return Self.failingStream(.modelNotReady) }
         if await gate.isHeldByAbandonedStream {
             logger.info("Voice clone sentence fails fast: a stream nobody listens to still holds the gate")
             return Self.failingStream(.gateBusyAbandoned)
@@ -125,7 +127,8 @@ actor QwenCloneModelManager {
         return gate.runStream(
             firstElement: .seconds(config.firstChunkTimeoutSeconds),
             isFirst: { if case .audio = $0 { true } else { false } },
-            work: {
+            admit: { [self] in try await admittedInferrer() },
+            work: { inferrer in
                 inferrer.synthesizeStream(
                     text: text,
                     referenceAudio: referenceAudio,
@@ -134,6 +137,15 @@ actor QwenCloneModelManager {
                 )
             }
         )
+    }
+
+    /// The loaded client, read with the gate held; `.modelNotReady` when an unload came first.
+    private func admittedInferrer() throws -> any QwenCloneInferring {
+        guard case .ready = state, let inferrer else {
+            logger.info("Voice clone sentence ends: the model was unloaded while it waited for the gate")
+            throw QwenCloneError.modelNotReady
+        }
+        return inferrer
     }
 
     nonisolated private static func failingStream(

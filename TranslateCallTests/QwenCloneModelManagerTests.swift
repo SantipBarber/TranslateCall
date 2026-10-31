@@ -194,6 +194,43 @@ struct QwenCloneModelManagerTests {
         #expect(await waitUntil { !(await gate.isBusy) })
     }
 
+    @Test("an unload while a stream queues for the gate: no inference on the unloaded model (REQ-QS-08)")
+    func unloadWhileQueuedEndsStream() async throws {
+        let gate = MLXInferenceGate(clock: TestClock())
+        let inferrer = MockQwenCloneInferrer()
+        let manager = makeManager(inferrer: inferrer, gate: gate)
+        try await manager.ensureReady()
+        try await gate.acquire(waitLimit: .seconds(2))   // another inference holds the gate
+
+        let failures = LockedArray<QwenCloneError>()
+        let events = await stream(manager)             // saw the model ready, now queues for the gate
+        let caller = Task {
+            do {
+                for try await _ in events {}
+            } catch {
+                if let error = error as? QwenCloneError { failures.append(error) }
+            }
+        }
+        #expect(await waitUntil { await gate.waitingCount == 1 })
+
+        let unloaded = LockedArray<String>()
+        let unloading = Task {
+            await manager.unload()
+            unloaded.append("unloaded")
+        }
+        #expect(await waitUntil {
+            if case .idle = await manager.state { true } else { false }
+        })
+        await gate.release()                           // the queued stream is handed the gate
+
+        #expect(await waitUntil { failures.values == [.modelNotReady] })
+        await unloading.value
+        await caller.value
+        #expect(inferrer.streamCallCount == 0, "the stream ran on an unloaded model")
+        #expect(unloaded.values == ["unloaded"])
+        #expect(!(await gate.isBusy))
+    }
+
     @Test("unload waits for an abandoned stream's model to finish")
     func unloadWaitsForStreamDrain() async throws {
         let gate = MLXInferenceGate(clock: TestClock())
