@@ -32,9 +32,13 @@ struct QwenCloneProbeTests {
         Sentence(lang: "en", language: "english", text: "Could we talk tomorrow afternoon instead?")
     ]
 
+    private struct ProbeError: Error, CustomStringConvertible {
+        let description: String
+    }
+
     private struct Row {
         let reference: String
-        let run: Int
+        let number: Int        // 1-based index of the sentence
         let cold: Bool
         let sentence: Sentence
         let first: Double?
@@ -50,33 +54,41 @@ struct QwenCloneProbeTests {
         var references = try Self.loadReferences(in: refsDir)
         references.append(try await Self.activeProfileReference())
 
-        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-        let outDir = refsDir.deletingLastPathComponent().appendingPathComponent(stamp)
+        let outDir: URL
+        if let given = ProcessInfo.processInfo.environment["TC_QWEN_PROBE_OUT"] {
+            outDir = URL(fileURLWithPath: given)       // the script's run directory
+        } else {
+            let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+            outDir = refsDir.deletingLastPathComponent().appendingPathComponent(stamp)
+        }
         let config = QwenCloneConfiguration.default
         let params = GenerateParameters(maxTokens: config.maxTokens, temperature: config.temperature,
                                         topP: config.topP, repetitionPenalty: config.repetitionPenalty)
         var rows: [Row] = []
         for reference in references {
-            // A fresh load per reference: run 0 is the cold run of that reference.
+            // A fresh load per reference. Only the first reference's cold run is truly cold (later ones
+            // run on a warm MLX process); the summary says so.
             let model = try await TTS.loadModel(modelRepo: config.modelRepo)
             let refDir = outDir.appendingPathComponent(reference.name)
             try FileManager.default.createDirectory(at: refDir, withIntermediateDirectories: true)
-            // Run 0 is cold (first sentence, first run after load); runs 1... are warm, every sentence.
-            let plan = [Self.sentences[0]] + Self.sentences
-            for (run, sentence) in plan.enumerated() {
+            // Sentence 1 runs cold (first run after load), then every sentence runs warm.
+            let plan = [(1, true)] + Self.sentences.indices.map { ($0 + 1, false) }
+            for (number, cold) in plan {
+                let sentence = Self.sentences[number - 1]
                 let result = try await Self.synthesize(model, sentence, reference, params)
-                try Self.writeWAV(result.samples, to: refDir.appendingPathComponent("\(sentence.lang)-\(run).wav"))
-                rows.append(Row(reference: reference.name, run: run, cold: run == 0, sentence: sentence,
+                let file = "\(sentence.lang)-s\(number)-\(cold ? "cold" : "warm").wav"
+                try Self.writeWAV(result.samples, to: refDir.appendingPathComponent(file))
+                rows.append(Row(reference: reference.name, number: number, cold: cold, sentence: sentence,
                                 first: result.first, total: result.total,
                                 audioSeconds: Double(result.samples.count) / 24_000,
                                 tokensPerSecond: result.tokensPerSecond))
-                print("PROBE \(reference.name) run=\(run) \(sentence.lang) first=\(result.first ?? -1)")
+                print("PROBE \(reference.name) \(file) first=\(result.first ?? -1)")
             }
         }
         let summary = outDir.appendingPathComponent("summary.md")
         try Self.summaryText(rows, references).write(to: summary, atomically: true, encoding: .utf8)
-        print("PROBE summary: \(summary.path)")
-        #expect(!rows.isEmpty)
+        print("QWEN_PROBE_SUMMARY=\(summary.path)")
+        #expect(rows.count == references.count * (Self.sentences.count + 1))
     }
 
     // MARK: - Generation
@@ -128,8 +140,18 @@ struct QwenCloneProbeTests {
             .filter { $0 != "31s" }
             .sorted { (Int($0.dropLast()) ?? 0) < (Int($1.dropLast()) ?? 0) }
         return try stems.map { stem in
-            let text = try String(contentsOf: dir.appendingPathComponent("\(stem).txt"), encoding: .utf8)
-            return Reference(name: stem, samples: try readWAV(dir.appendingPathComponent("\(stem).wav")),
+            let wav = dir.appendingPathComponent("\(stem).wav")
+            let txt = dir.appendingPathComponent("\(stem).txt")
+            let need = "each \(stem).wav needs a UTF-8 transcript \(stem).txt next to it"
+            guard let text = try? String(contentsOf: txt, encoding: .utf8),
+                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw ProbeError(description: "cannot read \(txt.path): \(need)")
+            }
+            let samples: [Float]
+            do { samples = try readWAV(wav) } catch {
+                throw ProbeError(description: "cannot read audio \(wav.path): \(error.localizedDescription)")
+            }
+            return Reference(name: stem, samples: samples,
                              transcript: text.trimmingCharacters(in: .whitespacesAndNewlines))
         }
     }
@@ -147,13 +169,20 @@ struct QwenCloneProbeTests {
         let output = try #require(AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity))
         var supplied = false
         var error: NSError?
-        converter.convert(to: output, error: &error) { _, status in
-            if supplied { status.pointee = .endOfStream; return nil }
+        let status = converter.convert(to: output, error: &error) { _, inputStatus in
+            if supplied { inputStatus.pointee = .endOfStream; return nil }
             supplied = true
-            status.pointee = .haveData
+            inputStatus.pointee = .haveData
             return input
         }
-        if let error { throw error }
+        if status == .error || error != nil {
+            throw error ?? ProbeError(description: "audio conversion to 24 kHz mono failed")
+        }
+        // .haveData: the output buffer filled before the input ended (capacity is sized to avoid it);
+        // .endOfStream / .inputRanDry: everything was converted. Dropping a tail silently is not allowed.
+        if status == .haveData, output.frameLength == output.frameCapacity {
+            throw ProbeError(description: "conversion of \(url.lastPathComponent) was truncated")
+        }
         return Array(UnsafeBufferPointer(start: output.floatChannelData?[0], count: Int(output.frameLength)))
     }
 
@@ -175,14 +204,27 @@ struct QwenCloneProbeTests {
         func f(_ value: Double?) -> String { value.map { String(format: "%.2f", $0) } ?? "-" }
         var text = "# Qwen reference-length probe\n\nStreaming interval "
         text += "\(QwenCloneConfiguration.default.streamingInterval) s. Times in seconds.\n\n"
-        text += "| reference | ref audio s | run | sentence | cold | first chunk | total | audio s | tok/s |\n"
-        text += "|---|---|---|---|---|---|---|---|---|\n"
+        text += "Sentences:\n\n"
+        for (index, sentence) in sentences.enumerated() {
+            text += "- s\(index + 1) (\(sentence.lang)): \(sentence.text)\n"
+        }
+        text += "\nFiles: `<ref>/<lang>-s<n>-<cold|warm>.wav`.\n\n"
+        text += "| reference | ref audio s | sentence | run | first chunk | total | audio s | tok/s |\n"
+        text += "|---|---|---|---|---|---|---|---|\n"
         for row in rows {
             let refSeconds = references.first { $0.name == row.reference }.map { Double($0.samples.count) / 24_000 }
-            text += "| \(row.reference) | \(f(refSeconds)) | \(row.run) | \(row.sentence.lang)-\(row.run) | "
+            text += "| \(row.reference) | \(f(refSeconds)) | s\(row.number) \(row.sentence.lang) | "
             text += "\(row.cold ? "cold" : "warm") | \(f(row.first)) | \(f(row.total)) | "
             text += "\(f(row.audioSeconds)) | \(f(row.tokensPerSecond)) |\n"
         }
+        if let name = rows.first?.reference,
+           let cold = rows.first(where: { $0.reference == name && $0.cold })?.first,
+           let warm = rows.first(where: { $0.reference == name && $0.number == 1 && !$0.cold })?.first, warm > 0 {
+            text += "\nCold/warm first-chunk ratio (reference \(name), sentence s1): \(f(cold / warm)) "
+            text += "(\(f(cold)) s / \(f(warm)) s).\n"
+        }
+        text += "\nNote: the model reloads per reference, but only the first reference's cold run is truly cold; "
+        text += "later references run on an already warm MLX process, so their cold rows are not comparable.\n"
         return text
     }
 }
