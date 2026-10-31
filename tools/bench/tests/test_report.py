@@ -255,3 +255,17 @@ def test_early_processing_table_only_with_tentatives(tmp_path, monkeypatch):
     analyze.run(run_dir, manifest)
     html = _go(run_dir, manifest, tmp_path).read_text()
     assert "Early processing" in html and "retract %" in html
+    assert "total p50 ms, with retract" in html
+    assert "do not compare it with the VAD stage" in html  # G3 M5: the stage now ends at the tentative
+    assert "retract and then final" in html  # G3 M1: what commit ms leaves out
+
+
+def test_vad_stage_label_without_tentatives(tmp_path, monkeypatch):
+    run_dir, manifest = _build(tmp_path, monkeypatch)
+    html = _go(run_dir, manifest, tmp_path).read_text()
+    assert "do not compare it with the VAD stage" not in html
+    old = {"latency": {"vad": {"p50": 700.0}}, "turn": {"committed": 0, "retracted": 0}}
+    early = {"latency": {"vad": {"p50": 300.0}}, "turn": {"committed": 3, "retracted": 1}}
+    stages = {d["key"]: d["stage"] for d in report._stage_data({"old": old, "early": early, "older": {
+        "latency": {"vad": {"p50": 700.0}}}})}
+    assert stages == {"old": "vad", "early": "VAD (to first silence)", "older": "vad"}

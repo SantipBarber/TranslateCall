@@ -323,9 +323,41 @@ def test_turn_stats():
     assert turn["commitMs"]["count"] == 1
 
 
+def test_turn_stats_finals_exclude_dropped():
+    """G3 M1: a tentative dropped for empty text before its commit lands is no final."""
+    utts = [
+        _tentative(0, 1 * S, "", vad_end=int(1.8 * S), stt=int(1.9 * S), dropped="empty-text"),
+        _utt(1, 5 * S, vad_end=7 * S, stt=7 * S, text="buenos"),
+    ]
+    turn = _agg(_raw(TWO, utts), M2)["turn"]
+    assert (turn["retracted"], turn["committed"], turn["finals"]) == (0, 0, 1)
+
+
+THREE = TWO + [_clip("c", 8 * S, 12 * S, 9 * S, 11 * S)]
+M3 = _manifest(("a", "uno", "one"), ("b", "dos tres", "two three"), ("c", "cuatro", "four"))
+
+
+def test_total_latency_split_by_retract():
+    """G3 I2: total latency of the turns that had a retracted tentative vs the turns that had none."""
+    utts = [
+        _utt(0, 1 * S, vad_end=3 * S, stt=3 * S, tr=3 * S, tts=int(3.5 * S), text="uno"),  # cold: left out
+        _tentative(1, 5 * S, "dos", retracted=6 * S, vad_end=int(5.8 * S)),
+        _tentative(2, 5 * S, "dos tres", committed=int(7.4 * S), vad_end=int(7.2 * S), stt=int(7.3 * S),
+                   tr=int(7.5 * S), tts=int(8.2 * S)),
+        _tentative(3, 9 * S, "cuatro", committed=int(11.4 * S), vad_end=int(11.2 * S), stt=int(11.3 * S),
+                   tr=int(11.4 * S), tts=int(11.6 * S)),
+    ]
+    turn = _agg(_raw(THREE, utts), M3)["turn"]
+    assert turn["totalRetracted"]["count"] == 1
+    assert turn["totalRetracted"]["p50"] == pytest.approx(1200.0)  # 8.2 s - speechEnd 7.0 s
+    assert turn["totalClean"]["count"] == 1
+    assert turn["totalClean"]["p50"] == pytest.approx(600.0)  # 11.6 s - 11.0 s
+
+
 def test_old_runs_have_empty_turn_stats():
     turn = _agg(_raw([TWO[0]], [_utt(0, 1 * S, vad_end=3 * S, stt=3 * S, text="x")]), M2)["turn"]
     assert turn["retractPct"] == 0.0 and turn["commitMs"]["count"] == 0
+    assert turn["totalRetracted"]["count"] == 0
 
 
 def test_unassigned_counted_and_warned(tmp_path, capsys):

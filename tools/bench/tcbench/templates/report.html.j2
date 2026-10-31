@@ -104,22 +104,32 @@ Informative: not part of the baseline comparison.</p>
 <h2>Early processing</h2>
 <section class="rows">
 <table>
-<tr><th>profile/runLine</th><th class="num">committed</th><th class="num">retracted</th><th class="num">finals</th><th class="num">retract %</th><th class="num">commit p50 ms</th><th class="num">commit p90 ms</th></tr>
-{% for key, a in turns %}
+<tr><th>profile/runLine</th><th class="num">committed</th><th class="num">retracted</th><th class="num">finals</th><th class="num">retract %</th><th class="num">commit p50 ms</th><th class="num">commit p90 ms</th>
+<th class="num">total p50 ms, with retract</th><th class="num">total p90 ms, with retract</th>
+<th class="num">total p50 ms, none</th><th class="num">total p90 ms, none</th></tr>
+{% for key, a in turns %}{% set wr = a.turn.get("totalRetracted") or {} %}{% set nr = a.turn.get("totalClean") or {} %}
 <tr><td>{{ key }}</td><td class="num">{{ a.turn.committed }}</td><td class="num">{{ a.turn.retracted }}</td>
 <td class="num">{{ a.turn.finals }}</td><td class="num">{{ "%.1f"|format(a.turn.retractPct) }}</td>
 <td class="num">{{ "%.0f"|format(a.turn.commitMs.p50) if a.turn.commitMs.p50 is not none else "n/a" }}</td>
-<td class="num">{{ "%.0f"|format(a.turn.commitMs.p90) if a.turn.commitMs.p90 is not none else "n/a" }}</td></tr>
+<td class="num">{{ "%.0f"|format(a.turn.commitMs.p90) if a.turn.commitMs.p90 is not none else "n/a" }}</td>
+{% for t in [wr, nr] %}{% for q in ["p50", "p90"] %}
+<td class="num">{{ "%.0f"|format(t[q]) if t.get(q) is not none else "n/a" }}</td>{% endfor %}{% endfor %}</tr>
 {% endfor %}
 </table>
-<p class="muted">Retract %: retracted tentatives / (retracted + committed + finals). Commit ms: when the turn was
-confirmed minus the ground-truth speech end. Retracted utterances are left out of WER, cut rate and latency.
+<p class="muted">Retract %: retracted tentatives / (retracted + committed + finals); finals leave out dropped
+utterances. Commit ms: when the turn was confirmed minus the ground-truth speech end; a turn that went
+retract and then final (no commit) is not in it. Total with retract / none: the warm total latency of the
+turns whose utterance had at least one retracted tentative, and of the others (the cost of the wasted work).
+Retracted utterances are left out of WER, cut rate and latency.
 Informative: not part of the baseline comparison.</p>
 </section>
 {% endif %}
 
 <h2>Latency by stage (p50)</h2>
-<section><div class="chart" id="stages"></div></section>
+<section><div class="chart" id="stages"></div>
+{% if early.on %}<p class="muted">VAD (to first silence): with early processing the VAD stage ends when the
+tentative is emitted at the first silence, not at the end of the pause; do not compare it with the VAD stage
+of older runs.</p>{% endif %}</section>
 <h2>Total latency distribution</h2>
 <section><div class="chart" id="hist"></div></section>
 
@@ -188,7 +198,7 @@ Informative: not part of the baseline comparison.</p>
     mark: "bar", encoding: {
       y: { field: "key", type: "nominal", title: null },
       x: { field: "ms", type: "quantitative", aggregate: "sum", title: "p50 ms" },
-      color: { field: "stage", type: "nominal", sort: ["vad", "stt", "translate", "ttsFirstAudio"] },
+      color: { field: "stage", type: "nominal", sort: ["vad", "VAD (to first silence)", "stt", "translate", "ttsFirstAudio"] },
       order: { field: "order", type: "quantitative" },
       tooltip: [{ field: "key" }, { field: "stage" }, { field: "ms", format: ".0f" }] }, config: cfg });
   show("hist", { data: { values: data.totals }, height: 220,
