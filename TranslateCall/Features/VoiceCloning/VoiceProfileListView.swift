@@ -4,6 +4,9 @@ struct VoiceProfileListView: View {
     /// A translation session is running or starting: previews are disabled (F8.5.2 REQ-T-33).
     var isSessionActive: Bool = false
 
+    /// Qwen language preselected for a guided recording.
+    var defaultLanguage: String = "english"
+
     @EnvironmentObject private var profileManager: VoiceProfileManager
 
     @State private var showRecording = false
@@ -37,7 +40,8 @@ struct VoiceProfileListView: View {
         }
         .frame(minWidth: 400, minHeight: 300)
         .sheet(isPresented: $showRecording) {
-            recordingFlowSheet
+            VoiceRecordingFlowView(defaultLanguage: defaultLanguage) { showRecording = false }
+                .environmentObject(profileManager)
         }
         .confirmationDialog(
             "Delete Profile",
@@ -153,88 +157,6 @@ struct VoiceProfileListView: View {
         case .fair: return .yellow
         case .poor: return .red
         }
-    }
-
-    // MARK: - Recording flow sheet
-
-    private var recordingFlowSheet: some View {
-        NavigationStack {
-            recordingFlowContent
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") {
-                            profileManager.discardAndReRecord()
-                            showRecording = false
-                        }
-                    }
-                }
-        }
-        .frame(minWidth: 420, minHeight: 380)
-    }
-
-    @ViewBuilder
-    private var recordingFlowContent: some View {
-        switch profileManager.recordingState {
-        case .idle:
-            recordingIdleView
-        case .recording:
-            VoiceRecordingView()
-                .environmentObject(profileManager)
-        case .processing:
-            VStack(spacing: 12) {
-                ProgressView("Analyzing recording...")
-                    .padding()
-            }
-        case .reviewing(let result):
-            VoiceTranscriptView(result: result)
-                .environmentObject(profileManager)
-                .onChange(of: profileManager.recordingState.isIdle) { _, isIdle in
-                    if isIdle { showRecording = false }
-                }
-        case .saving:
-            VStack(spacing: 12) {
-                ProgressView("Saving profile...")
-                    .padding()
-            }
-        case .error(let message):
-            VStack(spacing: 16) {
-                Image(systemName: "exclamationmark.triangle")
-                    .font(.largeTitle)
-                    .foregroundStyle(.red)
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                Button("Try Again") {
-                    profileManager.discardAndReRecord()
-                }
-                .buttonStyle(.bordered)
-            }
-            .padding()
-        }
-    }
-
-    private var recordingIdleView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "mic.circle")
-                .font(.system(size: 48))
-                .foregroundStyle(.tint)
-
-            Text("Record Your Voice")
-                .font(.headline)
-
-            Text("Speak clearly for 10-30 seconds in a quiet room.\nThis recording will be used for voice cloning.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
-            Button("Start Recording") {
-                Task { await profileManager.startRecording() }
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-        }
-        .padding(24)
     }
 }
 

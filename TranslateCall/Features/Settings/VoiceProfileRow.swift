@@ -6,6 +6,7 @@ struct VoiceProfileRow: View {
     let isActive: Bool
     let onUse: () -> Void
     let onPlay: () -> Void
+    var onRecordShort: () -> Void = {}
     let onRename: () -> Void
     let onDelete: () -> Void
 
@@ -14,6 +15,7 @@ struct VoiceProfileRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(profile.name).lineLimit(1).truncationMode(.tail)
                 Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+                if isLong { longVoiceHint }
             }
             Spacer(minLength: Theme.Spacing.small)
             if isActive {
@@ -39,9 +41,41 @@ struct VoiceProfileRow: View {
         }
     }
 
+    /// REQ-QS-15: a long reference makes the clone answer slower.
+    private var isLong: Bool { Double(profile.durationSeconds) > QwenCloneConfiguration.longReferenceSeconds }
+
+    private var longVoiceHint: some View {
+        HStack(spacing: Theme.Spacing.small) {
+            Image(systemName: "hourglass").font(.caption).foregroundStyle(Theme.Status.orange)
+            Text("Long sample: a short recording answers faster")
+                .font(.caption).foregroundStyle(.secondary)
+            Button("Record short sample", action: onRecordShort)
+                .buttonStyle(.link).font(.caption)
+        }
+    }
+
     private var subtitle: String {
         let date = profile.createdAt.formatted(date: .abbreviated, time: .omitted)
         let seconds = Int(profile.durationSeconds.rounded())
         return String(localized: "recorded \(date) · \(seconds) s")
+    }
+}
+
+#Preview("Long voice, light") { VoiceProfileRow.longVoiceFixture().preferredColorScheme(.light) }
+#Preview("Long voice, dark") { VoiceProfileRow.longVoiceFixture().preferredColorScheme(.dark) }
+
+extension VoiceProfileRow {
+    static func longVoiceFixture(seconds: Float = 48) -> some View {
+        let header = VoiceProfileHeader(
+            id: UUID(), name: "Santi", createdAt: Date().addingTimeInterval(-6 * 86_400),
+            durationSeconds: seconds, sampleRate: 24_000, sampleCount: Int(seconds) * 24_000,
+            quality: VoiceQualityMetrics(peakRmsDbfs: -18, hasClipping: false, voicedDurationSeconds: seconds,
+                                         grade: .good),
+            formatVersion: 1)
+        return Form {
+            VoiceProfileRow(profile: header, isActive: true, onUse: {}, onPlay: {}, onRename: {}, onDelete: {})
+        }
+        .formStyle(.grouped)
+        .frame(width: 560, height: 120)
     }
 }

@@ -3,7 +3,7 @@ import SwiftUI
 struct VoiceRecordingView: View {
     @EnvironmentObject private var profileManager: VoiceProfileManager
 
-    @State private var levels: [Float] = Array(repeating: -60, count: 60)
+    @State private var levels: [Float] = Array(repeating: -60, count: RecordingPanel.levelCount)
     @State private var levelTask: Task<Void, Never>?
 
     private var elapsedSeconds: Float {
@@ -13,13 +13,49 @@ struct VoiceRecordingView: View {
         return 0
     }
 
+    var body: some View {
+        RecordingPanel(
+            mode: profileManager.recordingMode,
+            elapsedSeconds: elapsedSeconds,
+            levels: levels,
+            onStop: { Task { await profileManager.stopRecording() } }
+        )
+        .onAppear { startLevelObservation() }
+        .onDisappear { levelTask?.cancel() }
+    }
+
+    private func startLevelObservation() {
+        levelTask = Task { @MainActor in
+            for await level in profileManager.recorder.levelStream {
+                if Task.isCancelled { break }
+                levels.append(level)
+                if levels.count > RecordingPanel.levelCount {
+                    levels.removeFirst(levels.count - RecordingPanel.levelCount)
+                }
+            }
+        }
+    }
+}
+
+/// The recording screen itself, free of the manager so previews and tests render it from fixtures.
+/// Guided mode shows the text to read, large; progress and labels follow `mode.maxSeconds`.
+struct RecordingPanel: View {
+    static let levelCount = 60
+
+    let mode: RecordingMode
+    let elapsedSeconds: Float
+    let levels: [Float]
+    let onStop: () -> Void
+
+    private var maxSeconds: Int { Int(mode.maxSeconds) }
+
     private var progress: Double {
-        Double(min(elapsedSeconds, 30)) / 30.0
+        Double(min(Double(elapsedSeconds), mode.maxSeconds) / mode.maxSeconds)
     }
 
     private var timeLabel: String {
         let secs = Int(elapsedSeconds)
-        return String(format: "%d:%02d / 0:30", secs / 60, secs % 60)
+        return String(format: "%d:%02d / %d:%02d", secs / 60, secs % 60, maxSeconds / 60, maxSeconds % 60)
     }
 
     var body: some View {
@@ -27,10 +63,11 @@ struct VoiceRecordingView: View {
             Text("Record Your Voice")
                 .font(.headline)
 
-            Text("Read the transcript aloud in a quiet environment.\nRecording stops automatically at 30 seconds.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            instructions
+
+            if let text = mode.guidedText {
+                guidedTextCard(text)
+            }
 
             // Progress bar
             VStack(spacing: 4) {
@@ -50,15 +87,35 @@ struct VoiceRecordingView: View {
             // Live quality indicator
             liveLevelBadge
 
-            Button("Stop Recording") {
-                Task { await profileManager.stopRecording() }
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            Button("Stop Recording", action: onStop)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
         }
         .padding(24)
-        .onAppear { startLevelObservation() }
-        .onDisappear { levelTask?.cancel() }
+    }
+
+    private var instructions: some View {
+        VStack(spacing: 2) {
+            if mode.guidedText == nil {
+                Text("Read the transcript aloud in a quiet environment.")
+            } else {
+                Text("Read the text below aloud in a quiet environment.")
+            }
+            Text("Recording stops automatically at \(maxSeconds) seconds.")
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+    }
+
+    private func guidedTextCard(_ text: String) -> some View {
+        Text(text)
+            .font(.title3)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity)
+            .padding(Theme.Spacing.large)
+            .background(Theme.soft(Theme.accent), in: RoundedRectangle(cornerRadius: Theme.Radius.large))
     }
 
     // MARK: - Waveform
@@ -120,24 +177,20 @@ struct VoiceRecordingView: View {
                 .foregroundStyle(.secondary)
         }
     }
-
-    // MARK: - Level observation
-
-    private func startLevelObservation() {
-        levelTask = Task { @MainActor in
-            for await level in profileManager.recorder.levelStream {
-                if Task.isCancelled { break }
-                levels.append(level)
-                if levels.count > 60 {
-                    levels.removeFirst(levels.count - 60)
-                }
-            }
-        }
-    }
 }
 
-#Preview {
-    VoiceRecordingView()
-        .environmentObject(VoiceProfileManager())
-        .frame(width: 400)
+#Preview("Guided, light") { RecordingPanel.guidedFixture().preferredColorScheme(.light) }
+#Preview("Guided, dark") { RecordingPanel.guidedFixture().preferredColorScheme(.dark) }
+#Preview("Free") {
+    RecordingPanel(mode: .free, elapsedSeconds: 12, levels: RecordingPanel.fixtureLevels, onStop: {})
+        .frame(width: 440)
+}
+
+extension RecordingPanel {
+    static let fixtureLevels: [Float] = (0 ..< levelCount).map { -45 + Float($0 % 9) * 4 }
+
+    static func guidedFixture(language: String = "spanish") -> some View {
+        RecordingPanel(mode: .guided(language: language), elapsedSeconds: 5, levels: fixtureLevels, onStop: {})
+            .frame(width: 440)
+    }
 }

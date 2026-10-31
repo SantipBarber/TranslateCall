@@ -4,6 +4,8 @@ struct VoiceTranscriptView: View {
     @EnvironmentObject private var profileManager: VoiceProfileManager
 
     let result: RecordingResult
+    /// The saved voice becomes the active one (the long-voice hint's short sample).
+    var makeActive = false
 
     @State private var profileName: String = ""
     @State private var transcript: String = ""
@@ -88,7 +90,8 @@ struct VoiceTranscriptView: View {
                             try? await profileManager.saveProfile(
                                 name: profileName,
                                 transcript: transcript,
-                                result: result
+                                result: result,
+                                makeActive: makeActive
                             )
                         }
                     }
