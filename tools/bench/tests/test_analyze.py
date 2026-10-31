@@ -285,6 +285,49 @@ def test_trailing_dropped_seq_does_not_hijack():
     assert only_dropped["latencyCold"]["vad"]["count"] == 0
 
 
+def _tentative(seq, start, text, committed=None, retracted=None, **kw):
+    utt = _utt(seq, start, **kw, text=text)
+    if committed is not None:
+        utt["events"]["committed"] = committed
+    if retracted is not None:
+        utt["events"]["retracted"] = retracted
+    return utt
+
+
+def test_retracted_excluded():
+    utts = [
+        _tentative(0, 1 * S, "hola", retracted=2 * S, vad_end=int(1.8 * S), stt=int(1.9 * S)),
+        _tentative(1, 1 * S, "hola mundo", committed=int(3.4 * S), vad_end=int(3.2 * S), stt=int(3.3 * S),
+                   tr=int(3.5 * S), tts=int(3.9 * S)),
+    ]
+    agg = _agg(_raw([TWO[0]], utts), _manifest(("a", "hola mundo", "hello world")))
+    assert agg["cutRate"] == 0.0
+    assert agg["wer"] == 0.0
+    assert agg["unassigned"] == 0 and agg["missed"] == 0
+    # the retracted seq 0 is no "first utterance": seq 1 is the cold one
+    assert agg["latencyCold"]["total"]["p50"] == pytest.approx(900.0)
+    assert agg["latency"]["total"]["count"] == 0
+
+
+def test_turn_stats():
+    utts = [
+        _tentative(0, 1 * S, "hola", retracted=2 * S, vad_end=int(1.8 * S)),
+        _tentative(1, 1 * S, "hola mundo", committed=int(3.4 * S), vad_end=int(3.2 * S)),
+        _utt(2, 5 * S, vad_end=7 * S, stt=7 * S, text="buenos"),
+        _utt(3, int(5.5 * S), vad_end=7 * S, stt=7 * S, text="dias"),
+    ]
+    turn = _agg(_raw(TWO, utts), M2)["turn"]
+    assert (turn["retracted"], turn["committed"], turn["finals"]) == (1, 1, 2)
+    assert turn["retractPct"] == pytest.approx(25.0)
+    assert turn["commitMs"]["p50"] == pytest.approx(400.0)  # committed 3.4 s - speechEnd 3.0 s
+    assert turn["commitMs"]["count"] == 1
+
+
+def test_old_runs_have_empty_turn_stats():
+    turn = _agg(_raw([TWO[0]], [_utt(0, 1 * S, vad_end=3 * S, stt=3 * S, text="x")]), M2)["turn"]
+    assert turn["retractPct"] == 0.0 and turn["commitMs"]["count"] == 0
+
+
 def test_unassigned_counted_and_warned(tmp_path, capsys):
     raw = _raw(TWO, [_utt(0, -1 * S, dropped="stt-empty"), _utt(1, 1 * S, vad_end=3 * S, stt=3 * S, text="x")])
     assert _agg(raw, M2)["unassigned"] == 1

@@ -243,3 +243,15 @@ def test_clone_table_shows_spoken_share(tmp_path, monkeypatch):
 def test_no_clone_table_without_clone(tmp_path, monkeypatch):
     run_dir, manifest = _build(tmp_path, monkeypatch)
     assert "Voice clone" not in _go(run_dir, manifest, tmp_path).read_text()
+
+
+def test_early_processing_table_only_with_tentatives(tmp_path, monkeypatch):
+    run_dir, manifest = _build(tmp_path, monkeypatch)
+    assert "Early processing" not in _go(run_dir, manifest, tmp_path).read_text()
+    raw_path = next(run_dir.rglob("raw.json"))
+    raw = json.loads(raw_path.read_text())
+    raw["utterances"][0]["events"]["committed"] = raw["utterances"][0]["events"]["vadEnd"]
+    raw_path.write_text(json.dumps(raw))
+    analyze.run(run_dir, manifest)
+    html = _go(run_dir, manifest, tmp_path).read_text()
+    assert "Early processing" in html and "retract %" in html

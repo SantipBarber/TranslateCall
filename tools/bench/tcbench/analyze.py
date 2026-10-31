@@ -54,6 +54,8 @@ def assign(raw: dict) -> dict[str, list[dict]]:
     clips = sorted(raw["clips"], key=lambda c: c["feedStartNs"])
     out: dict[str, list[dict]] = {c["id"]: [] for c in clips}
     for utt in sorted(raw["utterances"], key=lambda u: u["seq"]):
+        if _retracted(utt):
+            continue
         start = utt["events"].get("speechStart")
         if start is None:
             continue
@@ -99,6 +101,35 @@ def _cut_rate(cut_clips: int, clips: int, incomplete_turn: int = 0) -> float:
     """
     denominator = clips + incomplete_turn
     return (cut_clips + incomplete_turn) / denominator if denominator else 0.0
+
+
+def _retracted(utt: dict) -> bool:
+    """A tentative segment the VAD withdrew (early processing): the utterance never was a turn."""
+    return "retracted" in utt["events"]
+
+
+def _turn_stats(raw_utts: list[dict], assigned: dict[str, list[dict]], speech_ends: dict[str, int]) -> dict[str, Any]:
+    """Early-processing stats of a line (informative; never in ``compare``).
+
+    ``retractPct`` is retracted / (retracted + committed + finals) in percent, where finals are the
+    utterances that were never tentative; ``commitMs`` is ``committed`` minus the ground-truth speech end
+    of the clip.  Older runs have neither stage: 0 % and an empty summary.
+    """
+    retracted = sum(_retracted(u) for u in raw_utts)
+    committed = sum("committed" in u["events"] and not _retracted(u) for u in raw_utts)
+    finals = sum("committed" not in u["events"] and not _retracted(u) for u in raw_utts)
+    total = retracted + committed + finals
+    commit_ms = [
+        (u["events"]["committed"] - speech_ends[cid]) * 1e-6
+        for cid, utts in assigned.items() for u in utts if "committed" in u["events"]
+    ]
+    return {
+        "retracted": retracted,
+        "committed": committed,
+        "finals": finals,
+        "retractPct": retracted / total * 100.0 if total else 0.0,
+        "commitMs": summary(commit_ms),
+    }
 
 
 def _dropped(utt: dict) -> bool:
@@ -187,6 +218,9 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False, tier: str | Non
 
     assigned = assign(raw)
     target = target_lang(raw.get("runLine", ""))
+    # Retracted tentatives are not turns: out of clip matching, WER, cut rate, latency and every count.
+    all_utts = raw["utterances"]
+    raw = {**raw, "utterances": [u for u in all_utts if not _retracted(u)]}
     first_seq = min((u["seq"] for u in raw["utterances"] if not _dropped(u)), default=None)
     unassigned = 0 if tier is not None else len(raw["utterances"]) - sum(len(v) for v in assigned.values())
 
@@ -276,6 +310,7 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False, tier: str | Non
         "comet": comet_result,
         "fallbacks": fallbacks,
         "unassigned": unassigned,
+        "turn": _turn_stats(all_utts, assigned, {c["id"]: c["speechEndNs"] for c in clips}),
         **({"clone": clone} if (clone := _clone_stats(included_utts, raw["meta"].get("settings"), exp_tts)) else {}),
     }
 

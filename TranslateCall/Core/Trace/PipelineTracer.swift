@@ -90,6 +90,22 @@ nonisolated final class PipelineTracer: Sendable {
                                     "trailingSilenceMs": Self.ms(trailingSilence)])
     }
 
+    /// The tentative segment that started at `capturedAt` was confirmed: stamps its (latest) utterance.
+    func segmentCommitted(capturedAt: Date) {
+        let stamp = now()
+        let seq = state.withLock { $0.open.last { $0.capturedAt == capturedAt }?.seq }
+        if let seq { emit(seq, .committed, at: stamp) }
+    }
+
+    /// The tentative segment that started at `capturedAt` was withdrawn: its (latest) utterance ends
+    /// as `retracted` and is forgotten, so the next tentative of the same utterance (same `capturedAt`)
+    /// opens its own and receives the STT result.
+    func segmentRetracted(capturedAt: Date) {
+        let stamp = now()
+        let seq = state.withLock { $0.open.last { $0.capturedAt == capturedAt }?.seq }
+        if let seq { finish(seq, .retracted, at: stamp) }
+    }
+
     /// STT finished the segment that started at `capturedAt`. Older segments still waiting were
     /// dropped by STT (empty or below the confidence floor). An empty text ends the utterance.
     func transcribed(capturedAt: Date, text: String, engine: String, confidence: Float) {

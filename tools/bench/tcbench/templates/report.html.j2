@@ -97,6 +97,27 @@ Informative: not part of the baseline comparison.</p>
 </section>
 {% endif %}
 
+{% set turns = aggregates.items()|selectattr("1.turn")|list %}
+{% set early = namespace(on=false) %}
+{% for key, a in turns %}{% if a.turn.committed or a.turn.retracted %}{% set early.on = true %}{% endif %}{% endfor %}
+{% if early.on %}
+<h2>Early processing</h2>
+<section class="rows">
+<table>
+<tr><th>profile/runLine</th><th class="num">committed</th><th class="num">retracted</th><th class="num">finals</th><th class="num">retract %</th><th class="num">commit p50 ms</th><th class="num">commit p90 ms</th></tr>
+{% for key, a in turns %}
+<tr><td>{{ key }}</td><td class="num">{{ a.turn.committed }}</td><td class="num">{{ a.turn.retracted }}</td>
+<td class="num">{{ a.turn.finals }}</td><td class="num">{{ "%.1f"|format(a.turn.retractPct) }}</td>
+<td class="num">{{ "%.0f"|format(a.turn.commitMs.p50) if a.turn.commitMs.p50 is not none else "n/a" }}</td>
+<td class="num">{{ "%.0f"|format(a.turn.commitMs.p90) if a.turn.commitMs.p90 is not none else "n/a" }}</td></tr>
+{% endfor %}
+</table>
+<p class="muted">Retract %: retracted tentatives / (retracted + committed + finals). Commit ms: when the turn was
+confirmed minus the ground-truth speech end. Retracted utterances are left out of WER, cut rate and latency.
+Informative: not part of the baseline comparison.</p>
+</section>
+{% endif %}
+
 <h2>Latency by stage (p50)</h2>
 <section><div class="chart" id="stages"></div></section>
 <h2>Total latency distribution</h2>

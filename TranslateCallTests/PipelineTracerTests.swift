@@ -119,6 +119,27 @@ struct PipelineTracerTests {
         #expect(sink.stages(of: 0).suffix(2) == [.ttsFirstBuffer, .ttsEnd])
     }
 
+    @Test func retractedUtteranceForgotten() {
+        let tracer = makeTracer()
+        tracer.segmentClosed(capturedAt: date0, audioSeconds: 1)
+        tracer.segmentRetracted(capturedAt: date0)
+        #expect(tracer.openSeqs.isEmpty)
+        tracer.segmentClosed(capturedAt: date0, audioSeconds: 2)   // the same utterance, a longer tentative
+        tracer.transcribed(capturedAt: date0, text: "hola", engine: "x", confidence: 1)
+        #expect(sink.stages(of: 0) == [.speechStart, .vadEnd, .retracted])
+        #expect(sink.stages(of: 1) == [.speechStart, .vadEnd, .sttFinal])
+        #expect(sink.event(1, .sttFinal)?.detail["text"] == "hola")
+    }
+
+    @Test func committedStamped() {
+        let tracer = makeTracer()
+        tracer.segmentClosed(capturedAt: date0, audioSeconds: 1)
+        tracer.segmentCommitted(capturedAt: date0)
+        tracer.transcribed(capturedAt: date0, text: "hola", engine: "x", confidence: 1)
+        #expect(sink.stages(of: 0) == [.speechStart, .vadEnd, .committed, .sttFinal])
+        #expect(tracer.openSeqs == [0])
+    }
+
     @Test func closeOpenDropsWhatIsLeft() {
         let tracer = makeTracer()
         tracer.segmentClosed(capturedAt: date0, audioSeconds: 1)

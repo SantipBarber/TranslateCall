@@ -24,6 +24,27 @@ struct TracingDecoratorTests {
         #expect(await inner.deactivateCalled)
     }
 
+    @Test(arguments: [true, false])
+    func vadStampsBoundariesWhicheverArrivesFirst(boundaryFirst: Bool) async throws {
+        let inner = MockVADService(engine: .silero)
+        let vad = TracingVADService(wrapping: inner, tracer: tracer)
+        try await vad.activate(stream: AsyncStream { $0.finish() })
+        let segment = SpeechSegment(audio: makePCMBuffer(frames: 16_000), capturedAt: Date(), id: 7, kind: .tentative)
+        let received = Task { () -> SegmentBoundary? in for await got in vad.boundaryEvents { return got }; return nil }
+        let first = Task { () -> UInt64? in for await got in vad.speechSegments { return got.id }; return nil }
+        if boundaryFirst { await inner.injectBoundary(.retract(7)) }
+        await inner.injectSpeechSegment(segment)
+        if !boundaryFirst {
+            #expect(await first.value == 7)
+            await inner.injectBoundary(.retract(7))
+        }
+        #expect(await received.value == .retract(7))
+        // The boundary and the segment travel on two streams: wait for the tracer to see both.
+        while sink.stages(of: 0).last != .retracted { await Task.yield() }
+        #expect(sink.stages(of: 0) == [.speechStart, .vadEnd, .retracted])
+        await vad.deactivate()
+    }
+
     @Test func sttForwardsResultsAndStampsThem() async throws {
         let tracer = tracer
         let date = Date()
