@@ -78,6 +78,8 @@ protocol VADService: Actor {
     nonisolated var vadStateEvents: AsyncStream<Bool> { get }
 
     /// Commit or retract of each `.tentative` segment, by id (FR-QS.5). Consumed by the coordinator.
+    /// A separate stream from `speechSegments`, so a boundary may arrive before its segment
+    /// (`TracingVADService` adds a hop to segments only): consumers must match them by id.
     nonisolated var boundaryEvents: AsyncStream<SegmentBoundary> { get }
 
     /// The engine backing this instance.

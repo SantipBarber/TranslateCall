@@ -44,6 +44,8 @@ actor SileroVADService: VADService {
     // History buffer for pre-speech context (design §11)
     private var historyBuffer: [Float] = []
     private let historyCapacity: Int  // speechPadding samples + 1 chunk ≈ 5700
+    /// FluidAudio's silence threshold (`threshold − 0.15`): chunks at or above it are not clear silence.
+    private let negativeThreshold: Float
 
     // MARK: - Init
 
@@ -51,6 +53,8 @@ actor SileroVADService: VADService {
         let config = config.validated()   // FluidAudio traps on inconsistent values (T3)
         self.config = config
         self.historyCapacity = Int(config.speechPadding * 16_000) + VadManager.chunkSize + 512
+        self.negativeThreshold = config.fluidSegmentationConfig
+            .effectiveNegativeThreshold(baseThreshold: config.sileroThreshold)
 
         var segCont: AsyncStream<SpeechSegment>.Continuation?
         var stateCont: AsyncStream<Bool>.Continuation?
@@ -151,6 +155,7 @@ actor SileroVADService: VADService {
 
         let previousTempEnd = vadStreamState.tempEndSample
         vadStreamState = result.state
+        tentatives.observe(probability: result.probability, negativeThreshold: negativeThreshold)
         trackTentative(previousTempEnd: previousTempEnd)
 
         guard let event = result.event else { return }
@@ -172,15 +177,25 @@ actor SileroVADService: VADService {
             logger.debug("Silero: speech start at sample \(event.sampleIndex)")
 
         case .speechEnd:
-            if let commit = tentatives.ended() {
-                yieldBoundary(commit)   // the open tentative already holds this utterance
-            } else {
-                await yieldUtterance()
-            }
+            await closeUtterance()
             utteranceBuffer = []
             utteranceStartDate = nil
             stateContinuation?.yield(false)
             logger.debug("Silero: speech end at sample \(event.sampleIndex)")
+        }
+    }
+
+    /// At `.speechEnd`: commit the open tentative, or yield a `.final` (after retracting the
+    /// tentative when a soft chunk followed it, REQ-QS-42).
+    private func closeUtterance() async {
+        switch tentatives.ended() {
+        case .commit(let id)?:
+            yieldBoundary(.commit(id))   // the open tentative already holds this utterance
+        case .retract(let id)?:
+            yieldBoundary(.retract(id))  // a soft chunk came after it: the final carries it
+            await yieldUtterance()
+        case nil:
+            await yieldUtterance()
         }
     }
 

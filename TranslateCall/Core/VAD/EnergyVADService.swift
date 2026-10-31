@@ -80,8 +80,8 @@ actor EnergyVADService: VADService {
         flush()
     }
 
-    /// Ends the three output streams, so a test can read everything yielded so far to the end.
-    func finishStreams() {
+    /// Test-only: ends the three output streams, so a test can read everything yielded so far to the end.
+    func finishStreamsForTesting() {
         segmentContinuation?.finish()
         stateContinuation?.finish()
         boundaryContinuation?.finish()
@@ -153,6 +153,7 @@ actor EnergyVADService: VADService {
         silenceSamples += count
         if reachedTentative { yieldTentative() }
         guard silenceSamples >= Int(config.minSilenceDuration * sampleRate) else { return .continuing }
+        // No `observe` here: any buffer above the energy threshold already retracted the tentative.
         if let commit = tentatives.ended() {
             yieldBoundary(commit)
             utteranceBuffer = []

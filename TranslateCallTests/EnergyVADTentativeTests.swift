@@ -5,7 +5,7 @@ import Testing
 /// Energy VAD early processing: a tentative segment at 0.2 s of silence, then commit or retract
 /// (REQ-QS-40/43/44). Synthetic 16 kHz buffers, no audio device and no fixed sleeps: each test
 /// waits for the last "speech ended" event, then ends the output streams and reads them whole.
-@Suite(.serialized)
+@Suite(.serialized, .timeLimit(.minutes(1)))
 @MainActor
 struct EnergyVADTentativeTests {
 
@@ -24,6 +24,7 @@ struct EnergyVADTentativeTests {
         #expect(segments.map(\.kind) == [.tentative])
         #expect(segments.map(\.id) == [1])
         #expect(boundaries == [.commit(1)])
+        #expect(abs((segments.first?.seconds ?? 0) - 1.2) < 0.01, "1 s of tone + the 0.2 s that opened it")
     }
 
     @Test func hesitation() async throws {
@@ -45,6 +46,23 @@ struct EnergyVADTentativeTests {
         #expect(boundaries.isEmpty)
     }
 
+    @Test func flushWithOpenTentative() async throws {
+        let (segments, boundaries) = try await Self.run(Self.tone(1.0) + Self.silence(0.3))
+        #expect(segments.map(\.kind) == [.tentative, .final])
+        #expect(segments.map(\.id) == [1, 2])
+        #expect(boundaries == [.retract(1)])
+    }
+
+    @Test func forceEmitWithOpenTentative() async throws {
+        var config = VADConfiguration()
+        config.maxSpeechDuration = 1.25
+        let (segments, boundaries) = try await Self.run(Self.tone(1.0) + Self.silence(0.4), config: config)
+        #expect(segments.map(\.kind) == [.tentative, .final])
+        #expect(segments.map(\.id) == [1, 2])
+        #expect(boundaries == [.retract(1)])
+        #expect(abs((segments.last?.seconds ?? 0) - 1.3) < 0.01, "force-emitted at the 1.25 s limit")
+    }
+
     // MARK: - Helpers
 
     /// Feeds `samples` in 0.1 s buffers, waits for the last speech-end event, then drains the streams.
@@ -55,7 +73,7 @@ struct EnergyVADTentativeTests {
         let states = vad.vadStateEvents
         try await vad.activate(stream: stream(of: samples))
         for await active in states where !active { break }
-        await vad.finishStreams()
+        await vad.finishStreamsForTesting()
         var segments: [Emitted] = []
         for await segment in vad.speechSegments {
             let seconds = Double(segment.audio.frameLength) / segment.audio.format.sampleRate

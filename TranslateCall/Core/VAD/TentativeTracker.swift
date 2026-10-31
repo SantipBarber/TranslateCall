@@ -25,13 +25,24 @@ nonisolated enum SegmentBoundary: Sendable, Equatable {
 nonisolated struct TentativeTracker: Sendable {
     private var lastID: UInt64 = 0
     private var openID: UInt64?
+    /// Something since the tentative opened was not clear silence (Silero hysteresis band).
+    private var heardSinceOpen = false
 
     /// Opens a tentative and returns its id; nil when one is already open.
     mutating func silenceStarted() -> UInt64? {
         guard openID == nil else { return nil }
         lastID += 1
         openID = lastID
+        heardSinceOpen = false
         return lastID
+    }
+
+    /// Records a Silero chunk processed while a tentative is open. A probability at or above the
+    /// negative threshold (FluidAudio's `threshold − 0.15`) neither retracts nor counts as silence,
+    /// so it may be a soft syllable the tentative lacks: `ended()` then retracts instead of committing.
+    mutating func observe(probability: Float, negativeThreshold: Float) {
+        guard openID != nil, probability >= negativeThreshold else { return }
+        heardSinceOpen = true
     }
 
     /// Speech resumed before the pause completed: retracts the open tentative, if any.
@@ -39,9 +50,12 @@ nonisolated struct TentativeTracker: Sendable {
         close().map(SegmentBoundary.retract)
     }
 
-    /// The pause completed: commits the open tentative, if any (no new segment is needed).
+    /// The pause completed: `.commit` for the open tentative (no new segment is needed), or
+    /// `.retract` when `observe` saw possible speech after it (the caller then yields a `.final`
+    /// with the whole utterance, REQ-QS-42); nil when none is open.
     mutating func ended() -> SegmentBoundary? {
-        close().map(SegmentBoundary.commit)
+        let heard = heardSinceOpen
+        return close().map(heard ? SegmentBoundary.retract : SegmentBoundary.commit)
     }
 
     /// A force-emit or a flush replaces the open tentative with a final: retracts it, if any.
@@ -56,7 +70,7 @@ nonisolated struct TentativeTracker: Sendable {
     }
 
     private mutating func close() -> UInt64? {
-        defer { openID = nil }
+        defer { openID = nil; heardSinceOpen = false }
         return openID
     }
 }
