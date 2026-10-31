@@ -262,4 +262,81 @@ struct QwenCloneModelManagerTests {
             return
         }
     }
+
+    // MARK: - Warm-up (REQ-QS-31)
+
+    private let profileId = UUID()
+
+    /// A store holding the active profile, with reference audio and transcript.
+    private func profileStore() async -> MockVoiceProfileStore {
+        let header = VoiceProfileHeader(
+            id: profileId, name: "Test", createdAt: .now, durationSeconds: 5, sampleRate: 24_000,
+            sampleCount: 4,
+            quality: VoiceQualityMetrics(peakRmsDbfs: -20, hasClipping: false, voicedDurationSeconds: 5, grade: .good),
+            formatVersion: 1
+        )
+        let store = MockVoiceProfileStore()
+        await store.forceStore(VoiceProfile(header: header, samples: [0.1, 0.2, 0.3, 0.4], transcript: "Hola"))
+        return store
+    }
+
+    @Test("the warm-up runs one short sentence through the gate and drains it; the gate is idle after it")
+    func warmUpDrainsThroughGate() async throws {
+        let gate = MLXInferenceGate(clock: TestClock())
+        let inferrer = MockQwenCloneInferrer()
+        await inferrer.setStubStream([.audio([0.1]), .audio([0.2]), .info(tokens: 4, tokensPerSecond: 20)])
+        let manager = makeManager(inferrer: inferrer, gate: gate)
+        try await manager.ensureReady()
+
+        await manager.warmUp(profileStore: await profileStore(), activeProfileId: profileId,
+                             locale: Locale(identifier: "es-ES"))
+
+        #expect(inferrer.streamCallCount == 1)
+        #expect(await inferrer.lastText == "Hola.")
+        #expect(await inferrer.lastLanguage == "spanish")
+        #expect(await inferrer.lastReferenceAudioCount == 4)
+        #expect(!(await gate.isBusy))
+    }
+
+    @Test("the warm-up text follows the target locale")
+    func warmUpText() {
+        #expect(QwenCloneModelManager.warmUpText(for: Locale(identifier: "es-MX")) == "Hola.")
+        #expect(QwenCloneModelManager.warmUpText(for: Locale(identifier: "en-US")) == "Hello.")
+        #expect(QwenCloneModelManager.warmUpText(for: Locale(identifier: "de-DE")) == "Hello.")
+    }
+
+    @Test("no warm-up while the model is not loaded, and a failing profile load is swallowed")
+    func warmUpSkipsQuietly() async throws {
+        let inferrer = MockQwenCloneInferrer()
+        let manager = makeManager(inferrer: inferrer, gate: MLXInferenceGate(clock: TestClock()))
+        await manager.warmUp(profileStore: await profileStore(), activeProfileId: profileId,
+                             locale: Locale(identifier: "en-US"))
+        #expect(inferrer.streamCallCount == 0)
+
+        try await manager.ensureReady()
+        await manager.warmUp(profileStore: MockVoiceProfileStore(), activeProfileId: profileId,
+                             locale: Locale(identifier: "en-US"))
+        #expect(inferrer.streamCallCount == 0, "no profile: nothing to warm with")
+    }
+
+    @Test("a cancelled warm-up returns at once; the gate drains the model, then opens (REQ-QS-06)")
+    func cancelledWarmUpDrains() async throws {
+        let gate = MLXInferenceGate(clock: TestClock())
+        let inferrer = MockQwenCloneInferrer()
+        await inferrer.setStubStream([.audio([0.1]), .audio([0.2])], holdBefore: 1)
+        let manager = makeManager(inferrer: inferrer, gate: gate)
+        try await manager.ensureReady()
+        let store = await profileStore()
+
+        let warmUp = Task {
+            await manager.warmUp(profileStore: store, activeProfileId: profileId, locale: Locale(identifier: "en-US"))
+        }
+        #expect(await waitUntil { inferrer.streamCallCount == 1 })
+        warmUp.cancel()
+        await warmUp.value
+
+        #expect(await waitUntil { await gate.isHeldByAbandonedStream })
+        inferrer.gate.open()
+        #expect(await waitUntil { !(await gate.isBusy) })
+    }
 }

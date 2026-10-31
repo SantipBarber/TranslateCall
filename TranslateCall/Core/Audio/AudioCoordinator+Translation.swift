@@ -99,6 +99,14 @@ extension AudioCoordinator {
         await incomingTranslationService.warmUp(from: target, to: source)
     }
 
+    /// Starts the voice clone warm-up (REQ-QS-31) as an outgoing task, so stop() cancels it; the gate then
+    /// drains the model's run on its own. Nothing waits for it.
+    func startVoiceCloneWarmUp() {
+        guard let warmUp = voiceCloneWarmUp else { return }
+        let locale = Locale(identifier: languagePairManager.targetLanguage.minimalIdentifier)
+        outgoingTasks.append(Task { await warmUp(locale) })
+    }
+
     /// A sentence could not be translated (F8.5.4 D-1). The bridge already retried once, so the
     /// sentence is skipped with a notice and the direction moves on (REQ-TR-20). Errors that will
     /// repeat for every sentence raise the alert, once per session per kind (REQ-TR-21).

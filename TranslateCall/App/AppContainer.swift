@@ -62,6 +62,8 @@ final class AppContainer: ObservableObject {
             languagePairManager: lpm, isTranslationPairInstalled: AppleTranslationService.isInstalled   // REQ-TR-06
         )
 
+        coordinator.voiceCloneWarmUp = { [ttsSelector] in await ttsSelector.warmUpVoiceClone(for: $0) }
+
         let voiceProfiles = VoiceProfileManager(store: VoiceProfileStore(), recorder: VoiceProfileRecorder(),
                                                 isSessionActive: { audioManager.isCapturing })
         outgoingBridgeModel = outBridge

@@ -27,6 +27,28 @@ private func transcript(_ text: String) -> TranscriptionResult {
 @Suite("AudioCoordinator TTS", .serialized) @MainActor
 struct AudioCoordinatorTTSTests {
 
+    @Test("the voice clone warm-up starts with the session, never delays it, and stop cancels it (REQ-QS-31)")
+    func voiceCloneWarmUpInBackground() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks, noticeClock: TestClock())
+        let locales = LockedArray<String>()
+        let cancelled = LockedArray<Bool>()
+        coordinator.voiceCloneWarmUp = { locale in
+            locales.append(locale.identifier)
+            while !Task.isCancelled { try? await Task.sleep(for: .milliseconds(5)) }
+            cancelled.append(true)
+        }
+
+        await coordinator.start()   // returns while the warm-up still runs
+
+        #expect(coordinator.isOutgoingActive)
+        #expect(await waitUntil { locales.values.count == 1 })
+        #expect(locales.values == [mocks.languagePairManager.targetLanguage.minimalIdentifier])
+        #expect(cancelled.values.isEmpty)
+        await coordinator.stop()
+        #expect(await waitUntil { cancelled.values == [true] })
+    }
+
     @Test("outgoing sentences are queued: speak is never preceded by stopSpeaking (REQ-T-40, D-3)")
     func outgoingDoesNotInterrupt() async {
         let mocks = CoordinatorMocks()

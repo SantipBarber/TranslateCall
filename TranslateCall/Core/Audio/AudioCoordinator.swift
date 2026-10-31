@@ -119,6 +119,10 @@ final class AudioCoordinator: ObservableObject {
 
     let languagePairManager: LanguagePairManager
 
+    /// Warms the outgoing voice clone for `locale` (REQ-QS-31); `AppContainer` wires it to the TTS selector,
+    /// which skips it when the clone is not the outgoing voice. Nil (tests, previews): no warm-up.
+    var voiceCloneWarmUp: ((Locale) async -> Void)?
+
     // MARK: - Conversation state and mic echo gate (F8.5.3)
 
     /// How the user listens (from `ConversationSettings`); applied live to the gate (REQ-H-05).
@@ -217,10 +221,12 @@ final class AudioCoordinator: ObservableObject {
         beginSessionUIState()
         alertedTranslationErrors.removeAll()
         await warmUpTranslation()   // returns at once: the sessions open while capture starts (REQ-TR-05)
+        startVoiceCloneWarmUp()     // in the background: never delays the start (REQ-QS-31)
 
         do {
             try await startOutgoingPipeline(blackHoleDeviceID: blackHoleDeviceID)
         } catch {
+            cancelAllTasks()   // the voice clone warm-up
             errorAlert = makeAlertItem(for: error)
             releaseMicEchoGate()   // no session: the gate is nil outside one
             endSessionUIState()

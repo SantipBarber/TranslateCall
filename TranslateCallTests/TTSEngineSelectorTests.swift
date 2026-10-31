@@ -96,6 +96,33 @@ struct TTSEngineSelectorTests {
                 == .avSpeech, "Kokoro is blocked while the voice clone is ready (NF-04)")
     }
 
+    @Test("the voice clone warm-up runs only when the clone is the outgoing voice (REQ-QS-31)")
+    func voiceCloneWarmUpOnlyForClone() async throws {
+        let inferrer = MockQwenCloneInferrer()
+        let clone = QwenCloneModelManager(modelLoader: { _ in inferrer }, gate: MLXInferenceGate(clock: TestClock()))
+        try await clone.ensureReady()
+        let profileId = UUID()
+        let header = VoiceProfileHeader(
+            id: profileId, name: "Test", createdAt: .now, durationSeconds: 5, sampleRate: 24_000, sampleCount: 1,
+            quality: VoiceQualityMetrics(peakRmsDbfs: -20, hasClipping: false, voicedDurationSeconds: 5, grade: .good),
+            formatVersion: 1
+        )
+        let store = MockVoiceProfileStore()
+        await store.forceStore(VoiceProfile(header: header, samples: [0.1], transcript: "Hola"))
+        let selector = makeSelector(probe: kokoroOnDisk)
+        selector.voiceCloneManager = clone
+        selector.setProfileStore(store)
+        selector.activeVoiceProfileId = profileId
+
+        await selector.warmUpVoiceClone(for: Locale(identifier: "es-ES"))
+        #expect(inferrer.streamCallCount == 0, "Use my voice is off: Kokoro speaks, nothing to warm")
+
+        selector.voiceCloningEnabled = true
+        await selector.warmUpVoiceClone(for: Locale(identifier: "es-ES"))
+        #expect(inferrer.streamCallCount == 1)
+        #expect(await inferrer.lastText == "Hola.")
+    }
+
     @Test("a voice clone with no profile store falls back to the system voice")
     func voiceCloneWithoutStore() throws {
         let selector = makeSelector(probe: kokoroOnDisk)

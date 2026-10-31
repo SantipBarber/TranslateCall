@@ -139,6 +139,42 @@ actor QwenCloneModelManager {
         )
     }
 
+    /// One short inference with the active voice, so the session's first real sentence is not the model's
+    /// cold first run (REQ-QS-31: measured 1.5–2× slower to first chunk). It goes through the gate like any
+    /// sentence, so a real one that comes meanwhile waits for it, or goes to the fallback under the usual
+    /// rules (REQ-QS-03/07a). Drained to its end, output and errors ignored; a no-op when the model is not
+    /// loaded. Cancelling the caller stops listening only: the gate still drains the model (REQ-QS-06).
+    func warmUp(profileStore: any VoiceProfileStoring, activeProfileId: UUID, locale: Locale) async {
+        guard case .ready = state else { return }
+        let start = ContinuousClock.now
+        var failure: Error?
+        do {
+            let profile = try await profileStore.load(id: activeProfileId)
+            guard let samples = profile.samples, let transcript = profile.transcript else {
+                throw VoiceProfileError.payloadMissing
+            }
+            let events = await synthesizeStream(
+                text: Self.warmUpText(for: locale),
+                referenceAudio: samples,
+                referenceTranscript: transcript,
+                language: QwenCloneConfiguration.language(for: locale) ?? "english"
+            )
+            for try await _ in events {}
+        } catch {
+            failure = error
+        }
+        let outcome = SentenceOutcome(ending: failure, cancelled: Task.isCancelled).rawValue
+        let durationMs = Int(((ContinuousClock.now - start).secondsValue * 1_000).rounded())
+        logger.info("""
+            Voice clone warm-up: outcome=\(outcome, privacy: .public) durationMs=\(durationMs, privacy: .public)
+            """)
+    }
+
+    /// "Hola." for a Spanish target, "Hello." otherwise: the shortest sentence that runs the whole model.
+    nonisolated static func warmUpText(for locale: Locale) -> String {
+        locale.language.languageCode == .spanish ? "Hola." : "Hello."
+    }
+
     /// The loaded client, read with the gate held; `.modelNotReady` when an unload came first.
     private func admittedInferrer() throws -> any QwenCloneInferring {
         guard case .ready = state, let inferrer else {
