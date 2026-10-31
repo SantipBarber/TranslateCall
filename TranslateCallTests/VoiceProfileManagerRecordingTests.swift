@@ -101,5 +101,7 @@ struct VoiceProfileManagerRecordingTests {
         #expect(shortGuided.contains("3.3s") && shortGuided.contains("calm pace") && shortGuided.contains("\(target) seconds"))
         let shortFree = VoiceReviewCopy.tooShort(mode: .free, voicedSeconds: 3.26)
         #expect(shortFree.contains("3.3s") && shortFree.contains("more speech"))
+        let quiet = VoiceReviewCopy.tooShort(mode: guided, voicedSeconds: 0, peakRmsDbfs: -42)
+        #expect(quiet.contains("too low") && quiet.contains("-42 dBFS") && !quiet.contains("calm pace"))
     }
 }

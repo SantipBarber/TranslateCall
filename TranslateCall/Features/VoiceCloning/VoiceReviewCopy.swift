@@ -14,8 +14,19 @@ enum VoiceReviewCopy {
             """)
     }
 
-    /// The save-blocking "too short" message; voiced seconds with one decimal in both modes.
-    static func tooShort(mode: RecordingMode, voicedSeconds: Float) -> String {
+    /// Below this peak the grade is poor whatever was said: the microphone barely heard the user.
+    static let lowLevelDbfs: Float = -30
+
+    /// The save-blocking message. A quiet microphone is named first: re-reading louder text won't help it.
+    /// Voiced seconds with one decimal in both modes.
+    static func tooShort(mode: RecordingMode, voicedSeconds: Float, peakRmsDbfs: Float = 0) -> String {
+        if peakRmsDbfs < lowLevelDbfs {
+            let peak = String(format: "%.0f", peakRmsDbfs)
+            return String(localized: """
+                The microphone level is too low (\(peak) dBFS). Check the input device and its level \
+                in System Settings › Sound, move closer to the microphone, and record again.
+                """)
+        }
         let voiced = String(format: "%.1f", voicedSeconds)
         switch mode {
         case .free:

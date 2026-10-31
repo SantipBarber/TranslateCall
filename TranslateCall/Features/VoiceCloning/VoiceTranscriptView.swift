@@ -163,7 +163,8 @@ struct VoiceTranscriptView: View {
         if isQualityBlocked {
             warningBanner(
                 VoiceReviewCopy.tooShort(mode: profileManager.recordingMode,
-                                         voicedSeconds: result.quality.voicedDurationSeconds),
+                                         voicedSeconds: result.quality.voicedDurationSeconds,
+                                         peakRmsDbfs: result.quality.peakRmsDbfs),
                 severity: .critical
             )
         } else if result.quality.hasClipping {
