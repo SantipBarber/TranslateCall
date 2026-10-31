@@ -54,6 +54,8 @@ nonisolated struct RecordingResult: Sendable {
     let samples: [Float]            // 24 kHz mono Float32
     let durationSeconds: Float
     let quality: VoiceQualityMetrics
+    /// The recording ended because it hit the mode's time limit, not because the user stopped it.
+    var reachedLimit = false
 }
 
 // MARK: - Errors

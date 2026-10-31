@@ -49,6 +49,8 @@ final class VoiceProfileManager: ObservableObject {
     @Published private(set) var recordingState: RecordingState = .idle
     @Published var activeProfileId: UUID?
     @Published private(set) var recordingMode: RecordingMode = .free
+    /// Counts saves that completed: the sheet closes on a change; a failed save never changes it.
+    @Published private(set) var completedSaves = 0
 
     var activeProfile: VoiceProfileHeader? {
         profiles.first { $0.id == activeProfileId }
@@ -58,7 +60,8 @@ final class VoiceProfileManager: ObservableObject {
 
     /// Exposed for `TTSEngineSelector` voice clone factory injection.
     let profileStore: any VoiceProfileStoring
-    let recorder: VoiceProfileRecorder
+    let recorder: any VoiceRecording
+    private let clock: any Clock<Duration>
     private let defaults: UserDefaults
     private let isSessionActive: () -> Bool
 
@@ -73,10 +76,12 @@ final class VoiceProfileManager: ObservableObject {
 
     init(
         store: any VoiceProfileStoring = VoiceProfileStore(),
-        recorder: VoiceProfileRecorder = VoiceProfileRecorder(),
+        recorder: any VoiceRecording = VoiceProfileRecorder(),
         defaults: UserDefaults = .standard,
+        clock: any Clock<Duration> = ContinuousClock(),
         isSessionActive: @escaping () -> Bool = { false }
     ) {
+        self.clock = clock
         self.profileStore = store
         self.recorder = recorder
         self.defaults = defaults
@@ -117,20 +122,27 @@ final class VoiceProfileManager: ObservableObject {
         recordingMode = mode
         recordingState = .recording(elapsedSeconds: 0)
         elapsedSeconds = 0
-        startElapsedTimer()
         do {
             try await recorder.startRecording()
         } catch {
-            stopElapsedTimer()
             recordingState = .error(error.localizedDescription)
+            return
         }
+        // Only now: the permission prompt may have taken any time, and none of it is recording.
+        guard recordingState.isRecording else { return }
+        startElapsedTimer()
     }
 
     func stopRecording() async {
+        await finishRecording(reachedLimit: false)
+    }
+
+    private func finishRecording(reachedLimit: Bool) async {
         stopElapsedTimer()
         recordingState = .processing
         do {
-            let result = try await recorder.stopRecording(mode: recordingMode)
+            var result = try await recorder.stopRecording(mode: recordingMode)
+            result.reachedLimit = reachedLimit
             recordingState = .reviewing(result)
         } catch {
             recordingState = .error(error.localizedDescription)
@@ -172,6 +184,7 @@ final class VoiceProfileManager: ObservableObject {
             await loadProfiles()
             if makeActive { setActiveProfile(id) }
             recordingState = .idle
+            completedSaves += 1
             logger.info("Saved voice profile '\(name)' (\(id))")
         } catch {
             recordingState = .error(error.localizedDescription)
@@ -218,15 +231,16 @@ final class VoiceProfileManager: ObservableObject {
     // MARK: - Private: Elapsed Timer
 
     private func startElapsedTimer() {
+        let clock = clock
         elapsedTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(100))
-                guard let self else { return }
+                try? await clock.sleep(for: .milliseconds(100))
+                guard !Task.isCancelled, let self else { return }
                 self.elapsedSeconds += 0.1
                 self.recordingState = .recording(elapsedSeconds: self.elapsedSeconds)
                 // Auto-stop at the mode's limit (P5)
                 if Double(self.elapsedSeconds) >= self.recordingMode.maxSeconds {
-                    await self.stopRecording()
+                    await self.finishRecording(reachedLimit: true)
                     return
                 }
             }

@@ -17,6 +17,10 @@ struct VoiceTranscriptView: View {
             || isQualityBlocked
     }
 
+    private var showsLimitWarning: Bool {
+        VoiceReviewCopy.showsLimitWarning(mode: profileManager.recordingMode, reachedLimit: result.reachedLimit)
+    }
+
     private var isQualityBlocked: Bool {
         VoiceQualityRules.isSaveBlocked(result.quality, mode: profileManager.recordingMode)
     }
@@ -81,23 +85,18 @@ struct VoiceTranscriptView: View {
 
                 Spacer()
 
-                if case .saving = profileManager.recordingState {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Button("Save Profile") {
-                        Task {
-                            try? await profileManager.saveProfile(
-                                name: profileName,
-                                transcript: transcript,
-                                result: result,
-                                makeActive: makeActive
-                            )
-                        }
+                Button("Save Profile") {
+                    Task {
+                        try? await profileManager.saveProfile(
+                            name: profileName,
+                            transcript: transcript,
+                            result: result,
+                            makeActive: makeActive
+                        )
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isSaveBlocked)
                 }
+                .buttonStyle(.borderedProminent)
+                .disabled(isSaveBlocked)
             }
         }
         .padding(24)
@@ -122,7 +121,7 @@ struct VoiceTranscriptView: View {
             )
             qualityItem(
                 label: "Voiced",
-                value: String(format: "%.0f s", result.quality.voicedDurationSeconds)
+                value: String(format: "%.1f s", result.quality.voicedDurationSeconds)
             )
             qualityItem(
                 label: "Grade",
@@ -157,11 +156,14 @@ struct VoiceTranscriptView: View {
 
     @ViewBuilder
     private var qualityWarnings: some View {
+        if showsLimitWarning {
+            warningBanner(VoiceReviewCopy.limitReached(seconds: Int(profileManager.recordingMode.maxSeconds)),
+                          severity: .warning)
+        }
         if isQualityBlocked {
             warningBanner(
-                "Insufficient speech detected "
-                    + "(\(String(format: "%.0f", result.quality.voicedDurationSeconds))s voiced). "
-                    + "Please re-record with more speech.",
+                VoiceReviewCopy.tooShort(mode: profileManager.recordingMode,
+                                         voicedSeconds: result.quality.voicedDurationSeconds),
                 severity: .critical
             )
         } else if result.quality.hasClipping {

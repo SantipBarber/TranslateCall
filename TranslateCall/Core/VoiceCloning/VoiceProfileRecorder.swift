@@ -8,6 +8,15 @@ private nonisolated let logger = Logger(
     category: "VoiceProfileRecorder"
 )
 
+/// What `VoiceProfileManager` needs from the recorder; tests swap in a fake with no microphone.
+protocol VoiceRecording: Sendable {
+    nonisolated var levelStream: AsyncStream<Float> { get }
+    func startRecording() async throws
+    func stopRecording(mode: RecordingMode) async throws -> RecordingResult
+}
+
+extension VoiceProfileRecorder: VoiceRecording {}
+
 actor VoiceProfileRecorder {
 
     // MARK: - Dependencies

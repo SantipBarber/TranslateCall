@@ -42,6 +42,7 @@ struct VoiceRecordingFlowView: View {
                 }
         }
         .frame(minWidth: 420, minHeight: 380)
+        .onChange(of: profileManager.completedSaves) { onClose() }
     }
 
     @ViewBuilder
@@ -57,9 +58,6 @@ struct VoiceRecordingFlowView: View {
         case .reviewing(let result):
             VoiceTranscriptView(result: result, makeActive: makeActive)
                 .environmentObject(profileManager)
-                .onChange(of: profileManager.recordingState.isIdle) { _, isIdle in
-                    if isIdle { onClose() }
-                }
         case .saving:
             ProgressView("Saving profile...").padding()
         case .error(let message):
