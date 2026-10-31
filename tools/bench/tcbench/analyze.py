@@ -109,7 +109,27 @@ def _heard(utt: dict) -> bool:
     return bool(utt.get("detail", {}).get("sttFinal", {}).get("text", "").strip())
 
 
-def _clone_stats(utts: list[dict]) -> dict[str, Any] | None:
+def _merged_non_owner(utt: dict) -> bool:
+    """A coalesced attempt is one sentence: only its first seq owns the audio and the playback."""
+    merged = utt.get("detail", {}).get("ttsFirstBuffer", {}).get("mergedSeqs")
+    if not merged:
+        return False
+    seqs = [int(x) for x in str(merged).split(",") if x.strip().lstrip("-").isdigit()]
+    return bool(seqs) and utt["seq"] != min(seqs)
+
+
+def _clone_profile(settings: dict) -> dict[str, Any]:
+    """The voice profile the clone used (REQ-QS-20); ``lookup`` is "failed" when the bench could not read it."""
+    seconds = settings.get("voiceProfileSeconds")
+    return {
+        "id": settings.get("voiceProfileId"),
+        "name": settings.get("voiceProfileName"),
+        "seconds": float(seconds) if seconds else None,
+        "lookup": "failed" if settings.get("voiceProfileLookup") == "failed" else "ok",
+    }
+
+
+def _clone_stats(utts: list[dict], settings: dict | None = None) -> dict[str, Any] | None:
     """Voice-clone path of a line (informative; never in ``compare``): first chunk and playback gaps.
 
     ``None`` when no utterance was spoken by the clone.  ``playback`` is absent in older runs.
@@ -119,6 +139,7 @@ def _clone_stats(utts: list[dict]) -> dict[str, Any] | None:
         if not _dropped(u)
         and "ttsFirstBuffer" in u["events"]
         and u.get("detail", {}).get("ttsFirstBuffer", {}).get("engine") == "voiceClone"
+        and not _merged_non_owner(u)
     ]
     if not clone:
         return None
@@ -133,6 +154,7 @@ def _clone_stats(utts: list[dict]) -> dict[str, Any] | None:
         "gapSentencesPct": gapped / len(clone) * 100.0,
         "gapMsTotal": sum(p.get("gapMs", 0) for p in playbacks),
         "sentences": len(clone),
+        "profile": _clone_profile(settings or {}),
     }
 
 
@@ -244,7 +266,7 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False, tier: str | Non
         "comet": comet_result,
         "fallbacks": fallbacks,
         "unassigned": unassigned,
-        **({"clone": clone} if (clone := _clone_stats(included_utts)) else {}),
+        **({"clone": clone} if (clone := _clone_stats(included_utts, raw["meta"].get("settings"))) else {}),
     }
 
 

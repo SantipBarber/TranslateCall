@@ -434,3 +434,21 @@ def test_old_runs_without_playback():
 def test_clone_stats_do_not_enter_compare():
     import inspect
     assert "clone" not in inspect.getsource(compare)
+
+
+def test_merged_attempt_counts_once():
+    raw, manifest = _clone_line([{"gapCount": 2, "gapMs": 300}, None, None, None])
+    for u in raw["utterances"][:2]:
+        u["detail"]["ttsFirstBuffer"]["mergedSeqs"] = "0,1"
+    clone = _agg(raw, manifest)["clone"]
+    assert clone["sentences"] == 3
+    assert clone["gapSentencesPct"] == pytest.approx(100 / 3)
+    assert clone["gapMsTotal"] == 300
+
+
+def test_clone_profile_recorded_and_lookup_failure_marked():
+    raw, manifest = _clone_line([None])
+    raw["meta"]["settings"] = {"voiceProfileId": "P1", "voiceProfileName": "Mi voz", "voiceProfileSeconds": "31.5"}
+    assert _agg(raw, manifest)["clone"]["profile"] == {"id": "P1", "name": "Mi voz", "seconds": 31.5, "lookup": "ok"}
+    raw["meta"]["settings"] = {"voiceProfileId": "P1", "voiceProfileLookup": "failed"}
+    assert _agg(raw, manifest)["clone"]["profile"]["lookup"] == "failed"

@@ -82,6 +82,12 @@ footer li { margin:4px 0; }
 <td class="num">{{ a.clone.gapMsTotal }}</td></tr>
 {% endfor %}
 </table>
+{% for key, a in clones %}
+<p class="muted">{{ key }}: voice profile
+{% if a.clone.profile.lookup == "failed" %}lookup failed (id {{ a.clone.profile.id }}); reference length unknown
+{% else %}{{ a.clone.profile.name or "(unnamed)" }}{% if a.clone.profile.id %} ({{ a.clone.profile.id }}){% endif %},
+reference {{ "%.1f"|format(a.clone.profile.seconds) if a.clone.profile.seconds is not none else "n/a" }} s{% endif %}.</p>
+{% endfor %}
 <p class="muted">Informative: not part of the baseline comparison.</p>
 </section>
 {% endif %}

@@ -152,7 +152,7 @@ enum BenchRunner {
         let events = session.sink.events.filter { $0.direction == line.direction }
         let meta = makeMeta(session: session, options: options, env: env, events: events,
                             manifestData: manifestData, pause: pause,
-                            voiceProfileSeconds: await voiceProfileSeconds(session))
+                            voiceProfile: await voiceProfileSettings(session))
         let record = RawRun(
             runId: "\(timestamp())-\(env.commit)",
             set: env.set,
@@ -238,19 +238,24 @@ enum BenchRunner {
 
     // MARK: - Record
 
-    /// Length of the active voice profile's reference audio, when the clone is the measured direction's
-    /// TTS (REQ-QS-20). The header is read without decrypting the payload.
-    private static func voiceProfileSeconds(_ session: BenchSession) async -> Float? {
+    /// The active voice profile's id, name and reference length for `meta.settings`, when the clone is the
+    /// measured direction's TTS (REQ-QS-20). Reads the header without decrypting the payload. A failed
+    /// lookup is recorded (`voiceProfileLookup = failed`), never silently dropped.
+    private static func voiceProfileSettings(_ session: BenchSession) async -> [String: String] {
         guard session.builtEngines[session.line.direction] == .voiceClone,
-              let id = session.tts.activeVoiceProfileId,
-              let headers = try? await VoiceProfileStore().enumerateHeaders()
-        else { return nil }
-        return headers.first { $0.id == id }?.durationSeconds
+              let id = session.tts.activeVoiceProfileId else { return [:] }
+        guard let headers = try? await VoiceProfileStore().enumerateHeaders(),
+              let header = headers.first(where: { $0.id == id }) else {
+            FileHandle.standardError.write(Data("WARNING: bench: voice profile \(id) lookup failed\n".utf8))
+            return ["voiceProfileId": id.uuidString, "voiceProfileLookup": "failed"]
+        }
+        return ["voiceProfileId": id.uuidString, "voiceProfileName": header.name,
+                "voiceProfileSeconds": String(header.durationSeconds)]
     }
 
     private static func makeMeta(session: BenchSession, options: BenchOptions, env: BenchEnvironment,
                                  events: [TraceEvent], manifestData: Data, pause: Double,
-                                 voiceProfileSeconds: Float?) -> RawRun.Meta {
+                                 voiceProfile: [String: String]) -> RawRun.Meta {
         let line = session.line
         func first(_ stage: TraceStage, _ key: String) -> String? {
             events.filter { $0.stage == stage }.sorted { $0.time < $1.time }.lazy.compactMap { $0.detail[key] }.first
@@ -277,7 +282,7 @@ enum BenchRunner {
             "vadChunkSamples": "4096",
             "listeningMode": session.coordinator.listeningMode.rawValue,
         ]
-        if let voiceProfileSeconds { settings["voiceProfileSeconds"] = String(voiceProfileSeconds) }
+        settings.merge(voiceProfile) { _, new in new }
         return RawRun.Meta(
             commit: env.commit, dirty: env.dirty, machine: sysctlString("hw.model"),
             macOS: ProcessInfo.processInfo.operatingSystemVersionString,

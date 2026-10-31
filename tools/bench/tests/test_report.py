@@ -215,11 +215,14 @@ def test_clone_table_rendered(tmp_path, monkeypatch):
         u["detail"]["ttsFirstBuffer"]["engine"] = "voiceClone"
         if i == 0:
             u["playback"] = {"gapCount": 1, "gapMs": 120}
+    raw["meta"]["settings"] = {"voiceProfileId": "ID-123", "voiceProfileName": "Mi voz",
+                               "voiceProfileSeconds": "31.0"}
     raw_path.write_text(json.dumps(raw))
     analyze.run(run_dir, manifest)
     html = _go(run_dir, manifest, tmp_path).read_text()
     assert "Voice clone" in html
     assert "gap sentences" in html
+    assert "Mi voz" in html and "ID-123" in html and "reference 31.0 s" in html.replace("\n", " ")
 
 
 def test_no_clone_table_without_clone(tmp_path, monkeypatch):
