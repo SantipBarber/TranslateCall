@@ -6,21 +6,12 @@ private let logger = Logger(subsystem: "com.spbarber.TranslateCall", category: "
 // MARK: - Translation handlers: translate, then deliver (show + speak)
 
 extension AudioCoordinator {
-    /// Translation starts only when delivery will not drop the sentence (mute turn, empty, paused):
-    /// a dropped sentence must never reach the translator. Dropped ones go to `deliver*` with a
-    /// translation that never runs, so the guards (and the mute-turn flag reset) stay in one place.
     func handleOutgoingTranslation(of text: String) async {
-        guard !suppressNextOutgoingTurnFlag, !text.isEmpty, !isPaused else {
-            return await deliverOutgoing(text, translation: Task { throw CancellationError() })
-        }
-        await deliverOutgoing(text, translation: Task { try await translateOutgoing(text) })
+        await deliverOutgoing(text)
     }
 
     func handleIncomingTranslation(of text: String) async {
-        guard !text.isEmpty, !isPaused else {
-            return await deliverIncoming(text, translation: Task { throw CancellationError() })
-        }
-        await deliverIncoming(text, translation: Task { try await translateIncoming(text) })
+        await deliverIncoming(text)
     }
 
     // MARK: - Translate
@@ -43,22 +34,29 @@ extension AudioCoordinator {
 
     // MARK: - Deliver (show + speak)
 
-    func deliverOutgoing(_ text: String, translation: Task<String, Error>) async {
+    /// Shows and speaks one outgoing sentence. `translation` is a translation already started by the caller
+    /// (cancelled here if the sentence is dropped); `nil` starts it here, after the guards pass.
+    func deliverOutgoing(_ text: String, translation: Task<String, Error>? = nil) async {
         // One-shot mute turn: user explicitly requested to skip this utterance.
         if suppressNextOutgoingTurnFlag {
             suppressNextOutgoingTurnFlag = false
             logger.debug("Suppressing next outgoing utterance (mute turn)")
+            translation?.cancel()
             return
         }
         // Never dropped while the other side speaks (F8.5.3 REQ-H-10): echo is handled by MicEchoGate.
         // Dropped while paused (M9 UI core REQ-UI-50).
-        guard !text.isEmpty, !isPaused else { return }
+        guard !text.isEmpty, !isPaused else {
+            translation?.cancel()
+            return
+        }
+        let task = translation ?? Task { try await translateOutgoing(text) }
         let entry = appendTranscript(.outgoing, text)
         isOutgoingTranslating = true
         defer { isOutgoingTranslating = false }
         // No stopSpeaking() first: sentences queue and are coalesced, never cut or dropped (F8.5.3 D-5).
         do {
-            let translated = try await translation.value
+            let translated = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
             outgoingTranslation = translated
             completeTranscript(entry, translation: translated)
             guard !isPaused else { return }   // paused while translating: shown, not spoken
@@ -70,15 +68,20 @@ extension AudioCoordinator {
         }
     }
 
-    func deliverIncoming(_ text: String, translation: Task<String, Error>) async {
+    /// Incoming counterpart of `deliverOutgoing`.
+    func deliverIncoming(_ text: String, translation: Task<String, Error>? = nil) async {
         // Never dropped while either TTS speaks (F8.5.3 REQ-H-11): SCStream captures only the call app,
         // which does not play the user's own voice back. Remote sentences queue like outgoing ones.
-        guard !text.isEmpty, !isPaused else { return }
+        guard !text.isEmpty, !isPaused else {
+            translation?.cancel()
+            return
+        }
+        let task = translation ?? Task { try await translateIncoming(text) }
         let entry = appendTranscript(.incoming, text)
         isIncomingTranslating = true
         defer { isIncomingTranslating = false }
         do {
-            let translated = try await translation.value
+            let translated = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
             incomingTranslation = translated
             completeTranscript(entry, translation: translated)
             guard !isPaused else { return }   // paused while translating: shown, not spoken

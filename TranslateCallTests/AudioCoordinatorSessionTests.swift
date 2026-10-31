@@ -51,7 +51,7 @@ struct AudioCoordinatorSessionTests {
 
         mocks.mockOutgoingTranslation.holdNext = true
         await mocks.mockOutgoingSTT.injectTranscription(transcript("hola"))
-        #expect(await waitUntil { coordinator.isOutgoingTranslating })
+        #expect(await waitUntil { coordinator.isOutgoingTranslating && mocks.mockOutgoingTranslation.isHolding })
         #expect(coordinator.transcript.map(\.original) == ["hola"])
         #expect(coordinator.transcript.first?.translation == nil)
         #expect(coordinator.transcript.first?.direction == .outgoing)
@@ -169,6 +169,52 @@ struct AudioCoordinatorSessionTests {
         await coordinator.stop()
     }
 
+    @Test("stopping during an in-flight translation cancels it: nothing completed, nothing spoken")
+    func teardownCancelsInFlightTranslation() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start()
+        mocks.mockOutgoingTranslation.holdNext = true
+        await mocks.mockOutgoingSTT.injectTranscription(transcript("hola"))
+        #expect(await waitUntil { mocks.mockOutgoingTranslation.isHolding })
+
+        await coordinator.stop()
+        mocks.mockOutgoingTranslation.releaseHeld()
+        try? await Task.sleep(for: .milliseconds(100))
+        #expect(coordinator.transcript.first?.translation == nil)
+        #expect(await mocks.mockOutgoingTTS.speakCalls.isEmpty)
+    }
+
+    @Test("a translation handed to deliver is cancelled when the sentence is dropped (paused, mute turn, empty)")
+    func droppedDeliveryCancelsTranslation() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start()
+        func started() -> Task<String, Error> { Task { try await Task.sleep(for: .seconds(60)); return "x" } }
+
+        coordinator.suppressNextOutgoingTurn()
+        let muted = started()
+        await coordinator.deliverOutgoing("muted", translation: muted)
+        #expect(await muted.result.isFailure)
+
+        let empty = started()
+        await coordinator.deliverOutgoing("", translation: empty)
+        #expect(await empty.result.isFailure)
+
+        await coordinator.pause()
+        let pausedOut = started()
+        let pausedIn = started()
+        await coordinator.deliverOutgoing("paused", translation: pausedOut)
+        await coordinator.deliverIncoming("paused", translation: pausedIn)
+        #expect(await pausedOut.result.isFailure)
+        #expect(await pausedIn.result.isFailure)
+
+        #expect(coordinator.transcript.isEmpty)
+        #expect(await mocks.mockOutgoingTTS.speakCalls.isEmpty)
+        #expect(await mocks.mockIncomingTTS.speakCalls.isEmpty)
+        await coordinator.stop()
+    }
+
     @Test("pause outside a session does nothing; pause and resume leave the echo gate working; Stop resets")
     func pauseEdges() async {
         let mocks = CoordinatorMocks()
@@ -218,4 +264,8 @@ struct AudioCoordinatorSessionTests {
         #expect(callPeak == 0)
         await coordinator.stop()
     }
+}
+
+private extension Result {
+    var isFailure: Bool { if case .failure = self { true } else { false } }
 }
