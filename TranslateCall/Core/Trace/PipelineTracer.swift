@@ -48,6 +48,10 @@ nonisolated final class PipelineTracer: Sendable {
         var attempt: Attempt?
         /// Boundaries that arrived before their segment (separate streams): by segment id.
         var earlyBoundaries: [UInt64: SegmentBoundary] = [:]
+        /// The id of the last segment closed. A VAD's ids only grow, so a boundary at or below it with no
+        /// open utterance belongs to a segment that already ended and is not kept (G3 M1). The latest id,
+        /// not the max: a VAD rebuilt under this tracer starts again from 1.
+        var lastSegmentID: UInt64 = 0
 
         func isHeard(_ seq: Int) -> Bool { open.contains { $0.seq == seq && $0.heard } }
     }
@@ -89,6 +93,7 @@ nonisolated final class PipelineTracer: Sendable {
             defer { current.nextSeq += 1 }
             current.open.append(Utterance(seq: current.nextSeq, capturedAt: capturedAt, segmentID: id,
                                           interval: interval))
+            if id != 0 { current.lastSegmentID = id }
             return (current.nextSeq, id == 0 ? nil : current.earlyBoundaries.removeValue(forKey: id))
         }
         emit(seq, .speechStart, at: start)
@@ -117,7 +122,7 @@ nonisolated final class PipelineTracer: Sendable {
         guard id != 0 else { return }
         let seq = state.withLock { current -> Int? in
             if let seq = current.open.first(where: { $0.segmentID == id })?.seq { return seq }
-            current.earlyBoundaries[id] = boundary
+            if id > current.lastSegmentID { current.earlyBoundaries[id] = boundary }   // else: already ended
             return nil
         }
         guard let seq else { return }
@@ -253,6 +258,7 @@ nonisolated final class PipelineTracer: Sendable {
         let stamp = now()
         let closed = state.withLock { current -> [Utterance] in
             current.attempt = nil
+            current.earlyBoundaries.removeAll()
             defer { current.open.removeAll() }
             return current.open
         }

@@ -126,7 +126,11 @@ final class TracingTranslationService: TranslationService {
             tracer.translated(source: text, result: result)
             return result
         } catch {
-            tracer.translationFailed(source: text, error: error)
+            // A cancelled translation is a retracted tentative's (or a stop): its CancellationError may
+            // land after the next utterance with the same text has its STT text, and must not drop it (G3 M2).
+            if !(error is CancellationError || Task.isCancelled) {
+                tracer.translationFailed(source: text, error: error)
+            }
             throw error
         }
     }

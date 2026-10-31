@@ -85,6 +85,27 @@ struct TracingDecoratorTests {
         #expect(inner.warmUpCalls.count == 1)
     }
 
+    /// G3 M2: a retracted tentative's translation is cancelled; its CancellationError may surface after
+    /// the next utterance (same text) has its STT text. That one must not be dropped for it.
+    @Test func cancelledTranslationDoesNotDropTheNextUtterance() async throws {
+        let tracer = tracer
+        let date = Date()
+        tracer.segmentClosed(capturedAt: date, audioSeconds: 1, id: 1)
+        tracer.transcribed(capturedAt: date, text: "hello", engine: "x", confidence: 1, segmentID: 1)
+        tracer.segmentRetracted(id: 1)
+        tracer.segmentClosed(capturedAt: date, audioSeconds: 1, id: 2)
+        tracer.transcribed(capturedAt: date, text: "hello", engine: "x", confidence: 1, segmentID: 2)
+        let inner = MockTranslationService()
+        inner.errors = [CancellationError()]
+        let service = TracingTranslationService(wrapping: inner, tracer: tracer)
+        let (es, en) = (Locale.Language(identifier: "es"), Locale.Language(identifier: "en"))
+        await #expect(throws: CancellationError.self) { try await service.translate(text: "hello", from: es, to: en) }
+        #expect(sink.event(1, .dropped) == nil)
+        #expect(tracer.openSeqs == [1])
+        _ = try await service.translate(text: "hello", from: es, to: en)
+        #expect(sink.event(1, .translated)?.detail["text"] == "TRANSLATED: hello")
+    }
+
     /// The real playback service between the TTS decorators: first buffer and end, merged sentences.
     @Test func playbackServiceIsTracedEndToEnd() async throws {
         let tracer = tracer
