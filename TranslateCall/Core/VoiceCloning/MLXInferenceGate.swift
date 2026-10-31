@@ -9,7 +9,8 @@ import Synchronization
 /// A caller waits at most `wait` for the gate (then `QwenCloneError.gateBusy`). The inference runs in a
 /// task the gate owns, so cancelling the caller never cancels MLX mid-computation; if it takes longer
 /// than `inference`, the caller gets `QwenCloneError.inferenceTimeout` while the gate stays closed until
-/// the inference really returns. Its late result is discarded.
+/// the inference really returns. Its late result is discarded. Streaming inferences go through
+/// `runStream` (MLXInferenceGate+Stream.swift) under the same one-at-a-time rule.
 actor MLXInferenceGate {
     static let shared = MLXInferenceGate()
 
@@ -18,11 +19,13 @@ actor MLXInferenceGate {
         let continuation: CheckedContinuation<Void, Error>
     }
 
-    private let clock: any Clock<Duration>
+    let clock: any Clock<Duration>
     private var busy = false
     private var waiters: [Waiter] = []
     private var idleWaiters: [CheckedContinuation<Void, Never>] = []
     private var nextWaiterID: UInt64 = 0
+    /// The stream holding the gate, set when its pump starts and cleared by `release()`.
+    var currentStream: (any GateStreamLink)?
 
     init(clock: any Clock<Duration> = ContinuousClock()) {
         self.clock = clock
@@ -64,9 +67,9 @@ actor MLXInferenceGate {
         await withCheckedContinuation { idleWaiters.append($0) }
     }
 
-    // MARK: Private
+    // MARK: Acquire and release (internal for MLXInferenceGate+Stream.swift)
 
-    private func acquire(waitLimit: Duration) async throws {
+    func acquire(waitLimit: Duration) async throws {
         guard busy else {
             busy = true
             return
@@ -93,6 +96,21 @@ actor MLXInferenceGate {
         }
     }
 
+    /// Called exactly once per successful `acquire`: hands the gate to the next waiter or opens it.
+    func release() {
+        currentStream = nil
+        if waiters.isEmpty {
+            busy = false
+            let idle = idleWaiters
+            idleWaiters.removeAll()
+            idle.forEach { $0.resume() }
+        } else {
+            waiters.removeFirst().continuation.resume()
+        }
+    }
+
+    // MARK: Private
+
     /// Removing the waiter from the queue is the once-only guard: whoever removes it resumes it.
     private func cancelWaiter(_ id: UInt64) {
         guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
@@ -102,17 +120,6 @@ actor MLXInferenceGate {
     private func expireWaiter(_ id: UInt64) {
         guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
         waiters.remove(at: index).continuation.resume(throwing: QwenCloneError.gateBusy)
-    }
-
-    private func release() {
-        if waiters.isEmpty {
-            busy = false
-            let idle = idleWaiters
-            idleWaiters.removeAll()
-            idle.forEach { $0.resume() }
-        } else {
-            waiters.removeFirst().continuation.resume()
-        }
     }
 }
 
