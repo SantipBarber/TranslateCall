@@ -112,8 +112,9 @@ def _turn_stats(raw_utts: list[dict], assigned: dict[str, list[dict]], speech_en
     """Early-processing stats of a line (informative; never in ``compare``).
 
     ``retractPct`` is retracted / (retracted + committed + finals) in percent, where finals are the
-    utterances that were never tentative; ``commitMs`` is ``committed`` minus the ground-truth speech end
-    of the clip.  Older runs have neither stage: 0 % and an empty summary.
+    utterances that were never tentative (dropped ones included: they were turns that ended); ``commitMs`` is
+    ``committed`` minus the ground-truth speech end of the clip, one sample per committed utterance (a cut
+    clip contributes several).  Older runs have neither stage: 0 % and an empty summary.
     """
     retracted = sum(_retracted(u) for u in raw_utts)
     committed = sum("committed" in u["events"] and not _retracted(u) for u in raw_utts)

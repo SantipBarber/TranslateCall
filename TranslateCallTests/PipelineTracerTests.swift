@@ -121,21 +121,52 @@ struct PipelineTracerTests {
 
     @Test func retractedUtteranceForgotten() {
         let tracer = makeTracer()
-        tracer.segmentClosed(capturedAt: date0, audioSeconds: 1)
-        tracer.segmentRetracted(capturedAt: date0)
+        tracer.segmentClosed(capturedAt: date0, audioSeconds: 1, id: 1)
+        tracer.segmentRetracted(id: 1)
         #expect(tracer.openSeqs.isEmpty)
-        tracer.segmentClosed(capturedAt: date0, audioSeconds: 2)   // the same utterance, a longer tentative
-        tracer.transcribed(capturedAt: date0, text: "hola", engine: "x", confidence: 1)
+        tracer.segmentClosed(capturedAt: date0, audioSeconds: 2, id: 2)   // same utterance, longer tentative
+        tracer.transcribed(capturedAt: date0, text: "hola", engine: "x", confidence: 1, segmentID: 2)
         #expect(sink.stages(of: 0) == [.speechStart, .vadEnd, .retracted])
         #expect(sink.stages(of: 1) == [.speechStart, .vadEnd, .sttFinal])
         #expect(sink.event(1, .sttFinal)?.detail["text"] == "hola")
     }
 
+    @Test func lateResultOfARetractedSegmentIsIgnored() {
+        let tracer = makeTracer()
+        tracer.segmentClosed(capturedAt: date0, audioSeconds: 1, id: 1)
+        tracer.segmentRetracted(id: 1)
+        tracer.segmentClosed(capturedAt: date0, audioSeconds: 2, id: 2)
+        tracer.transcribed(capturedAt: date0, text: "hola", engine: "x", confidence: 1, segmentID: 1)
+        tracer.transcribed(capturedAt: date0, text: "hola mundo", engine: "x", confidence: 1, segmentID: 2)
+        tracer.translated(source: "hola mundo", result: "hello world")
+        #expect(sink.event(1, .sttFinal)?.detail["text"] == "hola mundo")
+        #expect(sink.stages(of: 1) == [.speechStart, .vadEnd, .sttFinal, .translated])
+        #expect(sink.stages(of: 0) == [.speechStart, .vadEnd, .retracted])
+    }
+
+    @Test func retractAfterTheNextSegmentClosedHitsTheRightOne() {
+        let tracer = makeTracer()
+        tracer.segmentClosed(capturedAt: date0, audioSeconds: 1, id: 1)
+        tracer.segmentClosed(capturedAt: date0, audioSeconds: 2, id: 2)   // the final, same capturedAt
+        tracer.segmentRetracted(id: 1)
+        #expect(sink.stages(of: 0) == [.speechStart, .vadEnd, .retracted])
+        #expect(sink.stages(of: 1) == [.speechStart, .vadEnd])
+        #expect(tracer.openSeqs == [1])
+    }
+
+    @Test func boundaryBeforeItsSegmentIsApplied() {
+        let tracer = makeTracer()
+        tracer.segmentRetracted(id: 5)
+        tracer.segmentClosed(capturedAt: date0, audioSeconds: 1, id: 5)
+        #expect(sink.stages(of: 0) == [.speechStart, .vadEnd, .retracted])
+        #expect(tracer.openSeqs.isEmpty)
+    }
+
     @Test func committedStamped() {
         let tracer = makeTracer()
-        tracer.segmentClosed(capturedAt: date0, audioSeconds: 1)
-        tracer.segmentCommitted(capturedAt: date0)
-        tracer.transcribed(capturedAt: date0, text: "hola", engine: "x", confidence: 1)
+        tracer.segmentClosed(capturedAt: date0, audioSeconds: 1, id: 3)
+        tracer.segmentCommitted(id: 3)
+        tracer.transcribed(capturedAt: date0, text: "hola", engine: "x", confidence: 1, segmentID: 3)
         #expect(sink.stages(of: 0) == [.speechStart, .vadEnd, .committed, .sttFinal])
         #expect(tracer.openSeqs == [0])
     }

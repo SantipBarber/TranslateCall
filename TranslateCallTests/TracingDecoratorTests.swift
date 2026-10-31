@@ -40,7 +40,8 @@ struct TracingDecoratorTests {
         }
         #expect(await received.value == .retract(7))
         // The boundary and the segment travel on two streams: wait for the tracer to see both.
-        while sink.stages(of: 0).last != .retracted { await Task.yield() }
+        var spins = 0
+        while sink.stages(of: 0).last != .retracted, spins < 100_000 { spins += 1; await Task.yield() }
         #expect(sink.stages(of: 0) == [.speechStart, .vadEnd, .retracted])
         await vad.deactivate()
     }

@@ -16,6 +16,8 @@ nonisolated final class PipelineTracer: Sendable {
     private struct Utterance {
         let seq: Int
         let capturedAt: Date
+        /// The VAD's segment id (0: untagged). Tentatives of one utterance share `capturedAt`, never the id.
+        let segmentID: UInt64
         var sttText: String?
         var translation: String?
         var spoken = false
@@ -44,6 +46,8 @@ nonisolated final class PipelineTracer: Sendable {
         var open: [Utterance] = []
         var nextSeq = 0
         var attempt: Attempt?
+        /// Boundaries that arrived before their segment (separate streams): by segment id.
+        var earlyBoundaries: [UInt64: SegmentBoundary] = [:]
 
         func isHeard(_ seq: Int) -> Bool { open.contains { $0.seq == seq && $0.heard } }
     }
@@ -76,43 +80,62 @@ nonisolated final class PipelineTracer: Sendable {
     // MARK: - Stages
 
     /// The VAD closed a segment: `speechStart` (from the segment's start date) and `vadEnd` (now).
-    func segmentClosed(capturedAt: Date, audioSeconds: Double) {
+    /// `id` is the segment's id (0: untagged); a boundary seen earlier for it is applied now.
+    func segmentClosed(capturedAt: Date, audioSeconds: Double, id: UInt64 = 0) {
         let stamp = now()
         let start = originInstant + .seconds(capturedAt.timeIntervalSince(originDate))
         let interval = signposter.beginInterval("Utterance")
-        let seq = state.withLock { current in
+        let (seq, early) = state.withLock { current -> (Int, SegmentBoundary?) in
             defer { current.nextSeq += 1 }
-            current.open.append(Utterance(seq: current.nextSeq, capturedAt: capturedAt, interval: interval))
-            return current.nextSeq
+            current.open.append(Utterance(seq: current.nextSeq, capturedAt: capturedAt, segmentID: id,
+                                          interval: interval))
+            return (current.nextSeq, id == 0 ? nil : current.earlyBoundaries.removeValue(forKey: id))
         }
         emit(seq, .speechStart, at: start)
         emit(seq, .vadEnd, at: stamp, ["segmentAudioMs": Self.ms(.seconds(audioSeconds)),
                                     "trailingSilenceMs": Self.ms(trailingSilence)])
+        switch early {
+        case .commit: emit(seq, .committed, at: stamp)
+        case .retract: finish(seq, .retracted, at: stamp)
+        case nil: break
+        }
     }
 
-    /// The tentative segment that started at `capturedAt` was confirmed: stamps its (latest) utterance.
-    func segmentCommitted(capturedAt: Date) {
+    /// The tentative segment `id` was confirmed: stamps its utterance (or waits for the segment).
+    func segmentCommitted(id: UInt64) { boundary(.commit(id)) }
+
+    /// The tentative segment `id` was withdrawn: its utterance ends as `retracted` and is forgotten (or
+    /// waits for the segment). Later tentatives of the same utterance open their own, keyed by their id.
+    func segmentRetracted(id: UInt64) { boundary(.retract(id)) }
+
+    private func boundary(_ boundary: SegmentBoundary) {
         let stamp = now()
-        let seq = state.withLock { $0.open.last { $0.capturedAt == capturedAt }?.seq }
-        if let seq { emit(seq, .committed, at: stamp) }
+        let id: UInt64
+        switch boundary {
+        case .commit(let value), .retract(let value): id = value
+        }
+        guard id != 0 else { return }
+        let seq = state.withLock { current -> Int? in
+            if let seq = current.open.first(where: { $0.segmentID == id })?.seq { return seq }
+            current.earlyBoundaries[id] = boundary
+            return nil
+        }
+        guard let seq else { return }
+        switch boundary {
+        case .commit: emit(seq, .committed, at: stamp)
+        case .retract: finish(seq, .retracted, at: stamp)
+        }
     }
 
-    /// The tentative segment that started at `capturedAt` was withdrawn: its (latest) utterance ends
-    /// as `retracted` and is forgotten, so the next tentative of the same utterance (same `capturedAt`)
-    /// opens its own and receives the STT result.
-    func segmentRetracted(capturedAt: Date) {
-        let stamp = now()
-        let seq = state.withLock { $0.open.last { $0.capturedAt == capturedAt }?.seq }
-        if let seq { finish(seq, .retracted, at: stamp) }
-    }
-
-    /// STT finished the segment that started at `capturedAt`. Older segments still waiting were
-    /// dropped by STT (empty or below the confidence floor). An empty text ends the utterance.
-    func transcribed(capturedAt: Date, text: String, engine: String, confidence: Float) {
+    /// STT finished the segment `segmentID` (0: untagged, matched by `capturedAt`). A result whose
+    /// segment is not open (retracted) is ignored. Older segments still waiting were dropped by STT
+    /// (empty or below the confidence floor). An empty text ends the utterance.
+    func transcribed(capturedAt: Date, text: String, engine: String, confidence: Float, segmentID: UInt64 = 0) {
         let stamp = now()
         let (skipped, seq) = state.withLock { current -> ([Int], Int?) in
-            guard let index = current.open.firstIndex(where: { $0.capturedAt == capturedAt && $0.sttText == nil })
-            else { return ([], nil) }
+            guard let index = current.open.firstIndex(where: {
+                $0.sttText == nil && (segmentID == 0 ? $0.capturedAt == capturedAt : $0.segmentID == segmentID)
+            }) else { return ([], nil) }
             current.open[index].sttText = text
             let skipped = current.open[..<index].filter { $0.sttText == nil }.map(\.seq)
             return (skipped, current.open[index].seq)

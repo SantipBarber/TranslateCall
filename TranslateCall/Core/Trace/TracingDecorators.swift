@@ -1,6 +1,5 @@
 import AVFoundation
 import Foundation
-import Synchronization
 
 // Pass-through decorators that report each stage to a `PipelineTracer` (M9 design §2.2).
 // They never change what flows through; with no tracer wired the app does not create them.
@@ -16,7 +15,6 @@ actor TracingVADService: VADService {
     private let tracer: PipelineTracer
     private let continuation: AsyncStream<SpeechSegment>.Continuation
     private let boundaryContinuation: AsyncStream<SegmentBoundary>.Continuation
-    private let tentatives = TentativeIndex()
     private var forward: Task<Void, Never>?
     private var forwardBoundaries: Task<Void, Never>?
 
@@ -31,15 +29,12 @@ actor TracingVADService: VADService {
 
     func activate(stream: AsyncStream<AVAudioPCMBuffer>) async throws {
         try await inner.activate(stream: stream)
-        let (segments, continuation, tracer, tentatives) = (inner.speechSegments, continuation, tracer, tentatives)
+        let (segments, continuation, tracer) = (inner.speechSegments, continuation, tracer)
         forward = Task {
             for await segment in segments {
                 tracer.segmentClosed(capturedAt: segment.capturedAt,
-                                     audioSeconds: Double(segment.audio.frameLength) / segment.audio.format.sampleRate)
-                if segment.kind == .tentative,
-                   let early = tentatives.register(id: segment.id, capturedAt: segment.capturedAt) {
-                    Self.trace(early, capturedAt: segment.capturedAt, tracer: tracer)
-                }
+                                     audioSeconds: Double(segment.audio.frameLength) / segment.audio.format.sampleRate,
+                                     id: segment.id)
                 continuation.yield(segment)
             }
             continuation.finish()
@@ -47,19 +42,17 @@ actor TracingVADService: VADService {
         let (boundaries, boundaryContinuation) = (inner.boundaryEvents, boundaryContinuation)
         forwardBoundaries = Task {
             for await boundary in boundaries {
-                if let capturedAt = tentatives.resolve(boundary) {
-                    Self.trace(boundary, capturedAt: capturedAt, tracer: tracer)
-                }
+                Self.trace(boundary, tracer: tracer)
                 boundaryContinuation.yield(boundary)
             }
             boundaryContinuation.finish()
         }
     }
 
-    private nonisolated static func trace(_ boundary: SegmentBoundary, capturedAt: Date, tracer: PipelineTracer) {
+    private nonisolated static func trace(_ boundary: SegmentBoundary, tracer: PipelineTracer) {
         switch boundary {
-        case .commit: tracer.segmentCommitted(capturedAt: capturedAt)
-        case .retract: tracer.segmentRetracted(capturedAt: capturedAt)
+        case .commit(let id): tracer.segmentCommitted(id: id)
+        case .retract(let id): tracer.segmentRetracted(id: id)
         }
     }
 
@@ -71,39 +64,6 @@ actor TracingVADService: VADService {
         forwardBoundaries = nil
         continuation.finish()
         boundaryContinuation.finish()
-    }
-}
-
-/// Maps a tentative segment's id to its `capturedAt` (the tracer's key). Segments and boundaries travel
-/// on separate streams, so a boundary may be seen first: it waits here until its segment is registered.
-nonisolated final class TentativeIndex: Sendable {
-    private struct State {
-        var dates: [UInt64: Date] = [:]
-        var early: [UInt64: SegmentBoundary] = [:]
-    }
-
-    private let state = Mutex(State())
-
-    /// The segment was forwarded; returns its boundary if that arrived earlier.
-    func register(id: UInt64, capturedAt: Date) -> SegmentBoundary? {
-        state.withLock { current in
-            if let early = current.early.removeValue(forKey: id) { return early }
-            current.dates[id] = capturedAt
-            return nil
-        }
-    }
-
-    /// The segment's `capturedAt` for `boundary`, or nil when the segment is not forwarded yet.
-    func resolve(_ boundary: SegmentBoundary) -> Date? {
-        let id: UInt64
-        switch boundary {
-        case .commit(let value), .retract(let value): id = value
-        }
-        return state.withLock { current in
-            if let date = current.dates.removeValue(forKey: id) { return date }
-            current.early[id] = boundary
-            return nil
-        }
     }
 }
 
@@ -130,7 +90,7 @@ actor TracingSTTService: SpeechRecognizerService {
         forward = Task {
             for await result in results {
                 tracer.transcribed(capturedAt: result.capturedAt, text: result.text, engine: engine,
-                                   confidence: result.confidence)
+                                   confidence: result.confidence, segmentID: result.segmentID)
                 continuation.yield(result)
             }
             continuation.finish()
