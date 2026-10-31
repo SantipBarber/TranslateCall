@@ -127,6 +127,8 @@ In the voice's row in Settings › Voices: when `header.durationSeconds > 12`, a
 
 Only if the gate (§9) shows cold first chunk > 1.5× warm. Then `QwenCloneModelManager.warmUp()` runs one streaming inference with the active profile and a one-word text, drained and discarded, through the gate, right after a session's preload of the clone model. Where to call it is left to the builder, next to the existing warm-up at Start (F8.5.4).
 
+As built (2026-10-31, P-1 cold/warm 1.50): the warm-up starts detached at Start when the clone is the outgoing voice and the model is already loaded; stop cancels it. It keeps the sentence's 3 s first-chunk limit on purpose: a warm-up slower than that becomes an abandoned stream (mlx still finishes it, so the model warms), and a real sentence meanwhile falls back at once without a breaker strike (REQ-QS-07a) instead of waiting up to 2 s behind it.
+
 ## 9. Measure-first gate (REQ-QS-30)
 
 Before §7 is built:
