@@ -34,13 +34,7 @@ nonisolated final class QwenCloneClient: QwenCloneInferring, @unchecked Sendable
         language: String
     ) async throws -> [Float] {
         let refAudio = MLXArray(referenceAudio)
-
-        let params = GenerateParameters(
-            maxTokens: config.maxTokens,
-            temperature: config.temperature,
-            topP: config.topP,
-            repetitionPenalty: config.repetitionPenalty
-        )
+        let params = generateParameters()
 
         let output = try await model.generate(
             text: text,
@@ -52,5 +46,54 @@ nonisolated final class QwenCloneClient: QwenCloneInferring, @unchecked Sendable
         )
 
         return output.asArray(Float.self)
+    }
+
+    func synthesizeStream(
+        text: String,
+        referenceAudio: [Float],
+        referenceTranscript: String,
+        language: String
+    ) -> AsyncThrowingStream<QwenStreamEvent, Error> {
+        let (stream, continuation) = AsyncThrowingStream.makeStream(of: QwenStreamEvent.self)
+        let relay = Task {
+            do {
+                let events = model.generateStream(
+                    text: text,
+                    voice: nil,
+                    refAudio: MLXArray(referenceAudio),
+                    refText: referenceTranscript,
+                    language: language,
+                    generationParameters: generateParameters(),
+                    streamingInterval: config.streamingInterval
+                )
+                for try await event in events {
+                    try Task.checkCancellation()
+                    switch event {
+                    case .audio(let chunk):
+                        let samples = chunk.asArray(Float.self)
+                        if !samples.isEmpty { continuation.yield(.audio(samples)) }
+                    case .info(let info):
+                        continuation.yield(.info(tokens: info.generationTokenCount,
+                                                 tokensPerSecond: info.tokensPerSecond))
+                    case .token:
+                        break
+                    }
+                }
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+        continuation.onTermination = { _ in relay.cancel() }
+        return stream
+    }
+
+    private func generateParameters() -> GenerateParameters {
+        GenerateParameters(
+            maxTokens: config.maxTokens,
+            temperature: config.temperature,
+            topP: config.topP,
+            repetitionPenalty: config.repetitionPenalty
+        )
     }
 }

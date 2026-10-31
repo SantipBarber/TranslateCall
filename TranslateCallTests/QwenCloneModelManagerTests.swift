@@ -104,4 +104,93 @@ struct QwenCloneModelManagerTests {
         #expect(emitted.contains("downloading"))
         #expect(emitted.contains("idle"))
     }
+
+    // MARK: - Streaming
+
+    private let streamArgs = (text: "Hi", audio: [Float]([0]), transcript: "x", language: "english")
+
+    private func stream(_ manager: QwenCloneModelManager) async -> AsyncThrowingStream<QwenStreamEvent, Error> {
+        await manager.synthesizeStream(text: streamArgs.text, referenceAudio: streamArgs.audio,
+                                       referenceTranscript: streamArgs.transcript, language: streamArgs.language)
+    }
+
+    private func firstEvent(of stream: AsyncThrowingStream<QwenStreamEvent, Error>) async throws {
+        for try await _ in stream { return }
+    }
+
+    @Test("a stream on an idle manager throws modelNotReady")
+    func streamNotReady() async {
+        let manager = makeManager(inferrer: MockQwenCloneInferrer(), gate: MLXInferenceGate(clock: TestClock()))
+        let failing = await stream(manager)
+        await #expect(throws: QwenCloneError.modelNotReady) { try await firstEvent(of: failing) }
+    }
+
+    @Test("a ready manager relays the model's events in order through the gate")
+    func streamThroughGate() async throws {
+        let inferrer = MockQwenCloneInferrer()
+        let events: [QwenStreamEvent] = [.audio([0.1]), .audio([0.2]), .info(tokens: 4, tokensPerSecond: 20)]
+        await inferrer.setStubStream(events)
+        let manager = makeManager(inferrer: inferrer, gate: MLXInferenceGate(clock: TestClock()))
+        try await manager.ensureReady()
+
+        var collected: [QwenStreamEvent] = []
+        for try await event in await stream(manager) { collected.append(event) }
+
+        #expect(collected == events)
+        #expect(inferrer.streamCallCount == 1)
+    }
+
+    @Test("while an abandoned stream holds the gate, a new stream fails fast with gateBusyAbandoned")
+    func abandonedFailsFast() async throws {
+        let gate = MLXInferenceGate(clock: TestClock())
+        let inferrer = MockQwenCloneInferrer()
+        await inferrer.setStubStream([.audio([0.1]), .audio([0.2])], holdBefore: 1)
+        let manager = makeManager(inferrer: inferrer, gate: gate)
+        try await manager.ensureReady()
+
+        let seen = LockedArray<QwenStreamEvent>()
+        let first = await stream(manager)
+        let caller = Task { for try await event in first { seen.append(event) } }
+        #expect(await waitUntil { seen.values.count == 1 })
+        caller.cancel()
+        #expect(await waitUntil { await gate.isHeldByAbandonedStream })
+
+        let failing = await stream(manager)
+        await #expect(throws: QwenCloneError.gateBusyAbandoned) { try await firstEvent(of: failing) }
+
+        inferrer.gate.open()
+        #expect(await waitUntil { !(await gate.isBusy) })
+    }
+
+    @Test("unload waits for an abandoned stream's model to finish")
+    func unloadWaitsForStreamDrain() async throws {
+        let gate = MLXInferenceGate(clock: TestClock())
+        let inferrer = MockQwenCloneInferrer()
+        await inferrer.setStubStream([.audio([0.1]), .audio([0.2])], holdBefore: 1)
+        let manager = makeManager(inferrer: inferrer, gate: gate)
+        try await manager.ensureReady()
+
+        let seen = LockedArray<QwenStreamEvent>()
+        let first = await stream(manager)
+        let caller = Task { for try await event in first { seen.append(event) } }
+        #expect(await waitUntil { seen.values.count == 1 })
+        caller.cancel()
+        #expect(await waitUntil { await gate.isHeldByAbandonedStream })
+
+        let returned = LockedArray<String>()
+        let unloading = Task {
+            await manager.unload()
+            returned.append("unloaded")
+        }
+        #expect(!(await waitUntil(timeout: .milliseconds(200)) { !returned.values.isEmpty }))
+
+        inferrer.gate.open()
+        await unloading.value
+
+        #expect(returned.values == ["unloaded"])
+        guard case .idle = await manager.state else {
+            Issue.record("Expected .idle after unload")
+            return
+        }
+    }
 }

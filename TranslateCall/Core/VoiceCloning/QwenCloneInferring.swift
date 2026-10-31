@@ -18,5 +18,22 @@ nonisolated protocol QwenCloneInferring: Sendable {
         language: String
     ) async throws -> [Float]
 
+    /// Streaming synthesis: audio chunks as the model produces them, then one `.info`. Synchronous so the
+    /// caller can hand the stream on; cancelling the consumer ends the model's work (the gate drains).
+    func synthesizeStream(
+        text: String,
+        referenceAudio: [Float],
+        referenceTranscript: String,
+        language: String
+    ) -> AsyncThrowingStream<QwenStreamEvent, Error>
+
     var sampleRate: Int { get }
+}
+
+// MARK: - QwenStreamEvent
+
+/// What a streaming Qwen3-TTS synthesis reports.
+nonisolated enum QwenStreamEvent: Sendable, Equatable {
+    case audio([Float])
+    case info(tokens: Int, tokensPerSecond: Double)
 }

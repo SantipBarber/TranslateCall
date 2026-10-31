@@ -109,6 +109,36 @@ actor QwenCloneModelManager {
         }
     }
 
+    /// A streamed Qwen3-TTS inference through the gate (REQ-QS-02/03). Fails fast, as a stream that throws,
+    /// when the model is not loaded or a previous sentence nobody listens to still holds the gate.
+    func synthesizeStream(
+        text: String,
+        referenceAudio: [Float],
+        referenceTranscript: String,
+        language: String
+    ) async -> AsyncThrowingStream<QwenStreamEvent, Error> {
+        guard case .ready = state, let inferrer else { return Self.failingStream(.modelNotReady) }
+        if await gate.isHeldByAbandonedStream { return Self.failingStream(.gateBusyAbandoned) }
+        return gate.runStream(
+            firstElement: .seconds(config.firstChunkTimeoutSeconds),
+            isFirst: { if case .audio = $0 { true } else { false } },
+            work: {
+                inferrer.synthesizeStream(
+                    text: text,
+                    referenceAudio: referenceAudio,
+                    referenceTranscript: referenceTranscript,
+                    language: language
+                )
+            }
+        )
+    }
+
+    nonisolated private static func failingStream(
+        _ error: QwenCloneError
+    ) -> AsyncThrowingStream<QwenStreamEvent, Error> {
+        AsyncThrowingStream { $0.finish(throwing: error) }
+    }
+
     /// A `QwenCloneInferring` for `QwenUtteranceSynthesizer` and `VoicePreviewService` whose every
     /// call goes through `synthesize`, i.e. through the gate.
     nonisolated func gatedInferrer() -> any QwenCloneInferring {
@@ -190,5 +220,32 @@ nonisolated struct GatedQwenInferrer: QwenCloneInferring {
             referenceTranscript: referenceTranscript,
             language: language
         )
+    }
+
+    /// The manager's stream, relayed (P13): the manager call is async, this one is not.
+    func synthesizeStream(
+        text: String,
+        referenceAudio: [Float],
+        referenceTranscript: String,
+        language: String
+    ) -> AsyncThrowingStream<QwenStreamEvent, Error> {
+        let (stream, continuation) = AsyncThrowingStream.makeStream(of: QwenStreamEvent.self)
+        let manager = manager
+        let relay = Task {
+            let inner = await manager.synthesizeStream(
+                text: text,
+                referenceAudio: referenceAudio,
+                referenceTranscript: referenceTranscript,
+                language: language
+            )
+            do {
+                for try await event in inner { continuation.yield(event) }
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+        continuation.onTermination = { _ in relay.cancel() }
+        return stream
     }
 }

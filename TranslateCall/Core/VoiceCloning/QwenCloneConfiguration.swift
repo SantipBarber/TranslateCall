@@ -13,6 +13,10 @@ nonisolated struct QwenCloneConfiguration: Sendable {
     var textTruncationLimit: Int = 200
     /// Qwen3-TTS (12 Hz codec) output rate, as `QwenCloneClient.sampleRate` reports it.
     var outputSampleRate: Int = 24_000
+    /// Seconds of audio between streamed chunks (mlx-audio `streamingInterval`).
+    var streamingInterval: Double = 0.32
+    /// How long a streamed synthesis may take to produce its first audio chunk.
+    var firstChunkTimeoutSeconds: Double = 3
 
     nonisolated static let `default` = QwenCloneConfiguration()
 
@@ -97,6 +101,8 @@ nonisolated enum QwenCloneError: LocalizedError, Sendable, Equatable {
     case gateBusy
     /// The model returned no audio.
     case emptyOutput
+    /// A previous streamed sentence nobody listens to any more still holds the model.
+    case gateBusyAbandoned
 
     var errorDescription: String? {
         switch self {
@@ -106,6 +112,7 @@ nonisolated enum QwenCloneError: LocalizedError, Sendable, Equatable {
         case .unsupportedLocale: return "Voice clone does not support this language."
         case .gateBusy: return "The voice clone model is busy. Try again in a moment."
         case .emptyOutput: return "Voice clone synthesis produced no audio."
+        case .gateBusyAbandoned: return "The voice clone model is finishing a previous sentence."
         }
     }
 }
