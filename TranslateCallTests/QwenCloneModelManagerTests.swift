@@ -157,7 +157,39 @@ struct QwenCloneModelManagerTests {
 
         let failing = await stream(manager)
         await #expect(throws: QwenCloneError.gateBusyAbandoned) { try await firstEvent(of: failing) }
+        #expect(inferrer.streamCallCount == 1, "the failing sentence reached the busy model")
 
+        inferrer.gate.open()
+        #expect(await waitUntil { !(await gate.isBusy) })
+    }
+
+    @Test("no audio within 3 s of the call: inferenceTimeout; an .info alone does not stop the timer (REQ-QS-03)")
+    func firstChunkTimeoutIgnoresInfo() async throws {
+        let clock = TestClock()
+        let gate = MLXInferenceGate(clock: clock)
+        let inferrer = MockQwenCloneInferrer()
+        await inferrer.setStubStream([.info(tokens: 2, tokensPerSecond: 10), .audio([0.1])], holdBefore: 1)
+        let manager = makeManager(inferrer: inferrer, gate: gate)
+        try await manager.ensureReady()
+
+        let seen = LockedArray<QwenStreamEvent>()
+        let failures = LockedArray<QwenCloneError>()
+        let events = await stream(manager)
+        let caller = Task {
+            do {
+                for try await event in events { seen.append(event) }
+            } catch {
+                if let error = error as? QwenCloneError { failures.append(error) }
+            }
+        }
+        #expect(await waitUntil { seen.values.count == 1 && clock.pendingDeadlines == [.seconds(3)] })
+        clock.advance(by: .milliseconds(2_999))
+        #expect(clock.sleeperCount == 1, "the timer stopped before its 3 s")
+        clock.advance(by: .milliseconds(1))
+
+        #expect(await waitUntil { failures.values == [.inferenceTimeout] })
+        #expect(seen.values == [.info(tokens: 2, tokensPerSecond: 10)])
+        caller.cancel()
         inferrer.gate.open()
         #expect(await waitUntil { !(await gate.isBusy) })
     }

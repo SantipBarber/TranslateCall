@@ -22,8 +22,13 @@ actor MockQwenCloneInferrer: QwenCloneInferring {
     private var stubError: Error?
     private var stubDelay: Duration?
 
-    /// Opens the `holdBefore` pause of a stub stream.
-    nonisolated let gate = AsyncGate()
+    /// Opens the `holdBefore` pause of the stub streams started since the last `rearmHold()`.
+    nonisolated var gate: AsyncGate { hold.withLock { $0 } }
+
+    private nonisolated let hold = Mutex(AsyncGate())
+
+    /// Later stub streams pause at `holdBefore` again, on a new closed `gate`.
+    nonisolated func rearmHold() { hold.withLock { $0 = AsyncGate() } }
 
     private struct StreamStub {
         var events: [QwenStreamEvent]?
