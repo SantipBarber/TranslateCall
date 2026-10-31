@@ -127,7 +127,7 @@ struct AudioCoordinatorEarlyProcessingTests {
         await coordinator.stop()
     }
 
-    @Test("stop drops a held tentative: a late commit shows and speaks nothing")
+    @Test("stop while a committed sentence awaits its held translation: nothing completed, nothing spoken")
     func stopDropsHeldTentative() async {
         let mocks = CoordinatorMocks()
         let coordinator = makeCoordinator(mocks)
@@ -135,13 +135,33 @@ struct AudioCoordinatorEarlyProcessingTests {
         mocks.mockOutgoingTranslation.holdNext = true
         await mocks.mockOutgoingSTT.injectTranscription(result("hola", id: 1))
         #expect(await waitUntil { mocks.mockOutgoingTranslation.isHolding })
+        await mocks.mockVADFactory.injectBoundary(.commit(1))
+        #expect(await waitUntil { coordinator.transcript.map(\.original) == ["hola"] })
 
         await coordinator.stop()
-        await mocks.mockVADFactory.injectBoundary(.commit(1))
         mocks.mockOutgoingTranslation.releaseHeld()
         await mainQueueHop()
-        #expect(coordinator.transcript.isEmpty)
+        #expect(coordinator.transcript.first?.translation == nil)
         #expect(await mocks.mockOutgoingTTS.speakCalls.isEmpty)
+    }
+
+    @Test("incoming: stop while a committed sentence awaits its held translation speaks nothing")
+    func stopDropsHeldIncomingTentative() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start(captureTarget: callTarget)
+        #expect(await waitUntil { coordinator.isIncomingActive })
+        mocks.mockIncomingTranslation.holdNext = true
+        await mocks.mockIncomingSTT.injectTranscription(result("hello", id: 1))
+        #expect(await waitUntil { mocks.mockIncomingTranslation.isHolding })
+        await mocks.mockIncomingVAD.injectBoundary(.commit(1))
+        #expect(await waitUntil { coordinator.transcript.map(\.original) == ["hello"] })
+
+        await coordinator.stop()
+        mocks.mockIncomingTranslation.releaseHeld()
+        await mainQueueHop()
+        #expect(coordinator.transcript.first?.translation == nil)
+        #expect(await mocks.mockIncomingTTS.speakCalls.isEmpty)
     }
 
     @Test("a cancelled delivery speaks nothing even if the translator ignores cancellation")

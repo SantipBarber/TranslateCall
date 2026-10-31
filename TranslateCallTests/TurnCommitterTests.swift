@@ -140,7 +140,9 @@ struct TurnCommitterTests {
     func inOrder() async {
         let probe = CommitterProbe()
         let committer = probe.makeCommitter()
+        // Boundaries come in id order and one tentative is open at a time (TentativeTracker).
         committer.receive(result("uno", id: 1))
+        committer.receive(.commit(1))
         committer.receive(result("dos", id: 2))
         #expect(await waitUntil { probe.translated.count == 2 })
         probe.open("dos")
@@ -148,7 +150,6 @@ struct TurnCommitterTests {
         await mainQueueHop()
         #expect(probe.delivered.isEmpty, "2 waits for 1")
 
-        committer.receive(.commit(1))
         probe.open("uno")
         #expect(await waitUntil { probe.delivered.count == 2 })
         #expect(probe.delivered.map(\.text) == ["uno", "dos"])
@@ -189,6 +190,34 @@ struct TurnCommitterTests {
         committer.receive(result("tres", id: 0, .final))
         #expect(await waitUntil { probe.delivered.count == 3 })
         #expect(probe.delivered.map(\.text) == ["uno", "dos", "tres"])
+    }
+
+    @Test("a commit whose result was lost does not block the next sentence")
+    func lostResultDoesNotBlock() async {
+        let probe = CommitterProbe()
+        probe.autoOpen = true
+        let committer = probe.makeCommitter()
+        committer.receive(.commit(1))
+        committer.receive(result("dos", id: 2))
+        committer.receive(.commit(2))
+        #expect(await waitUntil { probe.delivered.count == 1 })
+        await mainQueueHop()
+        #expect(probe.delivered.map(\.text) == ["dos"])
+        #expect(committer.heldCount == 0)
+    }
+
+    @Test("a tentative whose boundary was lost does not block the next sentence")
+    func lostBoundaryDoesNotBlock() async {
+        let probe = CommitterProbe()
+        probe.autoOpen = true
+        let committer = probe.makeCommitter()
+        committer.receive(result("uno", id: 1))
+        #expect(await waitUntil { probe.translated == ["uno"] })
+        committer.receive(result("dos", id: 2, .final))
+        #expect(await waitUntil { probe.delivered.count == 1 })
+        await mainQueueHop()
+        #expect(probe.delivered.map(\.text) == ["dos"])
+        #expect(committer.heldCount == 0)
     }
 
     @Test("cancelAll drops what is held: a later commit delivers nothing")

@@ -329,6 +329,8 @@ final class AudioCoordinator: ObservableObject {
     }
 
     /// Update STT locales when the language pair changes.
+    /// A sentence held by a `TurnCommitter` (first silence → commit) keeps the translation it started
+    /// with: its STT already ran in the old locale, as a sentence in flight does today. Accepted.
     func updateLanguagePair() async {
         let sourceLocale = Locale(identifier: languagePairManager.sourceLanguage.minimalIdentifier)
         let targetLocale = Locale(identifier: languagePairManager.targetLanguage.minimalIdentifier)
