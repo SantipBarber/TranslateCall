@@ -225,6 +225,21 @@ def test_clone_table_rendered(tmp_path, monkeypatch):
     assert "Mi voz" in html and "ID-123" in html and "reference 31.0 s" in html.replace("\n", " ")
 
 
+def test_clone_table_shows_spoken_share(tmp_path, monkeypatch):
+    run_dir, manifest = _build(tmp_path, monkeypatch)
+    raw_path = next(run_dir.rglob("raw.json"))
+    raw = json.loads(raw_path.read_text())
+    raw["meta"]["engines"]["expectedTTS"] = "voiceClone"
+    for u in raw["utterances"]:
+        u["detail"]["ttsFirstBuffer"]["engine"] = "avSpeech"     # every sentence fell back
+    raw_path.write_text(json.dumps(raw))
+    analyze.run(run_dir, manifest)
+    html = _go(run_dir, manifest, tmp_path).read_text()
+    assert "Voice clone" in html
+    assert "clone spoken %" in html
+    assert '<td class="num">0.0</td>' in html
+
+
 def test_no_clone_table_without_clone(tmp_path, monkeypatch):
     run_dir, manifest = _build(tmp_path, monkeypatch)
     assert "Voice clone" not in _go(run_dir, manifest, tmp_path).read_text()

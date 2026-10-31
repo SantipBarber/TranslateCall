@@ -452,3 +452,48 @@ def test_clone_profile_recorded_and_lookup_failure_marked():
     assert _agg(raw, manifest)["clone"]["profile"] == {"id": "P1", "name": "Mi voz", "seconds": 31.5, "lookup": "ok"}
     raw["meta"]["settings"] = {"voiceProfileId": "P1", "voiceProfileLookup": "failed"}
     assert _agg(raw, manifest)["clone"]["profile"]["lookup"] == "failed"
+
+
+def test_clone_spoken_share_counts_fallback_sentences():
+    """I3: a sentence the clone was planned for but AVSpeech spoke must lower the share, not vanish."""
+    raw, manifest = _clone_line([{"gapCount": 1, "gapMs": 50}, None, None, None])
+    for u in raw["utterances"][1:3]:
+        u["detail"]["ttsFirstBuffer"]["engine"] = "avSpeech"
+    agg = _agg(raw, manifest)
+    clone = agg["clone"]
+    assert agg["fallbacks"] == 2
+    assert clone["clonePlannedSentences"] == 4
+    assert clone["sentences"] == 2
+    assert clone["cloneSpokenPct"] == 50.0
+    assert clone["gapSentencesPct"] == 50.0      # over the clone-spoken sentences only
+
+
+def test_clone_stats_when_every_sentence_fell_back():
+    raw, manifest = _clone_line([None, None])
+    for u in raw["utterances"]:
+        u["detail"]["ttsFirstBuffer"]["engine"] = "avSpeech"
+    clone = _agg(raw, manifest)["clone"]
+    assert clone["clonePlannedSentences"] == 2
+    assert clone["sentences"] == 0
+    assert clone["cloneSpokenPct"] == 0.0
+    assert clone["gapSentencesPct"] is None
+    assert clone["firstChunkMs"]["count"] == 0
+
+
+def test_clone_spoken_share_merged_attempt_counts_once():
+    raw, manifest = _clone_line([None, None, None])
+    for u in raw["utterances"][:2]:
+        u["detail"]["ttsFirstBuffer"]["engine"] = "avSpeech"
+        u["detail"]["ttsFirstBuffer"]["mergedSeqs"] = "0,1"
+    clone = _agg(raw, manifest)["clone"]
+    assert clone["clonePlannedSentences"] == 2
+    assert clone["cloneSpokenPct"] == pytest.approx(50.0)
+
+
+def test_clone_spoken_share_unknown_without_expected_tts():
+    raw, manifest = _clone_line([None, None])
+    del raw["meta"]["engines"]["expectedTTS"]
+    clone = _agg(raw, manifest)["clone"]
+    assert clone["sentences"] == 2
+    assert clone["clonePlannedSentences"] is None
+    assert clone["cloneSpokenPct"] is None

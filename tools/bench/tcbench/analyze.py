@@ -129,19 +129,27 @@ def _clone_profile(settings: dict) -> dict[str, Any]:
     }
 
 
-def _clone_stats(utts: list[dict], settings: dict | None = None) -> dict[str, Any] | None:
-    """Voice-clone path of a line (informative; never in ``compare``): first chunk and playback gaps.
+def _spoken_sentence(utt: dict) -> bool:
+    """A sentence some TTS engine spoke: not dropped, first buffer out, counted once per merged attempt."""
+    return not _dropped(utt) and "ttsFirstBuffer" in utt["events"] and not _merged_non_owner(utt)
 
-    ``None`` when no utterance was spoken by the clone.  ``playback`` is absent in older runs.
+
+def _clone_stats(
+    utts: list[dict], settings: dict | None = None, expected_tts: str | None = None
+) -> dict[str, Any] | None:
+    """Voice-clone path of a line (informative; never in ``compare``): first chunk, playback gaps and the
+    share of the clone's planned sentences it really spoke.
+
+    A line plans the clone when its expected TTS is ``voiceClone``; every sentence spoken on another engine
+    there is a runtime fallback (the same ones ``fallbacks`` counts), so ``cloneSpokenPct`` shows how much of
+    the line the other side heard in the system voice.  Without ``expectedTTS`` (older runs) the plan is
+    unknown and both are ``None``.  ``None`` overall when the clone was neither planned nor heard.
+    ``playback`` is absent in older runs.
     """
-    clone = [
-        u for u in utts
-        if not _dropped(u)
-        and "ttsFirstBuffer" in u["events"]
-        and u.get("detail", {}).get("ttsFirstBuffer", {}).get("engine") == "voiceClone"
-        and not _merged_non_owner(u)
-    ]
-    if not clone:
+    spoken = [u for u in utts if _spoken_sentence(u)]
+    clone = [u for u in spoken if u["detail"].get("ttsFirstBuffer", {}).get("engine") == "voiceClone"]
+    planned = len(spoken) if expected_tts == "voiceClone" else None
+    if not clone and not planned:
         return None
     first_chunk = [
         (u["events"]["ttsFirstBuffer"] - u["events"]["translated"]) * 1e-6
@@ -151,9 +159,11 @@ def _clone_stats(utts: list[dict], settings: dict | None = None) -> dict[str, An
     gapped = sum(1 for p in playbacks if p.get("gapCount", 0) > 0)
     return {
         "firstChunkMs": summary(first_chunk),
-        "gapSentencesPct": gapped / len(clone) * 100.0,
+        "gapSentencesPct": gapped / len(clone) * 100.0 if clone else None,
         "gapMsTotal": sum(p.get("gapMs", 0) for p in playbacks),
         "sentences": len(clone),
+        "clonePlannedSentences": planned,
+        "cloneSpokenPct": len(clone) / planned * 100.0 if planned else None,
         "profile": _clone_profile(settings or {}),
     }
 
@@ -266,7 +276,7 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False, tier: str | Non
         "comet": comet_result,
         "fallbacks": fallbacks,
         "unassigned": unassigned,
-        **({"clone": clone} if (clone := _clone_stats(included_utts, raw["meta"].get("settings"))) else {}),
+        **({"clone": clone} if (clone := _clone_stats(included_utts, raw["meta"].get("settings"), exp_tts)) else {}),
     }
 
 

@@ -73,12 +73,15 @@ footer li { margin:4px 0; }
 <h2>Voice clone</h2>
 <section class="rows">
 <table>
-<tr><th>profile/runLine</th><th class="num">sentences</th><th class="num">first chunk p50 ms</th><th class="num">first chunk p90 ms</th><th class="num">gap sentences %</th><th class="num">gap ms total</th></tr>
+<tr><th>profile/runLine</th><th class="num">clone sentences</th><th class="num">planned</th><th class="num">clone spoken %</th><th class="num">first chunk p50 ms</th><th class="num">first chunk p90 ms</th><th class="num">gap sentences %</th><th class="num">gap ms total</th></tr>
 {% for key, a in clones %}
+{% set planned = a.clone.get("clonePlannedSentences") %}{% set spoken = a.clone.get("cloneSpokenPct") %}
 <tr><td>{{ key }}</td><td class="num">{{ a.clone.sentences }}</td>
+<td class="num">{{ planned if planned is not none else "n/a" }}</td>
+<td class="num">{{ "%.1f"|format(spoken) if spoken is not none else "n/a" }}</td>
 <td class="num">{{ "%.0f"|format(a.clone.firstChunkMs.p50) if a.clone.firstChunkMs.p50 is not none else "n/a" }}</td>
 <td class="num">{{ "%.0f"|format(a.clone.firstChunkMs.p90) if a.clone.firstChunkMs.p90 is not none else "n/a" }}</td>
-<td class="num">{{ "%.1f"|format(a.clone.gapSentencesPct) }}</td>
+<td class="num">{{ "%.1f"|format(a.clone.gapSentencesPct) if a.clone.gapSentencesPct is not none else "n/a" }}</td>
 <td class="num">{{ a.clone.gapMsTotal }}</td></tr>
 {% endfor %}
 </table>
@@ -88,7 +91,9 @@ footer li { margin:4px 0; }
 {% else %}{{ a.clone.profile.name or "(unnamed)" }}{% if a.clone.profile.id %} ({{ a.clone.profile.id }}){% endif %},
 reference {{ "%.1f"|format(a.clone.profile.seconds) if a.clone.profile.seconds is not none else "n/a" }} s{% endif %}.</p>
 {% endfor %}
-<p class="muted">Informative: not part of the baseline comparison.</p>
+<p class="muted">Clone spoken %: the planned sentences (the line's expected TTS is the clone) that the clone
+itself spoke; the rest fell back to another voice. n/a when the run did not record the expected TTS.
+Informative: not part of the baseline comparison.</p>
 </section>
 {% endif %}
 
