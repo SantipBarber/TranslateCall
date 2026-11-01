@@ -331,6 +331,7 @@ Draft texts (Spanish, no numbers or names):
 
 Then run `just qwen-probe` and give the user the summary path and the WAV folders. They listen to each reference's sentences and pick the **shortest length that still sounds like them**.
 - Record the pick, the probe numbers and the cold/warm ratio in this file (a "P-1 result" line here) and in memory.
+- **P-1 result (2026-10-31):** user recorded 5.59/8.11/11.41 s on the Mac mic; picked **8 s** by ear (ECAPA speaker similarity ties 8 and 10 s). Warm first chunk 5 s 0.27, 8 s 0.30, 10 s 0.34, 31 s 0.62 s; 20–22 tok/s. Cold/warm 1.50 (0.40/0.27 s) → Task 10 runs. Run `build/qwen-probe/2026-10-31T17-57-15Z`.
 - The pick sets `guidedTargetSeconds` and the guided texts' length in Task 7.
 - If cold first chunk > 1.5× warm → Task 10 runs; else Task 10 is skipped (write why).
 - If none under 31 s sounds right: **stop** and present options (keep long voices + streaming only; or another approach). Do not continue phase 2.
