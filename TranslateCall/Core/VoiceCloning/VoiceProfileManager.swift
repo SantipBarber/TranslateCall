@@ -237,6 +237,8 @@ final class VoiceProfileManager: ObservableObject {
 
     private func startElapsedTimer() {
         let clock = clock
+        // Two starts resuming from one permission prompt must not leave two timers running.
+        elapsedTask?.cancel()
         elapsedTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await clock.sleep(for: .milliseconds(100))
