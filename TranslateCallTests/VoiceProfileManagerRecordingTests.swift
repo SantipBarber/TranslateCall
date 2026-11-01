@@ -8,10 +8,14 @@ private final class FakeVoiceRecorder: VoiceRecording, @unchecked Sendable {
     let startGate: AsyncGate?
     init(startGate: AsyncGate? = nil) { self.startGate = startGate }
 
+    private let counts = LockedArray<String>()
+    var stopCount: Int { counts.values.count }
+
     func startRecording() async throws { await startGate?.wait() }
 
     func stopRecording(mode: RecordingMode) async throws -> RecordingResult {
-        RecordingResult(
+        counts.append("stop")
+        return RecordingResult(
             samples: [0.1, 0.2], durationSeconds: 8,
             quality: VoiceQualityMetrics(peakRmsDbfs: -18, hasClipping: false, voicedDurationSeconds: 8, grade: .good)
         )
@@ -67,6 +71,54 @@ struct VoiceProfileManagerRecordingTests {
         await starting.value
         #expect(await waitUntil { clock.sleeperCount == 1 })
         await manager.stopRecording()
+    }
+
+    @Test("a guided recording auto-stops exactly at guidedMaxSeconds, not a tick later")
+    func autoStopsAtLimit() async {
+        let clock = TestClock()
+        let manager = makeManager(clock: clock)
+        await manager.startRecording(mode: .guided(language: "english"))
+        let ticks = Int(QwenCloneConfiguration.guidedMaxSeconds * 10)
+        for _ in 0 ..< ticks - 1 {
+            _ = await waitUntil { clock.sleeperCount == 1 }
+            clock.advance(by: .milliseconds(100))
+        }
+        _ = await waitUntil { clock.sleeperCount == 1 }
+        #expect(manager.recordingState.isRecording, "one tick short of the limit")
+        clock.advance(by: .milliseconds(100))
+        #expect(await waitUntil { manager.recordingState.reviewingResult != nil })
+        #expect(manager.recordingState.reviewingResult?.reachedLimit == true)
+    }
+
+    @Test("a manual stop cancels the timer: no further ticks, no second stop")
+    func manualStopCancelsTimer() async {
+        let clock = TestClock()
+        let manager = makeManager(clock: clock)
+        await manager.startRecording(mode: .guided(language: "english"))
+        #expect(await waitUntil { clock.sleeperCount == 1 })
+        await manager.stopRecording()
+        #expect(await waitUntil { clock.sleeperCount == 0 })
+        clock.advance(by: .seconds(60))
+        await Task.yield()
+        #expect(manager.recordingState.reviewingResult?.reachedLimit == false)
+    }
+
+    @Test("cancelling while the permission prompt is open releases the recorder that starts afterwards")
+    func cancelDuringPromptReleasesRecorder() async {
+        let gate = AsyncGate()
+        let recorder = FakeVoiceRecorder(startGate: gate)
+        let clock = TestClock()
+        let manager = makeManager(recorder: recorder, clock: clock)
+        let starting = Task { await manager.startRecording(mode: .free) }
+        #expect(await waitUntil { gate.waiterCount == 1 })
+
+        manager.discardAndReRecord()   // the user cancels with the prompt still open
+        gate.open()
+        await starting.value
+
+        #expect(recorder.stopCount == 1, "the late-started recorder is stopped and discarded")
+        #expect(manager.recordingState.isIdle)
+        #expect(clock.sleeperCount == 0)
     }
 
     @Test("a completed save is signalled once; a failed save is not")

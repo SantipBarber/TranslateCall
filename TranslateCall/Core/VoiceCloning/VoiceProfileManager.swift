@@ -70,7 +70,8 @@ final class VoiceProfileManager: ObservableObject {
     // MARK: - Elapsed timer
 
     private var elapsedTask: Task<Void, Never>?
-    private var elapsedSeconds: Float = 0
+    /// Elapsed time in 100 ms ticks: an integer count, so the auto-stop never drifts like a float sum.
+    private var elapsedTicks = 0
 
     // MARK: - Init
 
@@ -121,7 +122,7 @@ final class VoiceProfileManager: ObservableObject {
         }
         recordingMode = mode
         recordingState = .recording(elapsedSeconds: 0)
-        elapsedSeconds = 0
+        elapsedTicks = 0
         do {
             try await recorder.startRecording()
         } catch {
@@ -129,7 +130,11 @@ final class VoiceProfileManager: ObservableObject {
             return
         }
         // Only now: the permission prompt may have taken any time, and none of it is recording.
-        guard recordingState.isRecording else { return }
+        guard recordingState.isRecording else {
+            // Cancelled or stopped while the prompt was open: the recorder started anyway, so release it.
+            _ = try? await recorder.stopRecording(mode: mode)
+            return
+        }
         startElapsedTimer()
     }
 
@@ -236,10 +241,10 @@ final class VoiceProfileManager: ObservableObject {
             while !Task.isCancelled {
                 try? await clock.sleep(for: .milliseconds(100))
                 guard !Task.isCancelled, let self else { return }
-                self.elapsedSeconds += 0.1
-                self.recordingState = .recording(elapsedSeconds: self.elapsedSeconds)
+                self.elapsedTicks += 1
+                self.recordingState = .recording(elapsedSeconds: Float(self.elapsedTicks) / 10)
                 // Auto-stop at the mode's limit (P5)
-                if Double(self.elapsedSeconds) >= self.recordingMode.maxSeconds {
+                if self.elapsedTicks >= Int((self.recordingMode.maxSeconds * 10).rounded()) {
                     await self.finishRecording(reachedLimit: true)
                     return
                 }

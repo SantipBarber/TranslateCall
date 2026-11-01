@@ -105,7 +105,10 @@ struct VoiceRecordingFlowView: View {
             Text("Record Your Voice")
                 .font(.headline)
 
-            Text("Speak clearly for 10-30 seconds in a quiet room.\nThis recording will be used for voice cloning.")
+            Text("""
+                Speak clearly for 10-\(Int(QwenCloneConfiguration.freeMaxSeconds)) seconds in a quiet room.
+                This recording will be used for voice cloning.
+                """)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
