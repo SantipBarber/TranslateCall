@@ -370,4 +370,28 @@ struct QwenCloneModelManagerTests {
         await manager.warmUp(profileStore: store, activeProfileId: profileId, locale: Locale(identifier: "en-US"))
         #expect(inferrer.streamCallCount == 2)
     }
+
+    @Test("a warm-up still draining across unload and reload does not mark the new model warm")
+    func staleWarmUpDoesNotWarmReloadedModel() async throws {
+        let inferrer = MockQwenCloneInferrer()
+        await inferrer.setStubStream([.audio([0.1]), .audio([0.2])], holdBefore: 1)
+        let manager = makeManager(inferrer: inferrer, gate: MLXInferenceGate(clock: TestClock()))
+        let store = await profileStore()
+        let locale = Locale(identifier: "en-US")
+        try await manager.ensureReady()
+
+        let oldWarmUp = Task {
+            await manager.warmUp(profileStore: store, activeProfileId: profileId, locale: locale)
+        }
+        #expect(await waitUntil { inferrer.streamCallCount == 1 })
+        let unloading = Task { await manager.unload() }   // waits for the gate, which the warm-up holds
+        #expect(await waitUntil { if case .idle = await manager.state { true } else { false } })
+        try await manager.ensureReady()   // the reload happens while the old warm-up still drains
+        inferrer.gate.open()
+        await oldWarmUp.value
+        await unloading.value
+
+        await manager.warmUp(profileStore: store, activeProfileId: profileId, locale: locale)
+        #expect(inferrer.streamCallCount == 2, "the new, cold model still gets its own warm-up")
+    }
 }

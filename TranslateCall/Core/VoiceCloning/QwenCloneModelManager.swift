@@ -41,6 +41,8 @@ actor QwenCloneModelManager {
     private var inferrer: (any QwenCloneInferring)?
     /// The loaded model already ran its warm-up (REQ-QS-31): one per load, not one per session.
     private var warmedSinceLoad = false
+    /// Bumped on every load and unload: a warm-up still draining after a reload must not mark the new model warm.
+    private var loadGeneration = 0
 
     private let stateContinuation: AsyncStream<ModelState>.Continuation
     nonisolated let stateStream: AsyncStream<ModelState>
@@ -148,6 +150,7 @@ actor QwenCloneModelManager {
     /// loaded. Cancelling the caller stops listening only: the gate still drains the model (REQ-QS-06).
     func warmUp(profileStore: any VoiceProfileStoring, activeProfileId: UUID, locale: Locale) async {
         guard case .ready = state, !warmedSinceLoad else { return }
+        let generation = loadGeneration
         let start = ContinuousClock.now
         var failure: Error?
         do {
@@ -166,7 +169,7 @@ actor QwenCloneModelManager {
                 if case .audio = event { audioSeen = true }
             }
             // Warm only once the model produced audio: a warm-up cancelled or failed before that is retried.
-            if audioSeen { warmedSinceLoad = true }
+            if audioSeen, generation == loadGeneration { warmedSinceLoad = true }
         } catch {
             failure = error
         }
@@ -185,7 +188,7 @@ actor QwenCloneModelManager {
     /// The loaded client, read with the gate held; `.modelNotReady` when an unload came first.
     private func admittedInferrer() throws -> any QwenCloneInferring {
         guard case .ready = state, let inferrer else {
-            logger.info("Voice clone sentence ends: the model was unloaded while it waited for the gate")
+            logger.info("Voice clone stream refused: model not ready (unloaded while it waited for the gate)")
             throw QwenCloneError.modelNotReady
         }
         return inferrer
@@ -209,6 +212,7 @@ actor QwenCloneModelManager {
         loadTask?.cancel()
         loadTask = nil
         warmedSinceLoad = false
+        loadGeneration += 1
         transition(to: .idle)
         await gate.waitUntilIdle()
         if case .idle = state { inferrer = nil }   // a reload during the wait keeps its new client
@@ -238,6 +242,7 @@ actor QwenCloneModelManager {
             let client = try await loader(repo)
             self.inferrer = client
             self.warmedSinceLoad = false
+            self.loadGeneration += 1
             self.transition(to: .ready)
         }
         loadTask = task
