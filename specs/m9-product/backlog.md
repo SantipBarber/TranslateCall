@@ -16,6 +16,7 @@
 | # | Defect / Finding | Where | Guard in place |
 |---|------------------|-------|----------------|
 | A29 | `LanguagePairManagerTests` uses `UserDefaults.standard` in a parallel suite; it flaked once in 4 runs (P16) | `LanguagePairManagerTests.swift` | — |
+| A30 | Since the macOS 26.6.2 → 27.2 update (between 2026-10-31 and 11-01), `isSpeaking` goes false 190–280 ms after the last audio reaches BlackHole (NFR-T-02 limit: 150 ms + trailing silence). It reproduces on the G3-green commit 7cc03bb, with the Mac speakers or headphones as output and with BlackHole or Brio as input. Next: measure whether the delay is in `.dataPlayedBack` (HAL) or in the hop to the main actor, then fix or move the limit | `TTSOutput.swift`, `TTSPlaybackIntegrationTests.swift` | `withKnownIssue` (intermittent) on that one expectation; audio-arrives and tail-not-cut checks still gate |
 | UI-L1 | Wire `TraceLatencyProvider` once `spec/m9-benchmark` is on `main` (D-3) | `LatencyProvider.swift` | `NoLatencyProvider` production placeholder; hidden label and setting |
 | UI-L2 | ~~"Advanced…" opens the legacy tab until feature 2~~ Closed by UI settings: "Advanced…" opens the per-pair models sheet | `LanguageSection.swift` | — |
 | UI-B1 | Pause speak/stopSpeaking priority race: after `speak`, `if isPaused { await tts.stopSpeaking() }` (T9) | `AudioCoordinator+Session.swift` (`+Pipeline` is at 398/400 lines) | — |
