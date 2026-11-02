@@ -526,9 +526,18 @@ Behaviour (design §7.2, §7.4):
 
 ### Gate G4 — acceptance run
 
-- [ ] A **full** bench run, Best local, short voice, overnight with `caffeinate` (Basic's full run takes ~3 h 27 min; Best is similar or longer): `just bench full best`. NFR-QS-01 (p50 < 1.5 s, p90 < 2.0 s per gated clone direction), NFR-QS-02 (gaps ≤ 5 % of clone sentences), NFR-QS-05 (cut rate and WER within the thresholds).
-- [ ] If NFR-QS-01 misses: **stop** and present the numbers and options to the user; do not ship as accepted.
-- [ ] New baselines: `just bench-baseline <run> "qwen-streaming: clone streaming, short reference, early end-of-turn"` for Best (and Basic, from a full Basic run).
+- [x] A **full** bench run, Best local, short voice, overnight with `caffeinate` (Basic's full run takes ~3 h 27 min; Best is similar or longer): `just bench full best`. NFR-QS-01 (p50 < 1.5 s, p90 < 2.0 s per gated clone direction), NFR-QS-02 (gaps ≤ 5 % of clone sentences), NFR-QS-05 (cut rate and WER within the thresholds).
+- [x] If NFR-QS-01 misses: **stop** and present the numbers and options to the user; do not ship as accepted.
+- [x] New baselines: `just bench-baseline <run> "qwen-streaming: clone streaming, short reference, early end-of-turn"` for Best (and Basic, from a full Basic run).
+- **G4 result (2026-11-02, Release, 3f88816, voice Santi-Español 7.61 s):**
+  - Best full run `2026-11-01T20-43-00Z-3f88816`, total p50/p90:
+    - en>es 1518/1822 ms (p50 missed by 18 ms);
+    - es-419>en 1482/1747 ms;
+    - es-ES>en 1312/1481 ms.
+  - Gaps 0 %, fallbacks 0, first sentence cold 2148 ms (no fallback). Cut 1.4/2.0/0.0 %, WER .062/.069/.141.
+  - On the miss: stopped; the user chose to rerun en>es. Rerun `2026-11-02T06-06-42Z-3f88816`: p50 1498 ms, p90 1744 ms; gaps 0.36 %, cut 1.4 %, WER .064 → passes. en>es sits at the gate: two runs average ~1.51 s. Translation is its largest stage (p50 ~560 ms).
+  - Basic full run `2026-11-01T23-54-08Z-3f88816`: p50 1327/1314/1152/1012 ms. Cut and WER are within one sentence of the old baseline.
+  - Ruling: `bench/baseline.json` holds one run, so the baseline is the Basic run, now Release (it replaces the Debug one). Best figures are recorded here; a Best baseline needs a baseline holding several runs (backlog QS-6).
 
 ### Task 17: Docs, backlog and the gate (sonnet)
 

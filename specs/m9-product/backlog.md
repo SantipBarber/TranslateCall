@@ -9,7 +9,7 @@
 |-------------|------|-------|
 | UI core | `m9-product/ui-core/` | A29, UI-L1, UI-L2 (closed), UI-B1…UI-B12 |
 | UI settings | `m9-product/ui-settings/` | UI-B9 (closed), UI-B4/UI-B5 (narrowed), UI-S1…UI-S7 (UI-S3 closed) |
-| Voice-clone streaming | `m9-product/qwen-streaming/` | UI-S3 (closed), QS-1…QS-5 |
+| Voice-clone streaming | `m9-product/qwen-streaming/` | UI-S3 (closed), QS-1…QS-6 |
 
 ## From the implementation
 
@@ -50,4 +50,5 @@
 | QS-2 | Semantic end-of-turn detector (pilot), to replace the fixed pause in deciding when a turn is over. Research in `m9-product/qwen-streaming/research-end-of-turn.md`. PoC 3 (outside the repo): Qwen3-0.6B LoRA plus a rule; with thresholds chosen on validation it reached ES 100 % complete-accepted / 5.3 % cut-judged-complete and EN 97.5 % / 6.6 %, 27–40 ms on the M4. The target (≥ 80 % / ≤ 5 %) is not met on the cut side. A Colab notebook exists, untested on GPU. Real conversational data is the bottleneck | research only | Fixed pause plus early processing (tentative/commit/retract) |
 | QS-3 | TTS engine follow-ups from `m9-product/qwen-streaming/research-tts-models.md`: stay with Qwen3-TTS. (a) PoC Qwen3-TTS 1.7B with mlx-audio-swift 0.1.7 (we use 0.1.2); (b) Pocket TTS PoC, blocked on gated Hugging Face weights for Spanish cloning | `Package.resolved`, `QwenCloneConfiguration.swift` | — |
 | QS-4 | Streaming in the voice preview (Q-3): the preview in Settings › Voices stays non-streaming (the wait there does not bother the user). Only if wanted | `VoicePreviewService.swift` | — |
-| QS-5 | Acceptance (Gate G4): the full bench run and the new baselines, and the manual checklist (Task 18), are still open | `specs/m9-product/qwen-streaming/tasks.md` | Gate G2 bench with the 7.61 s guided voice: p50 1.23–1.30 s in all gated directions |
+| QS-5 | Acceptance: G4 passed on 2026-11-02, but en>es Best sits at the latency gate (two full runs: p50 1518 ms, then 1498 ms). The largest stage is translation (p50 ~560 ms). Trimming it would bring back margin. Manual checklist (Task 18) still open | `specs/m9-product/qwen-streaming/tasks.md` | p90 1.74–1.82 s, well under 2.0 s |
+| QS-6 | `bench/baseline.json` holds a single run, so only Basic is baselined. A Best baseline (full Best run) needs a baseline holding several runs, or one run per profile | `tools/bench/tcbench/baseline.py`, `compare.py` | Best figures recorded in `qwen-streaming/tasks.md` (G4) |
