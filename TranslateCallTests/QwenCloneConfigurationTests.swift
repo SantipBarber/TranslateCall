@@ -14,6 +14,14 @@ struct QwenCloneConfigurationTests {
         #expect(config.modelRepo == "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit")
     }
 
+    @Test("Sampling: temperature 0.3 keeps the clone's pitch steady (Task 18)")
+    func sampling() {
+        let config = QwenCloneConfiguration.default
+        #expect(config.temperature == 0.3)
+        #expect(config.topP == 0.95)
+        #expect(config.repetitionPenalty == 1.5)
+    }
+
     @Test("Language mapping: English")
     func languageMappingEnglish() {
         let lang = QwenCloneConfiguration.language(for: Locale(identifier: "en-US"))

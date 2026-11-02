@@ -559,6 +559,23 @@ In a Release build (the bench's `build/DerivedData/Build/Products/Release/Transl
 - Q5: hesitations (read `bench/prompts/es-ES.md` rows 17–19 with the pauses) → not cut more than before; each sentence is spoken once, whole.
 - Q6: incoming direction still works (the other side's speech is translated and spoken to the user).
 - Q7: the voice preview in Settings › Voices still works (non-streaming).
+- **First pass (2026-11-02):**
+  - Q1, Q2, Q6 and Q7: OK by the user.
+    - Q1: system output must stay on speakers or headphones; BlackHole only as the call app's mic.
+    - Q6: one loop, heard on the Mac speakers; retest with headphones pending (acoustic echo suspected).
+    - Q7: the preview felt slow. The clone measured 3.1 words/s.
+  - Q3 failed: the 8 s passage left 4.2 s voiced (< 4.8 s). Fixed: ~10 s passages, a 20 s limit, the floor kept at 4.8 s.
+  - Q4: the interrupted sentence is dropped by design.
+  - Q5: OK with short pauses.
+  - Pitch drift (sometimes higher, less like the user): a temperature experiment, 20 English sentences per value:
+
+    | Temperature | ECAPA mean | ECAPA min | F0 > 105 Hz |
+    |---|---|---|---|
+    | 0.7 | .527 | .416 | 2 |
+    | 0.5 | .528 | .395 | 0 |
+    | 0.3 | .546 | .488 | 0 |
+
+    The user's F0 is 90–95 Hz. User pick: temperature **0.3**. Retest Q3 and Q6 before merge.
 
 ---
 

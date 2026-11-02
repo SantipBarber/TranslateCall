@@ -6,7 +6,9 @@ import Foundation
 nonisolated struct QwenCloneConfiguration: Sendable {
     var modelRepo: String = "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit"
     var maxTokens: Int = 2048
-    var temperature: Float = 0.7
+    /// 0.3, not 0.7: on 20 English sentences from the user's 8 s Spanish reference, 0.7 gave
+    /// occasional higher-pitched, less similar sentences (Task 18); 0.3 gave none (ECAPA 0.546 vs 0.527).
+    var temperature: Float = 0.3
     var topP: Float = 0.95
     var repetitionPenalty: Float = 1.5
     var inferenceTimeoutSeconds: Int = 10
