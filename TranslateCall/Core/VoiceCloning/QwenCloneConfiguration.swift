@@ -22,10 +22,13 @@ nonisolated struct QwenCloneConfiguration: Sendable {
 
     // MARK: - Reference recording (REQ-QS-12/13)
 
-    /// Length of the guided reading (user pick P-1).
-    static let guidedTargetSeconds: Double = 8
+    /// Length of the guided reading at a calm pace. P-1 picked an 8 s reference; the passage is longer
+    /// because trimming the pauses between words leaves about 60 % of it voiced (Task 18 Q3).
+    static let guidedTargetSeconds: Double = 10
+    /// The least voiced speech a guided reference may have (60 % of the 8 s P-1 pick).
+    static let guidedMinimumVoicedSeconds: Double = 4.8
     /// Longest guided recording before it stops by itself.
-    static let guidedMaxSeconds: Double = 15
+    static let guidedMaxSeconds: Double = 20
     /// Longest free recording.
     static let freeMaxSeconds: Double = 30
     /// A reference longer than this is considered long (slower to prefill).

@@ -47,8 +47,18 @@ struct VoiceRecordingModeTests {
 
     @Test func guidedMaxSeconds() {
         #expect(RecordingMode.guided(language: "spanish").maxSeconds == QwenCloneConfiguration.guidedMaxSeconds)
-        #expect(RecordingMode.guided(language: "spanish").maxSeconds == 15)
+        #expect(RecordingMode.guided(language: "spanish").maxSeconds == 20)
         #expect(RecordingMode.free.maxSeconds == 30)
+    }
+
+    @Test("Q3: the voiced floor stays 4.8 s while the passage reads for about 10 s")
+    func guidedFloorIsDecoupledFromPassage() {
+        #expect(QwenCloneConfiguration.guidedTargetSeconds == 10)
+        #expect(QwenCloneConfiguration.guidedMinimumVoicedSeconds == 4.8)
+        let mode = RecordingMode.guided(language: "spanish")
+        // The Task 18 recording: 7.1 s read, 4.2 s voiced → still blocked; 4.8 s voiced → saves.
+        #expect(VoiceQualityRules.isSaveBlocked(metrics(peak: -23, clip: false, voiced: 4.2, mode: mode), mode: mode))
+        #expect(!VoiceQualityRules.isSaveBlocked(metrics(peak: -23, clip: false, voiced: 4.8, mode: mode), mode: mode))
     }
 
     @Test func guidedTextOnlyForGuided() {

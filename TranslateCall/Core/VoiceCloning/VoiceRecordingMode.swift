@@ -29,7 +29,7 @@ nonisolated enum VoiceQualityRules {
     static let voiceThresholdMeanSquare: Float = 0.0001
 
     private static var guidedMinVoiced: Float {
-        Float(0.6 * QwenCloneConfiguration.guidedTargetSeconds)
+        Float(QwenCloneConfiguration.guidedMinimumVoicedSeconds)
     }
 
     static func grade(
