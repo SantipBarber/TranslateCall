@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Scenario tests (M9 scenario-tests design §3.3): the production pipeline in real time with an acoustic
 # path, checked by rules. Usage: scenario.sh <name[,name…]|all>   Exits 1 when a rule fails.
+# TC_SCENARIO_REFERENCE=<file>.wav (24 kHz mono + <file>.txt) clones that recording instead of the active profile.
 set -Eeuo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
@@ -23,7 +24,7 @@ echo "━━ build ━━"
 echo "━━ run $names ━━"
 rm -rf build/logs/scenario.xcresult
 set +e
-TEST_RUNNER_TC_SCENARIO=$names TEST_RUNNER_TC_BENCH_OUT=$PWD/$out TEST_RUNNER_TC_BENCH_CACHE=$cache \
+TEST_RUNNER_TC_SCENARIO=$names TEST_RUNNER_TC_SCENARIO_REFERENCE=${TC_SCENARIO_REFERENCE:-} TEST_RUNNER_TC_BENCH_OUT=$PWD/$out TEST_RUNNER_TC_BENCH_CACHE=$cache \
 TEST_RUNNER_TC_BENCH_MANIFEST=$manifest TEST_RUNNER_TC_COMMIT=$commit \
   "${xcb[@]}" test-without-building -testPlan Bench -only-testing:TranslateCallTests/BenchTests/ScenarioTests \
   -resultBundlePath build/logs/scenario.xcresult >build/logs/scenario.log 2>&1

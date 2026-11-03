@@ -1,4 +1,6 @@
+import AVFoundation
 import Foundation
+import Testing
 @testable import TranslateCall
 
 /// Runs one scenario on a real-time bench session and writes `<out>/<name>/scenario.json`
@@ -47,8 +49,9 @@ enum ScenarioRunner {
                     }))
             })
         session.coordinator.listeningMode = scenario.listeningMode
+        let reference = try await overrideReference(session)
         do {
-            let result = try await play(scenario, clips: clips, session: session, env: env)
+            let result = try await play(scenario, clips: clips, session: session, env: env, reference: reference)
             await session.tearDown()
             try write(result, to: env.out.appending(path: scenario.name))
             return result
@@ -59,7 +62,7 @@ enum ScenarioRunner {
     }
 
     private static func play(_ scenario: Scenario, clips: [BenchManifest.Clip], session: BenchSession,
-                             env: BenchEnvironment) async throws -> Result {
+                             env: BenchEnvironment, reference: [Float]?) async throws -> Result {
         try await BenchPipelineFactory.start(session, options: env.options(for: scenario.profile))
         await session.player.playSilence(seconds: 2)   // translation warm-up
         let pause = ConversationSettings.defaultPauseSeconds
@@ -82,7 +85,11 @@ enum ScenarioRunner {
                                        scheduleTimes: schedules)
         if scenario.rules.contains(where: { if case .pitchNearReference = $0 { true } else { false } }) {
             seen.outgoingF0 = audio.attempts.compactMapValues { PitchEstimator.medianF0($0.samples, rate: $0.rate) }
-            seen.referenceF0 = try await referenceF0(session)
+            if let reference {
+                seen.referenceF0 = PitchEstimator.medianF0(reference, rate: 24_000)
+            } else {
+                seen.referenceF0 = try await referenceF0(session)
+            }
             try audio.write(to: env.out.appending(path: scenario.name).appending(path: "audio"))
         }
         let origin = session.origin
@@ -99,6 +106,34 @@ enum ScenarioRunner {
             scheduledMs: schedules.map(ms),
             lastClipEndMs: ms(lastClipEnd)
         )
+    }
+
+    /// `TC_SCENARIO_REFERENCE=<file>.wav` (24 kHz mono, transcript in `<file>.txt`): the clone uses that
+    /// recording instead of the active profile, to compare references. Returns its samples.
+    private static func overrideReference(_ session: BenchSession) async throws -> [Float]? {
+        guard let path = ProcessInfo.processInfo.environment["TC_SCENARIO_REFERENCE"], !path.isEmpty else { return nil }
+        let url = URL(fileURLWithPath: path)
+        let file = try AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false)
+        try requirePrerequisite(file.processingFormat.sampleRate == 24_000 && file.processingFormat.channelCount == 1,
+                                "TC_SCENARIO_REFERENCE must be 24 kHz mono")
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: file.processingFormat,
+                                                   frameCapacity: AVAudioFrameCount(file.length)))
+        try file.read(into: buffer)
+        let samples = Array(UnsafeBufferPointer(start: buffer.floatChannelData?[0], count: Int(buffer.frameLength)))
+        let transcript = try String(contentsOf: url.deletingPathExtension().appendingPathExtension("txt"), encoding: .utf8)
+        let header = VoiceProfileHeader(
+            id: UUID(), name: url.lastPathComponent, createdAt: .now,
+            durationSeconds: Float(samples.count) / 24_000, sampleRate: 24_000, sampleCount: samples.count,
+            quality: VoiceQualityMetrics(peakRmsDbfs: -20, hasClipping: false,
+                                         voicedDurationSeconds: Float(samples.count) / 24_000, grade: .good),
+            formatVersion: 1)
+        let store = MockVoiceProfileStore()
+        await store.forceStore(VoiceProfile(header: header, samples: samples,
+                                            transcript: transcript.trimmingCharacters(in: .whitespacesAndNewlines)))
+        session.tts.setProfileStore(store)
+        session.tts.activeVoiceProfileId = header.id
+        print("SCENARIO reference override: \(url.lastPathComponent)")
+        return samples
     }
 
     /// The active voice profile's median F0 (decrypted in memory, never written).
