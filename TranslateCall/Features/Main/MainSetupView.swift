@@ -31,6 +31,8 @@ struct MainSetupContent: View {
     let voiceCloneDownload: DownloadState
     @ObservedObject var conversationSettings: ConversationSettings
     let profile: VoiceProfileHeader?
+    /// Speakers detected on the output show in the footer (previews: none detected).
+    @ObservedObject var outputRoute = OutputRouteMonitor(resolve: { _ in .unknown })
     let actions: MainSetupActions
 
     var body: some View {
@@ -53,7 +55,7 @@ struct MainSetupContent: View {
                          download: voiceCloneDownload, isLocked: isLocked,
                          onOpenProfiles: actions.openVoiceProfiles, onRetryDownload: actions.retryVoiceDownload)
             primaryButton
-            SetupFooter(settings: conversationSettings)
+            SetupFooter(settings: conversationSettings, route: outputRoute)
         }
         .padding(Theme.Spacing.large)
         .frame(width: 420)
@@ -104,7 +106,7 @@ struct MainSetupView: View {
             languages: languages, modelsLabel: model.modelsLabel, ttsSelector: ttsSelector,
             voiceCloneDownload: downloads.state(.voiceClone),
             conversationSettings: viewModel.conversationSettings, profile: voiceProfileManager.activeProfile,
-            actions: actions
+            outputRoute: viewModel.outputRoute, actions: actions
         )
         .navigationTitle("TranslateCall")
         .toolbar {
