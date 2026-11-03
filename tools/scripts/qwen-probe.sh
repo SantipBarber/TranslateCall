@@ -46,11 +46,12 @@ echo "━━ build ━━"
 phase=test
 echo "━━ probe ━━"
 rm -rf build/logs/qwen-probe.xcresult
-TEST_RUNNER_TC_QWEN_PROBE=1 TEST_RUNNER_TC_QWEN_PROBE_REFS=${TC_QWEN_PROBE_REFS:-$refs} \
+TEST_RUNNER_TC_QWEN_PROBE=1 TEST_RUNNER_TC_QWEN_PROBE_MODE=${TC_QWEN_PROBE_MODE:-} TEST_RUNNER_TC_QWEN_PROBE_REFS=${TC_QWEN_PROBE_REFS:-$refs} \
 TEST_RUNNER_TC_QWEN_PROBE_OUT=$out \
   "${xcb[@]}" test-without-building -testPlan Bench -only-testing:TranslateCallTests/QwenCloneProbeTests \
   -resultBundlePath build/logs/qwen-probe.xcresult 2>&1 | tee build/logs/qwen-probe.log | xcbeautify
 
 phase=summary
+if [[ "${TC_QWEN_PROBE_MODE:-}" == pitch ]]; then echo "wavs: $out"; exit 0; fi
 [[ -s "$out/summary.md" ]] || die "the probe did not write $out/summary.md (see build/logs/qwen-probe.log)."
 echo "summary: $out/summary.md"

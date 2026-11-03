@@ -31,6 +31,7 @@ final class AudioCoordinator: ObservableObject {
     @Published var isIncomingSpeaking: Bool = false {
         didSet {
             micEchoGate?.setIncomingSpeaking(isIncomingSpeaking)
+            selfEchoGuard.playing(isIncomingSpeaking, at: .now)
             updateConversationState()
         }
     }
@@ -124,6 +125,13 @@ final class AudioCoordinator: ObservableObject {
     var voiceCloneWarmUp: ((Locale) async -> Void)?
 
     // MARK: - Conversation state and mic echo gate (F8.5.3)
+
+    /// Their recent translations, to drop the mic's echo of them (`SelfEchoGuard`). Reset per session.
+    var selfEchoGuard = SelfEchoGuard()
+
+    /// Where their translation plays (Settings › "Their voice plays on"); nil is the system default.
+    /// Read when the incoming pipeline starts.
+    var incomingOutputDeviceID: AudioDeviceID?
 
     /// How the user listens (from `ConversationSettings`); applied live to the gate (REQ-H-05).
     @Published var listeningMode: ListeningMode = .headphones {
@@ -271,6 +279,7 @@ final class AudioCoordinator: ObservableObject {
         isOutgoingSpeaking = false
         isIncomingSpeaking = false
         outgoingTranscription = nil
+        selfEchoGuard.reset()
         outgoingTranslation = nil
         incomingTranscription = nil
         incomingTranslation = nil

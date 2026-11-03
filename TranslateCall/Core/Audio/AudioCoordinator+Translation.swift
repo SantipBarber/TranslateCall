@@ -44,6 +44,13 @@ extension AudioCoordinator {
             translation?.cancel()
             return
         }
+        // The mic heard their translation on the speakers: speaking it would send it back (Task 18 Q6 loop).
+        if selfEchoGuard.isEcho(text, at: .now) {
+            logger.info("Dropped an outgoing sentence: echo of their translation")
+            translation?.cancel()
+            showTTSNotice(String(localized: "Ignored an echo of their translation. On speakers? Choose Speakers."))
+            return
+        }
         let task = translation ?? Task { try await translateOutgoing(text) }
         let entry = appendTranscript(.outgoing, text)
         isOutgoingTranslating = true
@@ -84,6 +91,7 @@ extension AudioCoordinator {
             completeTranscript(entry, translation: translated)
             guard !isPaused else { return }   // paused while translating: shown, not spoken
             let locale = Locale(identifier: languagePairManager.sourceLanguage.minimalIdentifier)
+            selfEchoGuard.played(translated, at: .now)
             await incomingTTS?.speak(text: translated, locale: locale)
         } catch {
             skipTranscript(entry, error: error)

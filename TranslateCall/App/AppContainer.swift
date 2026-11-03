@@ -84,7 +84,8 @@ final class AppContainer: ObservableObject {
             ttsEngineSelector: ttsSelector,
             voiceProfileManager: voiceProfiles,
             conversationSettings: settings,
-            vadProvider: vads
+            vadProvider: vads,
+            outputRoute: OutputRouteMonitor()
         )
         uiServices = UIServices(coordinator: coordinator, viewModel: audioViewModel, stt: selector, tts: ttsSelector)
     }

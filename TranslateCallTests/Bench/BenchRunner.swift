@@ -221,7 +221,7 @@ enum BenchRunner {
 
     // MARK: - Clips
 
-    private static func loadClip(_ clip: BenchManifest.Clip, cache: URL) throws -> [Float] {
+    static func loadClip(_ clip: BenchManifest.Clip, cache: URL) throws -> [Float] {
         let url = cache.appending(path: clip.audio)
         let data = try Data(contentsOf: url)
         let digest = sha256Hex(data)
@@ -374,6 +374,11 @@ struct AudioCollector {
 
     /// Playback gaps of the attempt `seq` owns (nil for a seq that only shares another's audio).
     func playback(seq: Int) -> RawRun.Playback? { gaps[seq] }
+
+    /// The audio of every attempt, by the seq that owns it (scenarios measure the voice).
+    var attempts: [Int: (rate: Double, samples: [Float])] {
+        tracks.mapValues { ($0.rate, $0.samples.map { Float($0) / Float(Int16.max) }) }
+    }
 
     /// 16-bit frames held for the file `seq` points at (tests).
     func frameCount(seq: Int) -> Int? { owner[seq].flatMap { tracks[$0]?.samples.count } }

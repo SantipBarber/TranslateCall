@@ -122,7 +122,7 @@ extension AudioCoordinator {
             observeIncomingTranscriptions(stt)
 
             let sourceLocaleForTTS = Locale(identifier: languagePairManager.sourceLanguage.minimalIdentifier)
-            let tts = try incomingTTSFactory(sourceLocaleForTTS, nil)
+            let tts = try incomingTTSFactory(sourceLocaleForTTS, incomingOutputDeviceID)
             incomingTTS = tts
             observeTTSState(tts, onSpeakingChange: { [weak self] speaking in
                 self?.isIncomingSpeaking = speaking

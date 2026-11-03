@@ -29,6 +29,9 @@ final class AudioViewModel: ObservableObject {
     @Published var selectedInput: AudioDevice?
     @Published var selectedOutput: AudioDevice?
     @Published private(set) var isCapturing = false
+    /// The mode the echo gate runs on: the user's choice, raised to speakers when the output is detected
+    /// as speakers (`ListeningMode.effective`).
+    @Published private(set) var effectiveListeningMode: ListeningMode = .headphones
 
     // MARK: - Outgoing pipeline state (from coordinator)
 
@@ -53,6 +56,8 @@ final class AudioViewModel: ObservableObject {
     // MARK: - Dependencies
 
     let coordinator: AudioCoordinator
+    /// Where their translation plays and whether the mic can hear it. Tests get a fixed `.unknown` one.
+    let outputRoute: OutputRouteMonitor
     let languagePairManager: LanguagePairManager
     let setupManager: SetupManager
     /// Manages which STT engine (Apple Speech / Parakeet) is active.
@@ -78,9 +83,11 @@ final class AudioViewModel: ObservableObject {
         ttsEngineSelector: TTSEngineSelector = TTSEngineSelector(),
         voiceProfileManager: VoiceProfileManager = VoiceProfileManager(),
         conversationSettings: ConversationSettings,
-        vadProvider: VADProvider = VADProvider()
+        vadProvider: VADProvider = VADProvider(),
+        outputRoute: OutputRouteMonitor = OutputRouteMonitor(resolve: { _ in .unknown })
     ) {
         self.coordinator = coordinator
+        self.outputRoute = outputRoute
         self.conversationSettings = conversationSettings
         self.vadProvider = vadProvider
         self.audioManager = audioManager
@@ -346,10 +353,25 @@ private final class PassthroughTranslationService: TranslationService {
 // MARK: - Conversation settings (F8.5.3)
 
 extension AudioViewModel {
-    /// "I use speakers" is applied live to the running session's mic gate (REQ-H-05).
+    /// "I use speakers", or speakers detected on the output, is applied live to the running
+    /// session's mic gate (REQ-H-05). The chosen output is where their translation plays.
     private func bindConversationSettings() {
         conversationSettings.$listeningMode
-            .sink { [weak self] mode in self?.coordinator.listeningMode = mode }
+            .combineLatest(outputRoute.$route)
+            .map { ListeningMode.effective(chosen: $0, route: $1) }
+            .removeDuplicates()
+            .sink { [weak self] mode in
+                self?.effectiveListeningMode = mode
+                self?.coordinator.listeningMode = mode
+            }
+            .store(in: &cancellables)
+        $selectedOutput
+            .map { $0?.id }
+            .removeDuplicates()
+            .sink { [weak self] id in
+                self?.outputRoute.watch(id)
+                self?.coordinator.incomingOutputDeviceID = id
+            }
             .store(in: &cancellables)
     }
 }

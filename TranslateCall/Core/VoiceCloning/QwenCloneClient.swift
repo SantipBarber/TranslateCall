@@ -2,7 +2,6 @@ import Foundation
 import MLX
 import MLXAudioCore
 import MLXAudioTTS
-import MLXLMCommon
 
 // MARK: - QwenCloneClient
 
@@ -33,7 +32,7 @@ nonisolated final class QwenCloneClient: QwenCloneInferring, @unchecked Sendable
         referenceTranscript: String,
         language: String
     ) async throws -> [Float] {
-        let refAudio = MLXArray(referenceAudio)
+        let refAudio = MLXArray(referenceAudio).materialized()
         let params = generateParameters()
 
         let output = try await model.generate(
@@ -68,7 +67,7 @@ nonisolated final class QwenCloneClient: QwenCloneInferring, @unchecked Sendable
                 let events = model.generateStream(
                     text: text,
                     voice: nil,
-                    refAudio: MLXArray(referenceAudio),
+                    refAudio: MLXArray(referenceAudio).materialized(),
                     refText: referenceTranscript,
                     language: language,
                     generationParameters: generateParameters(),
@@ -99,7 +98,7 @@ nonisolated final class QwenCloneClient: QwenCloneInferring, @unchecked Sendable
             case .info(let info):
                 // mlx-audio sends .info before the last audio chunk: it is never the end of the stream.
                 relayed = .info(tokens: info.generationTokenCount, tokensPerSecond: info.tokensPerSecond)
-            case .token:
+            case .token, .progress:
                 relayed = nil
             }
             if let relayed, case .terminated = continuation.yield(relayed) { listening = false }

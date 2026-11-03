@@ -56,7 +56,7 @@ final class CallSessionModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.recompute() }
             .store(in: &cancellables)
-        viewModel.conversationSettings.$listeningMode
+        viewModel.$effectiveListeningMode
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.recompute() }
             .store(in: &cancellables)
@@ -145,7 +145,7 @@ final class CallSessionModel: ObservableObject {
         }
         if phase == .idle { clearPanelNotice() }
         routeAlert()
-        set(\.notices, Self.composeNotices(listeningMode: viewModel.conversationSettings.listeningMode,
+        set(\.notices, Self.composeNotices(listeningMode: viewModel.effectiveListeningMode,
                                            transient: newestTransient))
     }
 
