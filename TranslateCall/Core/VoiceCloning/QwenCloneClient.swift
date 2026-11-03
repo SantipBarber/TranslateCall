@@ -17,6 +17,7 @@ nonisolated final class QwenCloneClient: QwenCloneInferring, @unchecked Sendable
 
     private let model: any SpeechGenerationModel
     private let config: QwenCloneConfiguration
+    private let references = ReferenceAudioCache()
 
     let sampleRate: Int
 
@@ -32,7 +33,7 @@ nonisolated final class QwenCloneClient: QwenCloneInferring, @unchecked Sendable
         referenceTranscript: String,
         language: String
     ) async throws -> [Float] {
-        let refAudio = MLXArray(referenceAudio).materialized()
+        let refAudio = references.array(for: referenceAudio)
         let params = generateParameters()
 
         let output = try await model.generate(
@@ -67,7 +68,7 @@ nonisolated final class QwenCloneClient: QwenCloneInferring, @unchecked Sendable
                 let events = model.generateStream(
                     text: text,
                     voice: nil,
-                    refAudio: MLXArray(referenceAudio).materialized(),
+                    refAudio: references.array(for: referenceAudio),
                     refText: referenceTranscript,
                     language: language,
                     generationParameters: generateParameters(),
