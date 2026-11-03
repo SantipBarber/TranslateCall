@@ -35,10 +35,21 @@ final class BenchClipPlayer: Sendable {
         var done: CheckedContinuation<ClipFeed, Never>
     }
 
+    /// Sound mixed on top of the stream (an acoustic echo), from stream sample `start`.
+    private struct Mix {
+        var start: Int
+        var samples: [Float]
+        var end: Int { start + samples.count }
+    }
+
     private struct State {
         var pending: Pending?
         var continuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
         var task: Task<Void, Never>?
+        /// Instant of stream sample 0, and samples yielded so far.
+        var origin: ContinuousClock.Instant?
+        var position = 0
+        var mixes: [Mix] = []
     }
 
     private let state = Mutex(State())
@@ -66,6 +77,11 @@ final class BenchClipPlayer: Sendable {
         }
         task?.cancel()
         continuation?.finish()
+        state.withLock { current in
+            current.origin = nil
+            current.position = 0
+            current.mixes = []
+        }
         pending?.done.resume(returning: ClipFeed(chunkTimes: pending?.times ?? [], chunk: Self.chunk,
                                                  sampleRate: Self.sampleRate))
     }
@@ -88,11 +104,38 @@ final class BenchClipPlayer: Sendable {
         _ = await play(Array(repeating: 0, count: Int(seconds * Self.sampleRate)))
     }
 
+    /// Adds `samples` (16 kHz mono) on top of the stream from `instant` on, like a sound the
+    /// microphone hears. A part that would start before the current position starts there instead.
+    /// Ignored while stopped.
+    func mix(_ samples: [Float], at instant: ContinuousClock.Instant) {
+        guard !samples.isEmpty else { return }
+        state.withLock { current in
+            guard let origin = current.origin else { return }
+            let offset = Int((origin.duration(to: instant) / .seconds(1)) * Self.sampleRate)
+            current.mixes.append(Mix(start: max(offset, current.position), samples: samples))
+        }
+    }
+
+    /// Drops mixed sound that has not been yielded yet from `instant` on (playback stopped).
+    func truncateMix(from instant: ContinuousClock.Instant) {
+        state.withLock { current in
+            guard let origin = current.origin else { return }
+            let cut = max(Int((origin.duration(to: instant) / .seconds(1)) * Self.sampleRate), current.position)
+            current.mixes = current.mixes.compactMap { mix in
+                guard mix.start < cut else { return nil }
+                var kept = mix
+                kept.samples = Array(mix.samples.prefix(cut - mix.start))
+                return kept
+            }
+        }
+    }
+
     private func run(_ continuation: AsyncStream<AVAudioPCMBuffer>.Continuation) async {
         guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: Self.sampleRate,
                                          channels: 1, interleaved: false) else { return }
         let period = Duration.seconds(Double(Self.chunk) / Self.sampleRate)
         var deadline = ContinuousClock.now
+        state.withLock { $0.origin = deadline }
         while !Task.isCancelled {
             deadline += period   // absolute deadlines: no drift from sleep overshoot
             try? await Task.sleep(until: deadline, clock: .continuous)
@@ -109,6 +152,7 @@ final class BenchClipPlayer: Sendable {
     private func fill(_ dst: UnsafeMutablePointer<Float>) -> (ClipFeed, CheckedContinuation<ClipFeed, Never>)? {
         dst.update(repeating: 0, count: Self.chunk)
         return state.withLock { current -> (ClipFeed, CheckedContinuation<ClipFeed, Never>)? in
+            defer { Self.addMixes(&current, into: dst) }
             guard var pending = current.pending else { return nil }
             let count = min(Self.chunk, pending.samples.count - pending.offset)
             if count > 0 {
@@ -136,4 +180,19 @@ final class BenchAudioSource: AudioCapture {
     func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> { player.start() }
     func stopCapture() { player.stop() }
     var isCapturing: Bool { player.isRunning }
+}
+
+extension BenchClipPlayer {
+    /// Adds the mixed sound that falls in the chunk being yielded, then advances the position.
+    private static func addMixes(_ current: inout State, into dst: UnsafeMutablePointer<Float>) {
+        let start = current.position
+        let end = start + chunk
+        for mix in current.mixes where mix.start < end && mix.end > start {
+            for index in max(mix.start, start)..<min(mix.end, end) {
+                dst[index - start] = max(-1, min(1, dst[index - start] + mix.samples[index - mix.start]))
+            }
+        }
+        current.mixes.removeAll { $0.end <= end }
+        current.position = end
+    }
 }

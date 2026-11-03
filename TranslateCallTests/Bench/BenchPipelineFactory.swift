@@ -90,9 +90,57 @@ struct BenchOptions: Sendable {
 }
 
 /// The fake output device: records when each buffer reached it (REQ-BH-20). Nothing is played.
+///
+/// Instant by default (the bench): a buffer counts as played as soon as it is scheduled. With
+/// `realtime` (scenarios), each direction plays on its own timeline in real time, a handle completes
+/// `playedLatency` after its buffer's end, and echo routes mix what plays into a capture.
 final class BenchOutput: AudioOutputting, Sendable {
+    /// What one direction's output sounds like at a capture: the mic hearing the speakers, or the
+    /// remote side's speakers coming back through the call.
+    struct EchoRoute: Sendable {
+        let from: TraceDirection
+        let to: BenchClipPlayer
+        let gain: Float
+        let delay: Duration
+    }
+
+    struct Realtime: Sendable {
+        /// When `.dataPlayedBack` fires after the audio ended (A30: 190–280 ms on macOS 27.2).
+        var playedLatency: Duration
+        var routes: [EchoRoute]
+    }
+
+    /// One direction's device: the speakers (incoming) or the call mic (outgoing).
+    final class Device: AudioOutputting, Sendable {
+        let parent: BenchOutput
+        let direction: TraceDirection
+
+        init(parent: BenchOutput, direction: TraceDirection) {
+            self.parent = parent
+            self.direction = direction
+        }
+
+        func schedule(_ buffer: AVAudioPCMBuffer) throws -> PlaybackHandle {
+            try parent.schedule(buffer, on: direction)
+        }
+
+        func stop() { parent.stop(direction) }
+        func shutdown() { parent.stop(direction) }
+    }
+
+    private struct Line {
+        var end: ContinuousClock.Instant?
+        var handles: [PlaybackHandle] = []
+    }
+
     private let inner = FakeOutput(autoComplete: true)
+    private let realtime: Realtime?
     private let scheduled = Mutex<[(ContinuousClock.Instant, AVAudioPCMBuffer)]>([])
+    private let lines = Mutex<[TraceDirection: Line]>([:])
+
+    init(realtime: Realtime? = nil) {
+        self.realtime = realtime
+    }
 
     var scheduleTimes: [ContinuousClock.Instant] { scheduled.withLock { $0.map(\.0) } }
 
@@ -104,6 +152,11 @@ final class BenchOutput: AudioOutputting, Sendable {
         }
     }
 
+    /// The output a direction's TTS plays on: this object when instant, a per-direction device in real time.
+    func device(for direction: TraceDirection) -> any AudioOutputting {
+        realtime == nil ? self : Device(parent: self, direction: direction)
+    }
+
     func schedule(_ buffer: AVAudioPCMBuffer) throws -> PlaybackHandle {
         let handle = try inner.schedule(buffer)
         scheduled.withLock { $0.append((.now, buffer)) }
@@ -112,6 +165,72 @@ final class BenchOutput: AudioOutputting, Sendable {
 
     func stop() { inner.stop() }
     func shutdown() { inner.shutdown() }
+
+    // MARK: - Real time
+
+    fileprivate func schedule(_ buffer: AVAudioPCMBuffer, on direction: TraceDirection) throws -> PlaybackHandle {
+        guard let realtime else { return try schedule(buffer) }
+        let now = ContinuousClock.now
+        scheduled.withLock { $0.append((now, buffer)) }
+        let handle = PlaybackHandle()
+        let length = Duration.seconds(Double(buffer.frameLength) / buffer.format.sampleRate)
+        let start: ContinuousClock.Instant = lines.withLock { lines in
+            var line = lines[direction] ?? Line()
+            let start = max(now, line.end ?? now)
+            line.end = start + length
+            line.handles.append(handle)
+            lines[direction] = line
+            return start
+        }
+        let played = start + length + realtime.playedLatency
+        Task.detached { [weak self] in
+            try? await Task.sleep(until: played, clock: .continuous)
+            handle.markPlayed()
+            self?.lines.withLock { $0[direction]?.handles.removeAll { $0 === handle } }
+        }
+        let routes = realtime.routes.filter { $0.from == direction }
+        if !routes.isEmpty {
+            let samples = Self.mono16k(buffer)
+            for route in routes {
+                route.to.mix(samples.map { $0 * route.gain }, at: start + route.delay)
+            }
+        }
+        return handle
+    }
+
+    fileprivate func stop(_ direction: TraceDirection) {
+        guard let realtime else { return stop() }
+        let now = ContinuousClock.now
+        let handles: [PlaybackHandle] = lines.withLock { lines in
+            defer { lines[direction] = Line(end: now) }
+            return lines[direction]?.handles ?? []
+        }
+        handles.forEach { $0.markCancelled() }
+        for route in realtime.routes where route.from == direction {
+            route.to.truncateMix(from: now + route.delay)
+        }
+    }
+
+    /// The buffer's first channel at 16 kHz (linear interpolation: an echo, not a measurement).
+    static func mono16k(_ buffer: AVAudioPCMBuffer) -> [Float] {
+        let count = Int(buffer.frameLength)
+        var source = [Float](repeating: 0, count: count)
+        if let floats = buffer.floatChannelData?[0] {
+            for index in 0..<count { source[index] = floats[index] }
+        } else if let ints = buffer.int16ChannelData?[0] {
+            for index in 0..<count { source[index] = Float(ints[index]) / Float(Int16.max) }
+        }
+        let ratio = buffer.format.sampleRate / BenchClipPlayer.sampleRate
+        guard count > 0, ratio > 0 else { return [] }
+        let outCount = Int(Double(count) / ratio)
+        return (0..<outCount).map { index in
+            let position = Double(index) * ratio
+            let lower = min(Int(position), count - 1)
+            let upper = min(lower + 1, count - 1)
+            let fraction = Float(position - Double(lower))
+            return source[lower] * (1 - fraction) + source[upper] * fraction
+        }
+    }
 }
 
 /// The primary synthesizer engine each direction's TTS service was actually built with, so `start`
@@ -144,7 +263,8 @@ final class BenchSession {
     let output: BenchOutput
     let origin: ContinuousClock.Instant
     let builtEngines: BuiltEngines
-    private let otherTracer: PipelineTracer
+    /// The other direction's tracer.
+    let otherTracer: PipelineTracer
     private let suiteName: String
 
     init(line: BenchRunLine, coordinator: AudioCoordinator, mic: BenchAudioSource, system: BenchSystemAudioCapture,
@@ -190,8 +310,12 @@ enum BenchPipelineFactory {
     /// The user's real voice-clone choice: read, never written (NFR-BH-03).
     private static let activeProfileKey = "tlk.voiceCloning.activeProfileId"
 
-    static func make(_ line: BenchRunLine, options: BenchOptions, vadProvider: VADProvider = VADProvider(preferred: { .silero })) async throws
-        -> BenchSession {
+    /// - Parameter output: the fake device; scenarios pass a real-time one with echo routes. The
+    ///   routes' players must be the session's (`configure` gets the mic and system players first).
+    static func make(_ line: BenchRunLine, options: BenchOptions,
+                     vadProvider: VADProvider = VADProvider(preferred: { .silero }),
+                     output makeOutput: (BenchAudioSource, BenchSystemAudioCapture) -> BenchOutput = { _, _ in BenchOutput() })
+        async throws -> BenchSession {
         let suiteName = "bench-\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             throw BenchSetupError(description: "UserDefaults suite \(suiteName)")
@@ -219,12 +343,12 @@ enum BenchPipelineFactory {
         let trailing = Duration.seconds(vadConfig.minSilenceDuration)
         let outTracer = PipelineTracer(direction: .outgoing, sink: sink, trailingSilence: trailing)
         let inTracer = PipelineTracer(direction: .incoming, sink: sink, trailingSilence: trailing)
-        let output = BenchOutput()
         let built = BuiltEngines()
         let voices = ttsEngines(options)
         let vads = vadProvider
         let mic = BenchAudioSource()
         let system = BenchSystemAudioCapture()
+        let output = makeOutput(mic, system)
         let coordinator = AudioCoordinator(
             audioCapture: mic,
             systemCapture: system,
@@ -406,7 +530,7 @@ enum BenchPipelineFactory {
             primary.withLock { $0 = $0 ?? synthesizer.engine }
             return tracer.tracing(synthesizer)
         }
-        tts.outputFactory = { _ in tracer.tracing(output) }
+        tts.outputFactory = { _ in tracer.tracing(output.device(for: tracer.direction)) }
         tts.avSpeechFactory = { wrap(savedAV()) }
         tts.kokoroFactory = { wrap(savedKokoro($0)) }
         tts.voiceCloneFactory = { id, store in wrap(savedClone(id, store)) }

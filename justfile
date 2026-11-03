@@ -61,6 +61,10 @@ bench-manifest:
 bench set="pr" profile="all" edge="0" lines="":
     tools/scripts/bench.sh {{quote(set)}} {{quote(profile)}} {{quote(edge)}} {{quote(lines)}}
 
+# Scenario tests: the pipeline in real time with an acoustic echo, checked by rules. name: echo-speakers | echo-headphones | echo-both | echo-headphones-both | all (comma-separated works)
+scenario name="all":
+    tools/scripts/scenario.sh {{quote(name)}}
+
 # Qwen reference-length probe (Release): times streaming per reference in build/qwen-probe/refs, writes WAVs + summary.md
 qwen-probe:
     tools/scripts/qwen-probe.sh

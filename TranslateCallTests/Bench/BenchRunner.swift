@@ -221,7 +221,7 @@ enum BenchRunner {
 
     // MARK: - Clips
 
-    private static func loadClip(_ clip: BenchManifest.Clip, cache: URL) throws -> [Float] {
+    static func loadClip(_ clip: BenchManifest.Clip, cache: URL) throws -> [Float] {
         let url = cache.appending(path: clip.audio)
         let data = try Data(contentsOf: url)
         let digest = sha256Hex(data)
