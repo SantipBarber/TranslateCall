@@ -17,13 +17,14 @@ struct ScenarioRuleTests {
                             scheduleTimes: schedules.map { origin + .seconds($0) })
     }
 
-    @Test func echoRecognizedOutgoingFails() {
-        let quiet = seen([event(.outgoing, 0, .sttFinal, at: 1, ["text": "  "])])
-        #expect(ScenarioRule.noOutgoingFromEcho.check(quiet).passed)
-        let echo = seen([event(.outgoing, 0, .sttFinal, at: 1, ["text": "hola qué tal"])])
-        let verdict = ScenarioRule.noOutgoingFromEcho.check(echo)
-        #expect(!verdict.passed)
-        #expect(verdict.summary.contains("hola qué tal"))
+    @Test func outgoingSpeechFails() {
+        let recognizedOnly = seen([event(.outgoing, 0, .sttFinal, at: 1, ["text": "hola qué tal"])])
+        let verdict = ScenarioRule.noOutgoingSpeech.check(recognizedOnly)
+        #expect(verdict.passed)
+        #expect(verdict.summary.contains("1 echo utterance(s) recognized"))
+        let spoken = seen([event(.outgoing, 0, .sttFinal, at: 1, ["text": "hola qué tal"]),
+                           event(.outgoing, 0, .ttsFirstBuffer, at: 2)])
+        #expect(!ScenarioRule.noOutgoingSpeech.check(spoken).passed)
     }
 
     @Test func repeatedTranslationFails() {

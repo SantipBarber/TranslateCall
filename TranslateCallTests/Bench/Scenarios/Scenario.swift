@@ -30,8 +30,9 @@ struct Scenario: Sendable, CustomStringConvertible {
 
 /// A pass/fail check on what a scenario's session did.
 enum ScenarioRule: Sendable, Equatable {
-    /// The user never speaks: anything the outgoing side recognizes is echo.
-    case noOutgoingFromEcho
+    /// The user never speaks: nothing may be spoken into the call. What the outgoing side recognized
+    /// (echo the guard dropped) is reported, not failed.
+    case noOutgoingSpeech
     /// No incoming translation is spoken twice, and no more are spoken than clips were played.
     case spokenOnce
     /// No TTS buffer of either direction is scheduled later than this after the last clip ended.
@@ -39,7 +40,7 @@ enum ScenarioRule: Sendable, Equatable {
 
     var name: String {
         switch self {
-        case .noOutgoingFromEcho: "noOutgoingFromEcho"
+        case .noOutgoingSpeech: "noOutgoingSpeech"
         case .spokenOnce: "spokenOnce"
         case .quietAfter(let limit): "quietAfter(\(limit.secondsValue)s)"
         }
@@ -64,15 +65,15 @@ struct ScenarioVerdict: Sendable, Codable, Equatable {
 extension ScenarioRule {
     func check(_ seen: ScenarioObservation) -> ScenarioVerdict {
         switch self {
-        case .noOutgoingFromEcho:
-            let heard = seen.events
-                .filter { $0.direction == .outgoing && $0.stage == .sttFinal }
+        case .noOutgoingSpeech:
+            let outgoing = seen.events.filter { $0.direction == .outgoing }
+            let spoken = Set(outgoing.filter { $0.stage == .ttsFirstBuffer }.map(\.time)).count
+            let heard = outgoing.filter { $0.stage == .sttFinal }
                 .compactMap { $0.detail["text"]?.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
-            let quoted = heard.prefix(3).map { "\"\($0)\"" }.joined(separator: ", ")
-            return verdict(heard.isEmpty, heard.isEmpty
-                ? "outgoing recognized nothing"
-                : "outgoing recognized \(heard.count) echo utterance(s): \(quoted)")
+            var summary = "\(spoken) outgoing attempt(s) spoken; \(heard.count) echo utterance(s) recognized"
+            if let first = heard.first { summary += " (first: \"\(first)\")" }
+            return verdict(spoken == 0, summary)
         case .spokenOnce:
             let incoming = seen.events.filter { $0.direction == .incoming }
             let spokenSeqs = Set(incoming.filter { $0.stage == .ttsFirstBuffer }.map(\.seq))
@@ -114,7 +115,7 @@ enum ScenarioCatalog {
     /// The remote side on speakers too: our outgoing voice comes back through the call.
     static let remoteSpeakers = Scenario.Echo(from: .outgoing, gain: 0.5, delay: .milliseconds(250))
     static let a30 = Duration.milliseconds(250)
-    static let rules: [ScenarioRule] = [.noOutgoingFromEcho, .spokenOnce, .quietAfter(.seconds(12))]
+    static let rules: [ScenarioRule] = [.noOutgoingSpeech, .spokenOnce, .quietAfter(.seconds(12))]
 
     static let all: [Scenario] = [
         Scenario(name: "echo-speakers", line: .incomingEnToEs, profile: .basic, listeningMode: .speakers,

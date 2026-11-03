@@ -94,12 +94,13 @@ enum ScenarioRunner {
         )
     }
 
-    /// Silence until neither direction has an utterance in flight and `pause + 0.5 s` passed, or the timeout.
+    /// Silence until the measured direction has no utterance in flight and `pause + 0.5 s` passed, or the
+    /// timeout. The other direction is not waited for: an echo the guard dropped stays open in its trace.
     private static func settle(_ session: BenchSession, after end: ContinuousClock.Instant, pause: Double) async {
         let settled = end + .seconds(pause + 0.5)
         let deadline = end + idleTimeout
         while ContinuousClock.now < deadline {
-            let idle = session.tracer.openSeqs.isEmpty && session.otherTracer.openSeqs.isEmpty
+            let idle = session.tracer.openSeqs.isEmpty
             if idle && ContinuousClock.now >= settled { return }
             await session.player.playSilence(seconds: 0.1)
         }
