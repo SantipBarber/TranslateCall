@@ -74,6 +74,38 @@ struct ScenarioRuleTests {
     }
 }
 
+@Suite("Pitch estimator")
+struct PitchEstimatorTests {
+    /// A voice-like tone: fundamental plus decaying harmonics.
+    private func tone(_ hz: Double, rate: Double = 24_000, seconds: Double = 0.5) -> [Float] {
+        (0..<Int(rate * seconds)).map { index in
+            let time = Double(index) / rate
+            return Float((1...5).reduce(0.0) { $0 + sin(2 * .pi * hz * Double($1) * time) / Double($1) } * 0.3)
+        }
+    }
+
+    @Test(arguments: [85.0, 95.0, 110.0, 180.0])
+    func findsTheFundamental(_ hz: Double) throws {
+        let f0 = try #require(PitchEstimator.medianF0(tone(hz), rate: 24_000))
+        #expect(abs(f0 / hz - 1) < 0.02, "\(f0) Hz for \(hz) Hz")
+    }
+
+    @Test func silenceHasNoPitch() {
+        #expect(PitchEstimator.medianF0([Float](repeating: 0, count: 24_000), rate: 24_000) == nil)
+    }
+
+    @Test func pitchRuleFlagsAHighSentence() {
+        var seen = ScenarioObservation(events: [], clipCount: 3, lastClipEnd: .now, scheduleTimes: [])
+        seen.referenceF0 = 92
+        seen.outgoingF0 = [0: 90, 1: 96, 2: 108]
+        let verdict = ScenarioRule.pitchNearReference(tolerance: 0.12).check(seen)
+        #expect(!verdict.passed)
+        #expect(verdict.summary.contains("#2 108 Hz"))
+        seen.outgoingF0[2] = 100
+        #expect(ScenarioRule.pitchNearReference(tolerance: 0.12).check(seen).passed)
+    }
+}
+
 @Suite("Bench echo path")
 struct BenchEchoPathTests {
     @Test func resamplesToSixteenKilohertz() throws {

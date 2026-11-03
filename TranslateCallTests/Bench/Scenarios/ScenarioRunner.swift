@@ -64,10 +64,12 @@ enum ScenarioRunner {
         await session.player.playSilence(seconds: 2)   // translation warm-up
         let pause = ConversationSettings.defaultPauseSeconds
         var lastClipEnd = ContinuousClock.now
+        var audio = AudioCollector()
         for clip in clips {
             let feed = await session.player.play(try BenchRunner.loadClip(clip, cache: env.cache))
             lastClipEnd = feed.end
             await settle(session, after: feed.end, pause: pause)
+            audio.add(session.output.drain(), events: session.sink.events.filter { $0.direction == .outgoing })
         }
         // Keep the stream running: a loop feeds itself through the echo routes with no clip playing.
         let observeEnd = lastClipEnd + scenario.observeAfter
@@ -76,8 +78,13 @@ enum ScenarioRunner {
         }
         let events = session.sink.events
         let schedules = session.output.scheduleTimes
-        let seen = ScenarioObservation(events: events, clipCount: clips.count, lastClipEnd: lastClipEnd,
+        var seen = ScenarioObservation(events: events, clipCount: clips.count, lastClipEnd: lastClipEnd,
                                        scheduleTimes: schedules)
+        if scenario.rules.contains(where: { if case .pitchNearReference = $0 { true } else { false } }) {
+            seen.outgoingF0 = audio.attempts.compactMapValues { PitchEstimator.medianF0($0.samples, rate: $0.rate) }
+            seen.referenceF0 = try await referenceF0(session)
+            try audio.write(to: env.out.appending(path: scenario.name).appending(path: "audio"))
+        }
         let origin = session.origin
         func ms(_ instant: ContinuousClock.Instant) -> Double { origin.duration(to: instant).milliseconds }
         return Result(
@@ -92,6 +99,13 @@ enum ScenarioRunner {
             scheduledMs: schedules.map(ms),
             lastClipEndMs: ms(lastClipEnd)
         )
+    }
+
+    /// The active voice profile's median F0 (decrypted in memory, never written).
+    private static func referenceF0(_ session: BenchSession) async throws -> Double? {
+        guard let id = session.tts.activeVoiceProfileId else { return nil }
+        let profile = try await VoiceProfileStore().load(id: id)
+        return profile.samples.flatMap { PitchEstimator.medianF0($0, rate: 24_000) }
     }
 
     /// Silence until the measured direction has no utterance in flight and `pause + 0.5 s` passed, or the

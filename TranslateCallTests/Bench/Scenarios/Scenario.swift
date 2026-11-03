@@ -37,12 +37,15 @@ enum ScenarioRule: Sendable, Equatable {
     case spokenOnce
     /// No TTS buffer of either direction is scheduled later than this after the last clip ended.
     case quietAfter(Duration)
+    /// Each outgoing attempt's median F0 is within this share of the voice profile's (Task 18 pitch drift).
+    case pitchNearReference(tolerance: Double)
 
     var name: String {
         switch self {
         case .noOutgoingSpeech: "noOutgoingSpeech"
         case .spokenOnce: "spokenOnce"
         case .quietAfter(let limit): "quietAfter(\(limit.secondsValue)s)"
+        case .pitchNearReference(let tolerance): "pitchNearReference(±\(Int(tolerance * 100))%)"
         }
     }
 }
@@ -54,6 +57,10 @@ struct ScenarioObservation: Sendable {
     let lastClipEnd: ContinuousClock.Instant
     /// Every TTS buffer scheduling instant, both directions.
     let scheduleTimes: [ContinuousClock.Instant]
+    /// Median F0 of each outgoing attempt with audio, by seq (only when a pitch rule asks).
+    var outgoingF0: [Int: Double] = [:]
+    /// Median F0 of the active voice profile's recording.
+    var referenceF0: Double?
 }
 
 struct ScenarioVerdict: Sendable, Codable, Equatable {
@@ -85,6 +92,8 @@ extension ScenarioRule {
             var summary = "\(attempts) incoming attempt(s) spoken for \(seen.clipCount) clip(s)"
             if !repeated.isEmpty { summary += "; repeated: \(repeated.prefix(3).map { "\"\($0)\"" }.joined(separator: ", "))" }
             return verdict(passed, summary)
+        case .pitchNearReference(let tolerance):
+            return pitchVerdict(seen, tolerance: tolerance)
         case .quietAfter(let limit):
             let late = seen.scheduleTimes.filter { $0 > seen.lastClipEnd + limit }
             let lastSeconds = seen.scheduleTimes.max().map { seen.lastClipEnd.duration(to: $0).secondsValue } ?? 0
@@ -93,6 +102,20 @@ extension ScenarioRule {
                 : String(format: "%d TTS buffer(s) after the limit; the last %.1f s after the last clip",
                          late.count, lastSeconds))
         }
+    }
+
+    private func pitchVerdict(_ seen: ScenarioObservation, tolerance: Double) -> ScenarioVerdict {
+        guard let reference = seen.referenceF0 else { return verdict(false, "no voice profile F0") }
+        guard !seen.outgoingF0.isEmpty else { return verdict(false, "no outgoing audio with a pitch") }
+        let ordered = seen.outgoingF0.sorted { $0.key < $1.key }
+        let outliers = ordered.filter { abs($0.value / reference - 1) > tolerance }
+        let list = ordered.map { String(format: "%.0f", $0.value) }.joined(separator: " ")
+        var summary = String(format: "reference %.0f Hz; sentences: %@ Hz", reference, list)
+        if !outliers.isEmpty {
+            summary += "; off: " + outliers.map { String(format: "#%d %.0f Hz", $0.key, $0.value) }
+                .joined(separator: ", ")
+        }
+        return verdict(outliers.isEmpty, summary)
     }
 
     private func verdict(_ passed: Bool, _ summary: String) -> ScenarioVerdict {
@@ -117,7 +140,8 @@ enum ScenarioCatalog {
     static let a30 = Duration.milliseconds(250)
     static let rules: [ScenarioRule] = [.noOutgoingSpeech, .spokenOnce, .quietAfter(.seconds(12))]
 
-    static let all: [Scenario] = [
+    /// The acoustic loop (Task 18 Q6), Basic: about 1 min each.
+    static let echo: [Scenario] = [
         Scenario(name: "echo-speakers", line: .incomingEnToEs, profile: .basic, listeningMode: .speakers,
                  echoes: [speakers], playedLatency: a30, clipLimit: 6, observeAfter: .seconds(15), rules: rules),
         Scenario(name: "echo-headphones", line: .incomingEnToEs, profile: .basic, listeningMode: .headphones,
@@ -130,6 +154,15 @@ enum ScenarioCatalog {
                  echoes: [speakers, remoteSpeakers], playedLatency: a30, clipLimit: 6, observeAfter: .seconds(20),
                  rules: rules),
     ]
+
+    /// The voice clone's pitch against the user's recording, Spanish → English (Best).
+    static let voice: [Scenario] = [
+        Scenario(name: "voice-pitch", line: .outgoingEsESToEn, profile: .best, listeningMode: .headphones,
+                 echoes: [], playedLatency: a30, clipLimit: 8, observeAfter: .seconds(3),
+                 rules: [.pitchNearReference(tolerance: 0.12), .quietAfter(.seconds(12))]),
+    ]
+
+    static var all: [Scenario] { echo + voice }
 
     static func named(_ name: String) -> Scenario? { all.first { $0.name == name } }
 }

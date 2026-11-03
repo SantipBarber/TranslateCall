@@ -61,7 +61,7 @@ bench-manifest:
 bench set="pr" profile="all" edge="0" lines="":
     tools/scripts/bench.sh {{quote(set)}} {{quote(profile)}} {{quote(edge)}} {{quote(lines)}}
 
-# Scenario tests: the pipeline in real time with an acoustic echo, checked by rules. name: echo-speakers | echo-headphones | echo-both | echo-headphones-both | all (comma-separated works)
+# Scenario tests: the pipeline in real time with an acoustic echo, checked by rules. name: echo-speakers | echo-headphones | echo-both | echo-headphones-both | voice-pitch | all (comma-separated works)
 scenario name="all":
     tools/scripts/scenario.sh {{quote(name)}}
 
