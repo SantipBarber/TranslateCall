@@ -213,4 +213,40 @@ struct BenchModelsTests {
         #expect(collector.audioPath(seq: 4) == "audio/3.wav")
         #expect(collector.frameCount(seq: 4) == 250)
     }
+
+    // MARK: - Playback
+
+    @Test func decodesUtteranceWithoutPlayback() throws {
+        let json = #"{"seq":0,"events":{"speechStart":1},"detail":{}}"#
+        let utterance = try JSONDecoder().decode(RawRun.Utterance.self, from: Data(json.utf8))
+        #expect(utterance.playback == nil)
+    }
+
+    @Test func encodesPlayback() throws {
+        let utterance = RawRun.Utterance(seq: 2, events: [:], detail: [:], audio: nil,
+                                         playback: .init(gapCount: 2, gapMs: 300))
+        let data = try BenchJSON.encoder().encode(utterance)
+        let text = String(decoding: data, as: UTF8.self)
+        #expect(text.contains("\"gapCount\" : 2"))
+        #expect(text.contains("\"gapMs\" : 300"))
+        #expect(try JSONDecoder().decode(RawRun.Utterance.self, from: data) == utterance)
+        // Without playback the key is omitted, so old goldens stay byte-identical.
+        let plain = try BenchJSON.encoder().encode(RawRun.Utterance(seq: 0, events: [:], detail: [:], audio: nil))
+        #expect(!String(decoding: plain, as: UTF8.self).contains("playback"))
+    }
+
+    @Test func audioCollectorMeasuresGapsPerAttempt() {
+        let t0 = ContinuousClock.now
+        func at(_ ms: Int) -> ContinuousClock.Instant { t0.advanced(by: .milliseconds(ms)) }
+        // 22.05 kHz: 2205 frames = 100 ms. Seq 0: chunks at 0 and 100 ms (back to back, no gap), then a
+        // chunk at 500 ms after 200 ms of audio played out: one gap of 300 ms. Seq 1: one chunk, no gap.
+        let buffers = [(at(10), Self.buffer(frames: 2205)), (at(110), Self.buffer(frames: 2205)),
+                       (at(510), Self.buffer(frames: 2205)), (at(1000), Self.buffer(frames: 2205))]
+        let events = [Self.first(0, at: at(11)), Self.first(1, at: at(1001))]
+        var collector = AudioCollector()
+        collector.add(buffers, events: events)
+        #expect(collector.playback(seq: 0) == .init(gapCount: 1, gapMs: 300))
+        #expect(collector.playback(seq: 1) == .init(gapCount: 0, gapMs: 0))
+        #expect(collector.playback(seq: 2) == nil)
+    }
 }

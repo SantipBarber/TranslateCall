@@ -17,7 +17,7 @@ from typing import Any
 
 from sacrebleu.metrics import CHRF
 
-from .runs import target_lang
+from .runs import build_configuration, target_lang
 from .stats import summary
 from .text import corpus_wer
 
@@ -54,6 +54,8 @@ def assign(raw: dict) -> dict[str, list[dict]]:
     clips = sorted(raw["clips"], key=lambda c: c["feedStartNs"])
     out: dict[str, list[dict]] = {c["id"]: [] for c in clips}
     for utt in sorted(raw["utterances"], key=lambda u: u["seq"]):
+        if _retracted(utt):
+            continue
         start = utt["events"].get("speechStart")
         if start is None:
             continue
@@ -101,12 +103,112 @@ def _cut_rate(cut_clips: int, clips: int, incomplete_turn: int = 0) -> float:
     return (cut_clips + incomplete_turn) / denominator if denominator else 0.0
 
 
+def _retracted(utt: dict) -> bool:
+    """A tentative segment the VAD withdrew (early processing): the utterance never was a turn."""
+    return "retracted" in utt["events"]
+
+
+def _turn_stats(
+    raw_utts: list[dict],
+    assigned: dict[str, list[dict]],
+    speech_ends: dict[str, int],
+    totals: dict[str, list[float]],
+) -> dict[str, Any]:
+    """Early-processing stats of a line (informative; never in ``compare``).
+
+    ``retractPct`` is retracted / (retracted + committed + finals) in percent, where finals are the
+    utterances that were never tentative and were not dropped (a tentative dropped for empty text before
+    its commit landed is neither); ``commitMs`` is ``committed`` minus the ground-truth speech end of the
+    clip, one sample per committed utterance (a cut clip contributes several). A turn whose tentative was
+    retracted and then closed by a final has no ``committed``, so it is not in ``commitMs``.
+    ``totalRetracted`` / ``totalClean`` split the warm total latency by whether the measured utterance had
+    at least one retracted tentative (the wasted-work cost, G3 I2).  Older runs have none of these stages:
+    0 %, empty summaries.
+    """
+    retracted = sum(_retracted(u) for u in raw_utts)
+    committed = sum("committed" in u["events"] and not _retracted(u) for u in raw_utts)
+    finals = sum("committed" not in u["events"] and not _retracted(u) and not _dropped(u) for u in raw_utts)
+    total = retracted + committed + finals
+    commit_ms = [
+        (u["events"]["committed"] - speech_ends[cid]) * 1e-6
+        for cid, utts in assigned.items() for u in utts if "committed" in u["events"]
+    ]
+    return {
+        "retracted": retracted,
+        "committed": committed,
+        "finals": finals,
+        "retractPct": retracted / total * 100.0 if total else 0.0,
+        "commitMs": summary(commit_ms),
+        "totalRetracted": summary(totals["retracted"]),
+        "totalClean": summary(totals["clean"]),
+    }
+
+
 def _dropped(utt: dict) -> bool:
     return "dropped" in utt["events"]
 
 
 def _heard(utt: dict) -> bool:
     return bool(utt.get("detail", {}).get("sttFinal", {}).get("text", "").strip())
+
+
+def _merged_non_owner(utt: dict) -> bool:
+    """A coalesced attempt is one sentence: only its first seq owns the audio and the playback."""
+    merged = utt.get("detail", {}).get("ttsFirstBuffer", {}).get("mergedSeqs")
+    if not merged:
+        return False
+    seqs = [int(x) for x in str(merged).split(",") if x.strip().lstrip("-").isdigit()]
+    return bool(seqs) and utt["seq"] != min(seqs)
+
+
+def _clone_profile(settings: dict) -> dict[str, Any]:
+    """The voice profile the clone used (REQ-QS-20); ``lookup`` is "failed" when the bench could not read it."""
+    seconds = settings.get("voiceProfileSeconds")
+    return {
+        "id": settings.get("voiceProfileId"),
+        "name": settings.get("voiceProfileName"),
+        "seconds": float(seconds) if seconds else None,
+        "lookup": "failed" if settings.get("voiceProfileLookup") == "failed" else "ok",
+    }
+
+
+def _spoken_sentence(utt: dict) -> bool:
+    """A sentence some TTS engine spoke: not dropped, first buffer out, counted once per merged attempt."""
+    return not _dropped(utt) and "ttsFirstBuffer" in utt["events"] and not _merged_non_owner(utt)
+
+
+def _clone_stats(
+    utts: list[dict], settings: dict | None = None, expected_tts: str | None = None
+) -> dict[str, Any] | None:
+    """Voice-clone path of a line (informative; never in ``compare``): first chunk, playback gaps and the
+    share of the clone's planned sentences it really spoke.
+
+    A line plans the clone when its expected TTS is ``voiceClone``; every sentence spoken on another engine
+    there is a runtime fallback (the same ones ``fallbacks`` counts), so ``cloneSpokenPct`` shows how much of
+    the line the other side heard in the system voice.  Without ``expectedTTS`` (older runs) the plan is
+    unknown and both are ``None``.  ``None`` overall when the clone was neither planned nor heard.
+    ``playback`` is absent in older runs.
+    """
+    spoken = [u for u in utts if _spoken_sentence(u)]
+    clone = [u for u in spoken if u["detail"].get("ttsFirstBuffer", {}).get("engine") == "voiceClone"]
+    planned = len(spoken) if expected_tts == "voiceClone" else None
+    if not clone and not planned:
+        return None
+    first_chunk = [
+        (u["events"]["ttsFirstBuffer"] - u["events"]["translated"]) * 1e-6
+        for u in clone if "translated" in u["events"]
+    ]
+    playbacks = [u.get("playback") or {} for u in clone]
+    gapped = sum(1 for p in playbacks if p.get("gapCount", 0) > 0)
+    return {
+        "firstChunkMs": summary(first_chunk),
+        "gapSentencesPct": gapped / len(clone) * 100.0 if clone else None,
+        "gapMsTotal": sum(p.get("gapMs", 0) for p in playbacks),
+        "sentences": len(clone),
+        "clonePlannedSentences": planned,
+        "cloneSpokenPct": len(clone) / planned * 100.0 if planned else None,
+        "profile": _clone_profile(settings or {}),
+    }
 
 
 def _joined(utts: list[dict], stage: str) -> str:
@@ -128,6 +230,12 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False, tier: str | Non
 
     assigned = assign(raw)
     target = target_lang(raw.get("runLine", ""))
+    # Retracted tentatives are not turns: out of clip matching, WER, cut rate, latency and every count.
+    all_utts = raw["utterances"]
+    raw = {**raw, "utterances": [u for u in all_utts if not _retracted(u)]}
+    # Tentatives of one utterance share its start: a retracted one marks the turn that carried it.
+    retracted_starts = {u["events"]["speechStart"] for u in all_utts if _retracted(u) and "speechStart" in u["events"]}
+    totals_by_retract: dict[str, list[float]] = {"retracted": [], "clean": []}
     first_seq = min((u["seq"] for u in raw["utterances"] if not _dropped(u)), default=None)
     unassigned = 0 if tier is not None else len(raw["utterances"]) - sum(len(v) for v in assigned.values())
 
@@ -156,8 +264,12 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False, tier: str | Non
         if live:
             last = live[-1]
             bucket = cold if last["seq"] == first_seq else lat
-            for stage, value in _latencies(last, clip["speechEndNs"]).items():
+            latencies = _latencies(last, clip["speechEndNs"])
+            for stage, value in latencies.items():
                 bucket[stage].append(value)
+            if bucket is lat and "total" in latencies:
+                kind = "retracted" if last["events"].get("speechStart") in retracted_starts else "clean"
+                totals_by_retract[kind].append(latencies["total"])
 
     included_utts = raw["utterances"] if tier is None else [
         u for cid in included_clip_ids for u in assigned[cid]
@@ -217,6 +329,8 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False, tier: str | Non
         "comet": comet_result,
         "fallbacks": fallbacks,
         "unassigned": unassigned,
+        "turn": _turn_stats(all_utts, assigned, {c["id"]: c["speechEndNs"] for c in clips}, totals_by_retract),
+        **({"clone": clone} if (clone := _clone_stats(included_utts, raw["meta"].get("settings"), exp_tts)) else {}),
     }
 
 
@@ -240,6 +354,10 @@ def _run_meta(raws: list[tuple[Path, dict]]) -> dict[str, Any]:
                 raise ValueError(
                     f"run lines disagree on {key}: {first_path} has {meta[key]!r}, {path} has {other[key]!r}"
                 )
+    configs = {build_configuration(r.get("meta", {})) for _, r in raws}
+    if len(configs) > 1:
+        raise ValueError(f"run lines disagree on buildConfiguration: {sorted(configs)}")
+    meta["buildConfiguration"] = configs.pop()
     meta["informative"] = any(r.get("informative", False) for _, r in raws)
     meta["override"] = next((r["override"] for _, r in raws if r.get("override") is not None), None)
     return meta

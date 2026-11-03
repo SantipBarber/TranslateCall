@@ -141,7 +141,7 @@ struct ParakeetSpeechServiceTests {
         #expect(results.first?.confidence == 0.95)
     }
 
-    @Test("Transcription discards low-confidence result")
+    @Test("Transcription turns a low-confidence result into an empty one")
     func transcriptionDiscardsLowConfidence() async throws {
         let mock = MockAsrTranscriber()
         // Default minimumConfidence is 0.60; stub below threshold
@@ -164,7 +164,9 @@ struct ParakeetSpeechServiceTests {
         await service.deactivate()
         streamTask.cancel()
 
-        #expect(results.isEmpty)
+        // The segment is not dropped silently: one empty result keeps its id accounted for.
+        #expect(results.count == 1)
+        #expect(results.first?.text.isEmpty == true)
     }
 
     @Test("Transcription result carries correct locale")
@@ -241,6 +243,28 @@ struct ParakeetSpeechServiceTests {
         #expect(received.first?.count == 240_000)
     }
 
+    @Test("A segment under 1 s is zero-padded to 16 000 samples and transcribed (G3 C1)")
+    func shortSegmentPadded() async throws {
+        let mock = MockAsrTranscriber()
+        await mock.stubResult(text: "yes", confidence: 0.9)
+        await mock.requireMinimumSamples(16_000)   // FluidAudio's AsrManager guard
+
+        let service = makeService(mock: mock)
+        let collector = Task { () -> TranscriptionResult? in
+            for await result in service.transcriptionStream { return result }
+            return nil
+        }
+        try await service.activate(stream: singleSegmentStream(makeSegment(frameCount: 9_600)))   // 0.6 s
+        let result = await collector.value
+        await service.deactivate()
+
+        let received = await mock.receivedSamples
+        #expect(received.first?.count == 16_000)
+        #expect(received.first?.prefix(9_600).allSatisfy { $0 == 0.01 } == true, "the real audio comes first")
+        #expect(received.first?.suffix(6_400).allSatisfy { $0 == 0 } == true, "then digital silence")
+        #expect(result?.text == "yes")
+    }
+
     // MARK: - Error handling
 
     @Test("Transcription error from mock does not crash or emit result")
@@ -262,8 +286,9 @@ struct ParakeetSpeechServiceTests {
         await service.deactivate()
         streamTask.cancel()
 
-        // No crash; no result emitted on error
-        #expect(results.isEmpty)
+        // No crash; the error yields an empty result for the segment
+        #expect(results.count == 1)
+        #expect(results.first?.text.isEmpty == true)
     }
 
     // MARK: - Metrics

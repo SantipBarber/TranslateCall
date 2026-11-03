@@ -179,6 +179,8 @@ def test_compare_default_paths_are_repo_rooted(tmp_path, monkeypatch):
         "manifestSha256": baseline["manifestSha256"],
         "macOS": baseline.get("macOS", "15.0"),
         "machine": "test",
+        # Same configuration as the repo baseline, whichever it is: the test is about paths.
+        "buildConfiguration": baseline.get("buildConfiguration"),
         "commit": "deadbeef",
         "dirty": False,
         "informative": False,

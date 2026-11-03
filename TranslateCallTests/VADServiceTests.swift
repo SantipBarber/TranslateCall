@@ -40,11 +40,13 @@ struct MakePCMBufferTests {
     actor MockVADService: VADService {
         nonisolated let speechSegments: AsyncStream<SpeechSegment>
         nonisolated let vadStateEvents: AsyncStream<Bool>
+        nonisolated let boundaryEvents: AsyncStream<SegmentBoundary>
         nonisolated let engine: VADEngine = .energy
 
         init() {
             speechSegments = AsyncStream { $0.finish() }
             vadStateEvents = AsyncStream { $0.finish() }
+            boundaryEvents = AsyncStream { $0.finish() }
         }
 
         func activate(stream: AsyncStream<AVAudioPCMBuffer>) async throws {}

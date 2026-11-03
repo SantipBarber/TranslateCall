@@ -66,7 +66,7 @@ actor WhisperSpeechService: SpeechRecognizerService {
         processingTask = Task { [weak self] in
             for await segment in stream {
                 guard !Task.isCancelled else { break }
-                await self?.transcribeSegment(segment)
+                await self?.process(segment)
             }
         }
     }
@@ -82,14 +82,20 @@ actor WhisperSpeechService: SpeechRecognizerService {
 
     // MARK: - Transcription
 
-    private func transcribeSegment(_ segment: SpeechSegment) async {
-        guard let pipe else { return }
+    /// Yields exactly one result per segment: the recognized text or an empty one.
+    private func process(_ segment: SpeechSegment) async {
+        let result = await transcribeSegment(segment) ?? .empty(for: segment, locale: locale)
+        continuation?.yield(result)
+    }
+
+    private func transcribeSegment(_ segment: SpeechSegment) async -> TranslateCall.TranscriptionResult? {
+        guard let pipe else { return nil }
         let startDate = Date()
 
-        guard let channelData = segment.audio.floatChannelData else { return }
+        guard let channelData = segment.audio.floatChannelData else { return nil }
         let count = min(Int(segment.audio.frameLength), maxSamples)
         let samples = Array(UnsafeBufferPointer(start: channelData[0], count: count))
-        guard !samples.isEmpty else { return }
+        guard !samples.isEmpty else { return nil }
 
         let langCode = WhisperLanguages.whisperCode(for: locale)
             ?? whisperConfig.language
@@ -102,9 +108,9 @@ actor WhisperSpeechService: SpeechRecognizerService {
             audioArrays: [samples], decodeOptions: options
         )
         guard let first = results.first,
-              let wkResult = first?.first else { return }
+              let wkResult = first?.first else { return nil }
 
-        await emitResult(
+        return await buildResult(
             text: wkResult.text,
             segments: wkResult.segments,
             segment: segment,
@@ -113,15 +119,15 @@ actor WhisperSpeechService: SpeechRecognizerService {
         )
     }
 
-    private func emitResult(
+    private func buildResult(
         text rawText: String,
         segments: [TranscriptionSegment],
         segment: SpeechSegment,
         startDate: Date,
         sampleCount: Int
-    ) async {
+    ) async -> TranslateCall.TranscriptionResult? {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else { return nil }
 
         let confidence = computeConfidence(from: segments)
         let audioDuration = TimeInterval(sampleCount) / 16_000.0
@@ -138,16 +144,18 @@ actor WhisperSpeechService: SpeechRecognizerService {
 
         guard confidence >= config.minimumConfidence else {
             logger.debug("Whisper: low confidence \(confidence), skipping")
-            return
+            return nil
         }
 
-        continuation?.yield(TranslateCall.TranscriptionResult(
+        return TranslateCall.TranscriptionResult(
             text: text,
             confidence: confidence,
             locale: locale,
             capturedAt: segment.capturedAt,
-            audioDuration: audioDuration
-        ))
+            audioDuration: audioDuration,
+            segmentID: segment.id,
+            kind: segment.kind
+        )
     }
 
     private func computeConfidence(

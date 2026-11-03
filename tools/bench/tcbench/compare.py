@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tcbench.runs import build_configuration
+
 
 def _pct_change(baseline: float | None, value: float | None) -> float | None:
     if baseline is None or value is None or baseline == 0:
@@ -104,6 +106,14 @@ def run(
     if run_meta.get("manifestSha256") != baseline.get("manifestSha256"):
         msg = "manifest changed — re-baseline with `just bench-baseline`"
         lines.append(msg)
+        return "\n".join(lines), 3
+
+    run_config, base_config = build_configuration(run_meta), build_configuration(baseline)
+    if run_config != base_config:
+        lines.append(
+            f"build configuration changed: baseline={base_config} run={run_config}"
+            " — latencies are not comparable; re-baseline with `just bench-baseline`"
+        )
         return "\n".join(lines), 3
 
     if run_meta.get("macOS") != baseline.get("macOS"):

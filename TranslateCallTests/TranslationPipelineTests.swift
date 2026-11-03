@@ -25,6 +25,7 @@ final class MockTranslationService: TranslationService {
         if holdNext {
             holdNext = false
             await withCheckedContinuation { held = $0 }
+            try Task.checkCancellation()   // a cancelled translation does not return a result
         }
         if !errors.isEmpty { throw errors.removeFirst() }
         if let error = shouldThrow { throw error }

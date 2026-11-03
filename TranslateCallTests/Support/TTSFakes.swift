@@ -106,6 +106,8 @@ final class FakeSynthesizer: UtteranceSynthesizer, Sendable {
         var buffers: [AVAudioPCMBuffer] = [makePCMBuffer(frames: 1_600, fill: 0.5)]
         /// Throw `FakeSynthError.boom` after yielding this many buffers (nil = never).
         var failAfter: Int? = nil
+        /// The error thrown instead of `FakeSynthError.boom` when `failAfter` is reached.
+        var failWith: Error? = nil
         /// After the buffers, never finish (until the consumer goes away).
         var hang = false
         /// Before yielding the buffer at this index, wait for `gate.open()`.
@@ -156,14 +158,14 @@ final class FakeSynthesizer: UtteranceSynthesizer, Sendable {
         let producer = Task { [gate] in
             for (index, buffer) in script.buffers.enumerated() {
                 if script.failAfter == index {
-                    continuation.finish(throwing: FakeSynthError.boom)
+                    continuation.finish(throwing: script.failWith ?? FakeSynthError.boom)
                     return
                 }
                 if script.holdBefore == index { await gate.wait() }
                 continuation.yield(buffer)
             }
             if script.failAfter == script.buffers.count {
-                continuation.finish(throwing: FakeSynthError.boom)
+                continuation.finish(throwing: script.failWith ?? FakeSynthError.boom)
                 return
             }
             if script.hang {

@@ -24,6 +24,28 @@ struct TracingDecoratorTests {
         #expect(await inner.deactivateCalled)
     }
 
+    @Test(arguments: [true, false])
+    func vadStampsBoundariesWhicheverArrivesFirst(boundaryFirst: Bool) async throws {
+        let inner = MockVADService(engine: .silero)
+        let vad = TracingVADService(wrapping: inner, tracer: tracer)
+        try await vad.activate(stream: AsyncStream { $0.finish() })
+        let segment = SpeechSegment(audio: makePCMBuffer(frames: 16_000), capturedAt: Date(), id: 7, kind: .tentative)
+        let received = Task { () -> SegmentBoundary? in for await got in vad.boundaryEvents { return got }; return nil }
+        let first = Task { () -> UInt64? in for await got in vad.speechSegments { return got.id }; return nil }
+        if boundaryFirst { await inner.injectBoundary(.retract(7)) }
+        await inner.injectSpeechSegment(segment)
+        if !boundaryFirst {
+            #expect(await first.value == 7)
+            await inner.injectBoundary(.retract(7))
+        }
+        #expect(await received.value == .retract(7))
+        // The boundary and the segment travel on two streams: wait for the tracer to see both.
+        var spins = 0
+        while sink.stages(of: 0).last != .retracted, spins < 100_000 { spins += 1; await Task.yield() }
+        #expect(sink.stages(of: 0) == [.speechStart, .vadEnd, .retracted])
+        await vad.deactivate()
+    }
+
     @Test func sttForwardsResultsAndStampsThem() async throws {
         let tracer = tracer
         let date = Date()
@@ -61,6 +83,27 @@ struct TracingDecoratorTests {
         #expect(sink.event(1, .translated)?.detail["text"] == "TRANSLATED: b")
         await service.warmUp(from: es, to: en)
         #expect(inner.warmUpCalls.count == 1)
+    }
+
+    /// G3 M2: a retracted tentative's translation is cancelled; its CancellationError may surface after
+    /// the next utterance (same text) has its STT text. That one must not be dropped for it.
+    @Test func cancelledTranslationDoesNotDropTheNextUtterance() async throws {
+        let tracer = tracer
+        let date = Date()
+        tracer.segmentClosed(capturedAt: date, audioSeconds: 1, id: 1)
+        tracer.transcribed(capturedAt: date, text: "hello", engine: "x", confidence: 1, segmentID: 1)
+        tracer.segmentRetracted(id: 1)
+        tracer.segmentClosed(capturedAt: date, audioSeconds: 1, id: 2)
+        tracer.transcribed(capturedAt: date, text: "hello", engine: "x", confidence: 1, segmentID: 2)
+        let inner = MockTranslationService()
+        inner.errors = [CancellationError()]
+        let service = TracingTranslationService(wrapping: inner, tracer: tracer)
+        let (es, en) = (Locale.Language(identifier: "es"), Locale.Language(identifier: "en"))
+        await #expect(throws: CancellationError.self) { try await service.translate(text: "hello", from: es, to: en) }
+        #expect(sink.event(1, .dropped) == nil)
+        #expect(tracer.openSeqs == [1])
+        _ = try await service.translate(text: "hello", from: es, to: en)
+        #expect(sink.event(1, .translated)?.detail["text"] == "TRANSLATED: hello")
     }
 
     /// The real playback service between the TTS decorators: first buffer and end, merged sentences.

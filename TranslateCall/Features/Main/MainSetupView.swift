@@ -189,7 +189,9 @@ struct MainSetupView: View {
 
     private var voiceProfilesSheet: some View {
         NavigationStack {
-            VoiceProfileListView(isSessionActive: viewModel.isSessionActive)
+            VoiceProfileListView(
+                isSessionActive: viewModel.isSessionActive,
+                defaultLanguage: VoiceRecordingFlowView.defaultLanguage(for: languages.sourceLanguage))
                 .environmentObject(voiceProfileManager)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {

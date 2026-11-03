@@ -9,11 +9,14 @@ import Foundation
 actor TracingVADService: VADService {
     nonisolated let speechSegments: AsyncStream<SpeechSegment>
     nonisolated let vadStateEvents: AsyncStream<Bool>
+    nonisolated let boundaryEvents: AsyncStream<SegmentBoundary>
     nonisolated let engine: VADEngine
     private let inner: any VADService
     private let tracer: PipelineTracer
     private let continuation: AsyncStream<SpeechSegment>.Continuation
+    private let boundaryContinuation: AsyncStream<SegmentBoundary>.Continuation
     private var forward: Task<Void, Never>?
+    private var forwardBoundaries: Task<Void, Never>?
 
     init(wrapping inner: any VADService, tracer: PipelineTracer) {
         self.inner = inner
@@ -21,6 +24,7 @@ actor TracingVADService: VADService {
         vadStateEvents = inner.vadStateEvents
         engine = inner.engine
         (speechSegments, continuation) = AsyncStream.makeStream(of: SpeechSegment.self)
+        (boundaryEvents, boundaryContinuation) = AsyncStream.makeStream(of: SegmentBoundary.self)
     }
 
     func activate(stream: AsyncStream<AVAudioPCMBuffer>) async throws {
@@ -29,10 +33,26 @@ actor TracingVADService: VADService {
         forward = Task {
             for await segment in segments {
                 tracer.segmentClosed(capturedAt: segment.capturedAt,
-                                     audioSeconds: Double(segment.audio.frameLength) / segment.audio.format.sampleRate)
+                                     audioSeconds: Double(segment.audio.frameLength) / segment.audio.format.sampleRate,
+                                     id: segment.id)
                 continuation.yield(segment)
             }
             continuation.finish()
+        }
+        let (boundaries, boundaryContinuation) = (inner.boundaryEvents, boundaryContinuation)
+        forwardBoundaries = Task {
+            for await boundary in boundaries {
+                Self.trace(boundary, tracer: tracer)
+                boundaryContinuation.yield(boundary)
+            }
+            boundaryContinuation.finish()
+        }
+    }
+
+    private nonisolated static func trace(_ boundary: SegmentBoundary, tracer: PipelineTracer) {
+        switch boundary {
+        case .commit(let id): tracer.segmentCommitted(id: id)
+        case .retract(let id): tracer.segmentRetracted(id: id)
         }
     }
 
@@ -40,7 +60,10 @@ actor TracingVADService: VADService {
         await inner.deactivate()
         forward?.cancel()
         forward = nil
+        forwardBoundaries?.cancel()
+        forwardBoundaries = nil
         continuation.finish()
+        boundaryContinuation.finish()
     }
 }
 
@@ -67,7 +90,7 @@ actor TracingSTTService: SpeechRecognizerService {
         forward = Task {
             for await result in results {
                 tracer.transcribed(capturedAt: result.capturedAt, text: result.text, engine: engine,
-                                   confidence: result.confidence)
+                                   confidence: result.confidence, segmentID: result.segmentID)
                 continuation.yield(result)
             }
             continuation.finish()
@@ -103,7 +126,11 @@ final class TracingTranslationService: TranslationService {
             tracer.translated(source: text, result: result)
             return result
         } catch {
-            tracer.translationFailed(source: text, error: error)
+            // A cancelled translation is a retracted tentative's (or a stop): its CancellationError may
+            // land after the next utterance with the same text has its STT text, and must not drop it (G3 M2).
+            if !(error is CancellationError || Task.isCancelled) {
+                tracer.translationFailed(source: text, error: error)
+            }
             throw error
         }
     }

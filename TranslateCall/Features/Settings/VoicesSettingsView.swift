@@ -8,6 +8,7 @@ struct VoicesSettingsView: View {
     @EnvironmentObject private var viewModel: AudioViewModel
     @State private var previewService: VoicePreviewService?
     @State private var showRecordSheet = false
+    @State private var shortSampleSheet = false
 
     var body: some View {
         VoicesSettingsContent(
@@ -16,8 +17,9 @@ struct VoicesSettingsView: View {
             onUse: { voiceProfileManager.setActiveProfile($0) }, onPlay: play,
             onRename: { id, name in Task { try? await voiceProfileManager.rename(id: id, newName: name) } },
             onDelete: { id in Task { try? await voiceProfileManager.delete(id: id) } },
-            onRecord: { showRecordSheet = true })
+            onRecord: { showRecordSheet = true }, onRecordShort: { shortSampleSheet = true })
             .sheet(isPresented: $showRecordSheet) { recordSheet }
+            .sheet(isPresented: $shortSampleSheet) { shortSampleSheetView }
             .onAppear {
                 if previewService == nil {
                     previewService = try? VoicePreviewService(profileStore: voiceProfileManager.profileStore)
@@ -47,7 +49,9 @@ struct VoicesSettingsView: View {
 
     private var recordSheet: some View {
         NavigationStack {
-            VoiceProfileListView(isSessionActive: viewModel.isSessionActive)
+            VoiceProfileListView(
+                isSessionActive: viewModel.isSessionActive,
+                defaultLanguage: VoiceRecordingFlowView.defaultLanguage(for: languages.sourceLanguage))
                 .environmentObject(voiceProfileManager)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
@@ -56,6 +60,14 @@ struct VoicesSettingsView: View {
                 }
         }
         .frame(minWidth: 440, minHeight: 400)
+    }
+
+    /// The long-voice hint: straight to the guided reading; the result is saved and made active.
+    private var shortSampleSheetView: some View {
+        VoiceRecordingFlowView(
+            defaultLanguage: VoiceRecordingFlowView.defaultLanguage(for: languages.sourceLanguage),
+            makeActive: true, startsGuided: true) { shortSampleSheet = false }
+            .environmentObject(voiceProfileManager)
     }
 }
 
@@ -77,6 +89,7 @@ struct VoicesSettingsContent: View {
     let onRename: (UUID, String) -> Void
     let onDelete: (UUID) -> Void
     let onRecord: () -> Void
+    var onRecordShort: () -> Void = {}
     var installedVoices: [SystemVoice] = SystemVoice.installed
 
     @State private var renameTarget: VoiceProfileHeader?
@@ -90,6 +103,7 @@ struct VoicesSettingsContent: View {
                     VoiceProfileRow(
                         profile: profile, isActive: profile.id == activeProfileId,
                         onUse: { onUse(profile.id) }, onPlay: { onPlay(profile.id) },
+                        onRecordShort: onRecordShort,
                         onRename: { renameText = profile.name; renameTarget = profile },
                         onDelete: { deleteTarget = profile })
                 }

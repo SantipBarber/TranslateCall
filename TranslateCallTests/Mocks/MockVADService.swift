@@ -8,9 +8,11 @@ actor MockVADService: VADService {
     // Streams
     nonisolated let speechSegments: AsyncStream<SpeechSegment>
     nonisolated let vadStateEvents: AsyncStream<Bool>
+    nonisolated let boundaryEvents: AsyncStream<SegmentBoundary>
 
     private var speechContinuation: AsyncStream<SpeechSegment>.Continuation?
     private var stateContinuation: AsyncStream<Bool>.Continuation?
+    private var boundaryContinuation: AsyncStream<SegmentBoundary>.Continuation?
 
     // Call tracking
     private(set) var activateCount = 0
@@ -30,10 +32,13 @@ actor MockVADService: VADService {
         self.engine = engine
         var speechCont: AsyncStream<SpeechSegment>.Continuation?
         var stateCont: AsyncStream<Bool>.Continuation?
+        var boundaryCont: AsyncStream<SegmentBoundary>.Continuation?
         speechSegments = AsyncStream { speechCont = $0 }
         vadStateEvents = AsyncStream { stateCont = $0 }
+        boundaryEvents = AsyncStream { boundaryCont = $0 }
         speechContinuation = speechCont
         stateContinuation = stateCont
+        boundaryContinuation = boundaryCont
     }
 
     /// The next `activate` suspends until `releaseActivation()` (e.g. a slow model load).
@@ -63,6 +68,7 @@ actor MockVADService: VADService {
         consumeTask = nil
         speechContinuation?.finish()
         stateContinuation?.finish()
+        boundaryContinuation?.finish()
     }
 
     private static func peak(of buffer: AVAudioPCMBuffer) -> Float {
@@ -78,5 +84,10 @@ actor MockVADService: VADService {
     /// Inject a speech segment into the stream (for driving downstream STT in tests).
     func injectSpeechSegment(_ segment: SpeechSegment) {
         speechContinuation?.yield(segment)
+    }
+
+    /// Inject a commit or retract of a tentative segment.
+    func injectBoundary(_ boundary: SegmentBoundary) {
+        boundaryContinuation?.yield(boundary)
     }
 }

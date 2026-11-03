@@ -17,7 +17,6 @@ final class NoLatencyProvider: LatencyProvider {
 extension Duration {
     /// "0.9 s" for the panel.
     nonisolated var latencyLabel: String {
-        let seconds = Double(components.seconds) + Double(components.attoseconds) / 1e18
-        return String(format: "%.1f s", seconds)
+        String(format: "%.1f s", secondsValue)
     }
 }

@@ -110,6 +110,38 @@ struct TTSPlaybackFallbackTests {
         await harness.service.deactivate()
     }
 
+    @Test("REQ-QS-07a: an abandoned gate falls back at once and never counts toward the breaker")
+    func abandonedGateFallsBackWithoutBreaker() async {
+        let busy = FakeSynthesizer.Script(failAfter: 0, failWith: QwenCloneError.gateBusyAbandoned)
+        let primary = FakeSynthesizer(engine: .voiceClone, scripts: [busy])
+        let fallback = FakeSynthesizer(engine: .avSpeech)
+        let harness = TTSPlaybackHarness(primary: primary, fallback: fallback, output: FakeOutput(autoComplete: true))
+        for index in 1...4 {
+            await harness.service.speak(text: "s\(index)", locale: english)
+            #expect(await waitUntil { fallback.texts.count == index })
+        }
+        #expect(fallback.texts == ["s1", "s2", "s3", "s4"])
+        #expect(!(await harness.service.isBreakerOpen))
+        #expect(await waitUntil { harness.events.values.count == 4 })
+        #expect(harness.events.values.allSatisfy { $0 == .fellBack(from: .voiceClone, to: .avSpeech) })
+        await harness.service.deactivate()
+    }
+
+    @Test("REQ-QS-07: a first-chunk timeout falls back and still counts toward the breaker")
+    func firstChunkTimeoutFallsBack() async {
+        let late = FakeSynthesizer.Script(failAfter: 0, failWith: QwenCloneError.inferenceTimeout)
+        let primary = FakeSynthesizer(engine: .voiceClone, scripts: [late])
+        let fallback = FakeSynthesizer(engine: .avSpeech)
+        let harness = TTSPlaybackHarness(primary: primary, fallback: fallback, output: FakeOutput(autoComplete: true))
+        for index in 1...3 {
+            await harness.service.speak(text: "s\(index)", locale: english)
+            #expect(await waitUntil { fallback.texts.count == index })
+        }
+        #expect(fallback.texts == ["s1", "s2", "s3"])
+        #expect(await harness.service.isBreakerOpen)
+        await harness.service.deactivate()
+    }
+
     @Test("a primary success resets the failure count")
     func successResets() async {
         let ok = FakeSynthesizer.Script()

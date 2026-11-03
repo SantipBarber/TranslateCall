@@ -21,7 +21,7 @@ extension AVAudioPCMBuffer {
 
 // MARK: - TranscriptionResult
 
-/// A finalized speech recognition result for one utterance.
+/// A speech recognition result for one segment. An empty `text` means "nothing recognized".
 struct TranscriptionResult: Sendable {
     /// Recognized text (`bestTranscription.formattedString`).
     let text: String
@@ -33,6 +33,21 @@ struct TranscriptionResult: Sendable {
     let capturedAt: Date
     /// Duration of the audio that was recognized, in seconds.
     let audioDuration: TimeInterval
+    /// Id of the `SpeechSegment` this result belongs to (0 for untagged sources).
+    var segmentID: UInt64 = 0
+    /// Whether the segment was tentative (may be retracted) or final.
+    var kind: SegmentKind = .final
+
+    /// The result for a segment that produced no usable text (empty transcript, low confidence,
+    /// recognition error). Engines yield one for every segment so a downstream committer never
+    /// waits for an id that will not come.
+    nonisolated static func empty(for segment: SpeechSegment, locale: Locale) -> TranscriptionResult {
+        TranscriptionResult(
+            text: "", confidence: 0, locale: locale, capturedAt: segment.capturedAt,
+            audioDuration: Double(segment.audio.frameLength) / segment.audio.format.sampleRate,
+            segmentID: segment.id, kind: segment.kind
+        )
+    }
 }
 
 // MARK: - STTError
@@ -72,7 +87,7 @@ struct STTConfiguration: Sendable {
 /// `transcriptionStream` and `locale` are `nonisolated` — initialized in `init()`
 /// before any async work, safe to access without `await` from any context.
 protocol SpeechRecognizerService: Actor {
-    /// Emitted `TranscriptionResult`s with confidence ≥ threshold.
+    /// One `TranscriptionResult` per segment; empty text when nothing usable was recognized.
     nonisolated var transcriptionStream: AsyncStream<TranscriptionResult> { get }
     /// Currently configured locale.
     nonisolated var locale: Locale { get }

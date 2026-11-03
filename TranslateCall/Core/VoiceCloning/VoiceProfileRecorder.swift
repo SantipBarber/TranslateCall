@@ -8,6 +8,15 @@ private nonisolated let logger = Logger(
     category: "VoiceProfileRecorder"
 )
 
+/// What `VoiceProfileManager` needs from the recorder; tests swap in a fake with no microphone.
+protocol VoiceRecording: Sendable {
+    nonisolated var levelStream: AsyncStream<Float> { get }
+    func startRecording() async throws
+    func stopRecording(mode: RecordingMode) async throws -> RecordingResult
+}
+
+extension VoiceProfileRecorder: VoiceRecording {}
+
 actor VoiceProfileRecorder {
 
     // MARK: - Dependencies
@@ -47,22 +56,24 @@ actor VoiceProfileRecorder {
         try setupEngine()
     }
 
-    func stopRecording() throws -> RecordingResult {
+    func stopRecording(mode: RecordingMode = .free) throws -> RecordingResult {
         guard let eng = engine else { throw VoiceProfileRecorderError.notRecording }
         eng.stop()
         eng.inputNode.removeTap(onBus: 0)
         engine = nil
 
+        let trimmed = VoiceQualityRules.trimSilence(capturedSamples, sampleRate: targetSampleRate)
         let metrics = Self.computeQualityStatic(
-            samples: capturedSamples,
-            sampleRate: targetSampleRate
+            samples: trimmed,
+            sampleRate: targetSampleRate,
+            mode: mode
         )
-        let duration = Float(capturedSamples.count) / Float(targetSampleRate)
+        let duration = Float(trimmed.count) / Float(targetSampleRate)
         logger.info(
-            "Recording stopped: \(self.capturedSamples.count) samples, grade=\(metrics.grade.rawValue)"
+            "Recording stopped: \(trimmed.count) samples, grade=\(metrics.grade.rawValue)"
         )
         return RecordingResult(
-            samples: capturedSamples,
+            samples: trimmed,
             durationSeconds: duration,
             quality: metrics
         )
@@ -137,7 +148,8 @@ actor VoiceProfileRecorder {
 
     static func computeQualityStatic(
         samples: [Float],
-        sampleRate: Double
+        sampleRate: Double,
+        mode: RecordingMode = .free
     ) -> VoiceQualityMetrics {
         guard !samples.isEmpty else {
             return VoiceQualityMetrics(
@@ -172,15 +184,12 @@ actor VoiceProfileRecorder {
         }
         let voicedDuration = Float(voicedChunks * chunkSize) / Float(sampleRate)
 
-        // Grade logic
-        let grade: VoiceQualityGrade
-        if peakRms < -30 || voicedDuration < 8 || hasClipping {
-            grade = .poor
-        } else if peakRms < -20 || voicedDuration < 20 {
-            grade = .fair
-        } else {
-            grade = .good
-        }
+        let grade = VoiceQualityRules.grade(
+            peakRmsDbfs: peakRms,
+            hasClipping: hasClipping,
+            voicedSeconds: voicedDuration,
+            mode: mode
+        )
 
         return VoiceQualityMetrics(
             peakRmsDbfs: peakRms,

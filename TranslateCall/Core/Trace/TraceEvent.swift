@@ -8,6 +8,8 @@ nonisolated enum TraceDirection: String, Sendable, Codable {
 /// The points of an utterance's way through the pipeline that the trace stamps (M9 design §2.1).
 nonisolated enum TraceStage: String, Sendable, Codable {
     case speechStart, vadEnd, sttFinal, translated, ttsFirstBuffer, ttsEnd, dropped
+    /// Early processing: a tentative segment was confirmed or withdrawn (a retracted utterance ends there).
+    case committed, retracted
 }
 
 /// One stamp of one utterance. `seq` counts utterances per direction from 0 in each session.

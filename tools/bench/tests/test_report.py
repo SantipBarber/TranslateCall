@@ -205,3 +205,67 @@ def test_cli_report(tmp_path, monkeypatch, capsys):
     assert code == 0
     assert (run_dir / "report.html").exists()
     assert main(["report", str(tmp_path / "nope")]) == 2
+
+
+def test_clone_table_rendered(tmp_path, monkeypatch):
+    run_dir, manifest = _build(tmp_path, monkeypatch)
+    raw_path = next(run_dir.rglob("raw.json"))
+    raw = json.loads(raw_path.read_text())
+    for i, u in enumerate(raw["utterances"]):
+        u["detail"]["ttsFirstBuffer"]["engine"] = "voiceClone"
+        if i == 0:
+            u["playback"] = {"gapCount": 1, "gapMs": 120}
+    raw["meta"]["settings"] = {"voiceProfileId": "ID-123", "voiceProfileName": "Mi voz",
+                               "voiceProfileSeconds": "31.0"}
+    raw_path.write_text(json.dumps(raw))
+    analyze.run(run_dir, manifest)
+    html = _go(run_dir, manifest, tmp_path).read_text()
+    assert "Voice clone" in html
+    assert "gap sentences" in html
+    assert "Mi voz" in html and "ID-123" in html and "reference 31.0 s" in html.replace("\n", " ")
+
+
+def test_clone_table_shows_spoken_share(tmp_path, monkeypatch):
+    run_dir, manifest = _build(tmp_path, monkeypatch)
+    raw_path = next(run_dir.rglob("raw.json"))
+    raw = json.loads(raw_path.read_text())
+    raw["meta"]["engines"]["expectedTTS"] = "voiceClone"
+    for u in raw["utterances"]:
+        u["detail"]["ttsFirstBuffer"]["engine"] = "avSpeech"     # every sentence fell back
+    raw_path.write_text(json.dumps(raw))
+    analyze.run(run_dir, manifest)
+    html = _go(run_dir, manifest, tmp_path).read_text()
+    assert "Voice clone" in html
+    assert "clone spoken %" in html
+    assert '<td class="num">0.0</td>' in html
+
+
+def test_no_clone_table_without_clone(tmp_path, monkeypatch):
+    run_dir, manifest = _build(tmp_path, monkeypatch)
+    assert "Voice clone" not in _go(run_dir, manifest, tmp_path).read_text()
+
+
+def test_early_processing_table_only_with_tentatives(tmp_path, monkeypatch):
+    run_dir, manifest = _build(tmp_path, monkeypatch)
+    assert "Early processing" not in _go(run_dir, manifest, tmp_path).read_text()
+    raw_path = next(run_dir.rglob("raw.json"))
+    raw = json.loads(raw_path.read_text())
+    raw["utterances"][0]["events"]["committed"] = raw["utterances"][0]["events"]["vadEnd"]
+    raw_path.write_text(json.dumps(raw))
+    analyze.run(run_dir, manifest)
+    html = _go(run_dir, manifest, tmp_path).read_text()
+    assert "Early processing" in html and "retract %" in html
+    assert "total p50 ms, with retract" in html
+    assert "do not compare it with the VAD stage" in html  # G3 M5: the stage now ends at the tentative
+    assert "retract and then final" in html  # G3 M1: what commit ms leaves out
+
+
+def test_vad_stage_label_without_tentatives(tmp_path, monkeypatch):
+    run_dir, manifest = _build(tmp_path, monkeypatch)
+    html = _go(run_dir, manifest, tmp_path).read_text()
+    assert "do not compare it with the VAD stage" not in html
+    old = {"latency": {"vad": {"p50": 700.0}}, "turn": {"committed": 0, "retracted": 0}}
+    early = {"latency": {"vad": {"p50": 300.0}}, "turn": {"committed": 3, "retracted": 1}}
+    stages = {d["key"]: d["stage"] for d in report._stage_data({"old": old, "early": early, "older": {
+        "latency": {"vad": {"p50": 700.0}}}})}
+    assert stages == {"old": "vad", "early": "VAD (to first silence)", "older": "vad"}

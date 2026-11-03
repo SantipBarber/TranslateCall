@@ -151,9 +151,19 @@ def _comparison(run_dir: Path, baseline_path: Path, thresholds_path: Path) -> st
     return table
 
 
+EARLY_VAD_LABEL = "VAD (to first silence)"
+
+
+def _stage_label(stage: str, agg: dict) -> str:
+    """With early processing ``vadEnd`` is the tentative's emission (G3 M5): label it apart from old runs."""
+    turn = agg.get("turn") or {}
+    early = bool(turn.get("committed") or turn.get("retracted"))
+    return EARLY_VAD_LABEL if stage == "vad" and early else stage
+
+
 def _stage_data(aggregates: dict) -> list[dict]:
     return [
-        {"key": key, "stage": stage, "ms": agg["latency"].get(stage, {}).get("p50"),
+        {"key": key, "stage": _stage_label(stage, agg), "ms": agg["latency"].get(stage, {}).get("p50"),
          "order": STAGE_ORDER.index(stage)}
         for key, agg in sorted(aggregates.items())
         for stage in STAGE_ORDER

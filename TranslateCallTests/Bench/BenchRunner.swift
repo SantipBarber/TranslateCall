@@ -151,7 +151,8 @@ enum BenchRunner {
         // Only the measured direction's events: `Utterance.from` does not filter by direction.
         let events = session.sink.events.filter { $0.direction == line.direction }
         let meta = makeMeta(session: session, options: options, env: env, events: events,
-                            manifestData: manifestData, pause: pause)
+                            manifestData: manifestData, pause: pause,
+                            voiceProfile: await voiceProfileSettings(session))
         let record = RawRun(
             runId: "\(timestamp())-\(env.commit)",
             set: env.set,
@@ -161,9 +162,9 @@ enum BenchRunner {
             override: overrideDescription(env),
             meta: meta,
             clips: clips,
-            utterances: RawRun.Utterance.from(events, origin: session.origin) {
+            utterances: RawRun.Utterance.from(events, origin: session.origin, audio: {
                 audio.audioPath(seq: $0)
-            },
+            }, playback: { audio.playback(seq: $0) }),
             mtOnly: mtResults
         )
         return (record, audio)
@@ -237,8 +238,24 @@ enum BenchRunner {
 
     // MARK: - Record
 
+    /// The active voice profile's id, name and reference length for `meta.settings`, when the clone is the
+    /// measured direction's TTS (REQ-QS-20). Reads the header without decrypting the payload. A failed
+    /// lookup is recorded (`voiceProfileLookup = failed`), never silently dropped.
+    private static func voiceProfileSettings(_ session: BenchSession) async -> [String: String] {
+        guard session.builtEngines[session.line.direction] == .voiceClone,
+              let id = session.tts.activeVoiceProfileId else { return [:] }
+        guard let headers = try? await VoiceProfileStore().enumerateHeaders(),
+              let header = headers.first(where: { $0.id == id }) else {
+            FileHandle.standardError.write(Data("WARNING: bench: voice profile \(id) lookup failed\n".utf8))
+            return ["voiceProfileId": id.uuidString, "voiceProfileLookup": "failed"]
+        }
+        return ["voiceProfileId": id.uuidString, "voiceProfileName": header.name,
+                "voiceProfileSeconds": String(header.durationSeconds)]
+    }
+
     private static func makeMeta(session: BenchSession, options: BenchOptions, env: BenchEnvironment,
-                                 events: [TraceEvent], manifestData: Data, pause: Double) -> RawRun.Meta {
+                                 events: [TraceEvent], manifestData: Data, pause: Double,
+                                 voiceProfile: [String: String]) -> RawRun.Meta {
         let line = session.line
         func first(_ stage: TraceStage, _ key: String) -> String? {
             events.filter { $0.stage == stage }.sorted { $0.time < $1.time }.lazy.compactMap { $0.detail[key] }.first
@@ -260,18 +277,29 @@ enum BenchRunner {
         engines["stt"] = first(.sttFinal, "engine")
         engines["tts"] = first(.ttsFirstBuffer, "engine")
         engines["expectedTTS"] = session.builtEngines[line.direction]?.rawValue
+        var settings = [
+            "pauseSeconds": String(pause),
+            "vadChunkSamples": "4096",
+            "listeningMode": session.coordinator.listeningMode.rawValue,
+        ]
+        settings.merge(voiceProfile) { _, new in new }
         return RawRun.Meta(
             commit: env.commit, dirty: env.dirty, machine: sysctlString("hw.model"),
             macOS: ProcessInfo.processInfo.operatingSystemVersionString,
             xcode: ProcessInfo.processInfo.environment["TC_XCODE"] ?? "unknown",
+            buildConfiguration: buildConfiguration,
             manifestSha256: sha256Hex(manifestData),
             engines: engines,
-            settings: [
-                "pauseSeconds": String(pause),
-                "vadChunkSamples": "4096",
-                "listeningMode": session.coordinator.listeningMode.rawValue,
-            ]
+            settings: settings
         )
+    }
+
+    private static var buildConfiguration: String {
+        #if DEBUG
+        "Debug"
+        #else
+        "Release"
+        #endif
     }
 
     private static func recognizerTypeName(_ engine: STTEngine) -> String {
@@ -339,8 +367,13 @@ struct AudioCollector {
     private var tracks: [Int: Track] = [:]
     /// Seq → the seq whose file holds its audio.
     private var owner: [Int: Int] = [:]
+    /// File-owner seq → the gaps of its attempt's playback.
+    private var gaps: [Int: RawRun.Playback] = [:]
 
     func audioPath(seq: Int) -> String? { owner[seq].map { "audio/\($0).wav" } }
+
+    /// Playback gaps of the attempt `seq` owns (nil for a seq that only shares another's audio).
+    func playback(seq: Int) -> RawRun.Playback? { gaps[seq] }
 
     /// 16-bit frames held for the file `seq` points at (tests).
     func frameCount(seq: Int) -> Int? { owner[seq].flatMap { tracks[$0]?.samples.count } }
@@ -359,6 +392,14 @@ struct AudioCollector {
                 ordered.lastIndex(where: { $0.0 <= next }) ?? ordered.firstIndex(where: { $0.0 > next })
             } ?? ordered.count
             guard end > first else { continue }
+            // Arrival of each buffer is its schedule instant, from the attempt's first one.
+            var tracker = StreamGapTracker()
+            let origin = ordered[first].0
+            for (instant, buffer) in ordered[first..<end] {
+                tracker.chunk(arrivedAt: origin.duration(to: instant),
+                              seconds: Double(buffer.frameLength) / buffer.format.sampleRate)
+            }
+            gaps[seq] = RawRun.Playback(gapCount: tracker.gapCount, gapMs: Int((tracker.gapSeconds * 1000).rounded()))
             for buffer in ordered[first..<end].map(\.1) {
                 var track = tracks[seq] ?? Track(rate: buffer.format.sampleRate, samples: [])
                 track.samples += Self.pcm16(buffer)

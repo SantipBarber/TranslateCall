@@ -8,9 +8,13 @@ import Foundation
 ///
 /// `audio` is 16 kHz mono Float32 — the same format as the stream returned by `AudioCapture.startCapture()`.
 /// It can be appended directly to `SFSpeechAudioBufferRecognitionRequest`.
+/// `kind` and `id` carry early processing (FR-QS.5): a `.tentative` segment is resolved later by a
+/// `SegmentBoundary` with the same `id` on `VADService.boundaryEvents`.
 struct SpeechSegment: Sendable {
     let audio: AVAudioPCMBuffer
     let capturedAt: Date
+    var id: UInt64 = 0
+    var kind: SegmentKind = .final
 }
 
 // MARK: - VADEngine
@@ -72,6 +76,11 @@ protocol VADService: Actor {
     /// VAD state events: `true` = speech started, `false` = speech ended.
     /// Consumed by `AudioViewModel` to drive `isSpeechActive`.
     nonisolated var vadStateEvents: AsyncStream<Bool> { get }
+
+    /// Commit or retract of each `.tentative` segment, by id (FR-QS.5). Consumed by the coordinator.
+    /// A separate stream from `speechSegments`, so a boundary may arrive before its segment
+    /// (`TracingVADService` adds a hop to segments only): consumers must match them by id.
+    nonisolated var boundaryEvents: AsyncStream<SegmentBoundary> { get }
 
     /// The engine backing this instance.
     nonisolated var engine: VADEngine { get }

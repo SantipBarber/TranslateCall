@@ -19,7 +19,7 @@ def _clip(cid, feed, feed_end, ss, se):
 
 
 def _utt(seq, start, vad_end=None, stt=None, tr=None, tts=None, text=None, seg_ms=None, translated=None,
-         stt_engine="STT", tts_engine="TTS", merged=None, dropped=None):
+         stt_engine="STT", tts_engine="TTS", merged=None, dropped=None, playback=None):
     events = {"speechStart": start}
     detail = {}
     if vad_end is not None:
@@ -38,7 +38,10 @@ def _utt(seq, start, vad_end=None, stt=None, tr=None, tts=None, text=None, seg_m
     if dropped:
         events["dropped"] = start + S
         detail["dropped"] = {"reason": dropped}
-    return {"seq": seq, "events": events, "detail": detail}
+    utt = {"seq": seq, "events": events, "detail": detail}
+    if playback is not None:
+        utt["playback"] = playback
+    return utt
 
 
 def _raw(clips, utterances, mt_only=(), **over):
@@ -282,6 +285,81 @@ def test_trailing_dropped_seq_does_not_hijack():
     assert only_dropped["latencyCold"]["vad"]["count"] == 0
 
 
+def _tentative(seq, start, text, committed=None, retracted=None, **kw):
+    utt = _utt(seq, start, **kw, text=text)
+    if committed is not None:
+        utt["events"]["committed"] = committed
+    if retracted is not None:
+        utt["events"]["retracted"] = retracted
+    return utt
+
+
+def test_retracted_excluded():
+    utts = [
+        _tentative(0, 1 * S, "hola", retracted=2 * S, vad_end=int(1.8 * S), stt=int(1.9 * S)),
+        _tentative(1, 1 * S, "hola mundo", committed=int(3.4 * S), vad_end=int(3.2 * S), stt=int(3.3 * S),
+                   tr=int(3.5 * S), tts=int(3.9 * S)),
+    ]
+    agg = _agg(_raw([TWO[0]], utts), _manifest(("a", "hola mundo", "hello world")))
+    assert agg["cutRate"] == 0.0
+    assert agg["wer"] == 0.0
+    assert agg["unassigned"] == 0 and agg["missed"] == 0
+    # the retracted seq 0 is no "first utterance": seq 1 is the cold one
+    assert agg["latencyCold"]["total"]["p50"] == pytest.approx(900.0)
+    assert agg["latency"]["total"]["count"] == 0
+
+
+def test_turn_stats():
+    utts = [
+        _tentative(0, 1 * S, "hola", retracted=2 * S, vad_end=int(1.8 * S)),
+        _tentative(1, 1 * S, "hola mundo", committed=int(3.4 * S), vad_end=int(3.2 * S)),
+        _utt(2, 5 * S, vad_end=7 * S, stt=7 * S, text="buenos"),
+        _utt(3, int(5.5 * S), vad_end=7 * S, stt=7 * S, text="dias"),
+    ]
+    turn = _agg(_raw(TWO, utts), M2)["turn"]
+    assert (turn["retracted"], turn["committed"], turn["finals"]) == (1, 1, 2)
+    assert turn["retractPct"] == pytest.approx(25.0)
+    assert turn["commitMs"]["p50"] == pytest.approx(400.0)  # committed 3.4 s - speechEnd 3.0 s
+    assert turn["commitMs"]["count"] == 1
+
+
+def test_turn_stats_finals_exclude_dropped():
+    """G3 M1: a tentative dropped for empty text before its commit lands is no final."""
+    utts = [
+        _tentative(0, 1 * S, "", vad_end=int(1.8 * S), stt=int(1.9 * S), dropped="empty-text"),
+        _utt(1, 5 * S, vad_end=7 * S, stt=7 * S, text="buenos"),
+    ]
+    turn = _agg(_raw(TWO, utts), M2)["turn"]
+    assert (turn["retracted"], turn["committed"], turn["finals"]) == (0, 0, 1)
+
+
+THREE = TWO + [_clip("c", 8 * S, 12 * S, 9 * S, 11 * S)]
+M3 = _manifest(("a", "uno", "one"), ("b", "dos tres", "two three"), ("c", "cuatro", "four"))
+
+
+def test_total_latency_split_by_retract():
+    """G3 I2: total latency of the turns that had a retracted tentative vs the turns that had none."""
+    utts = [
+        _utt(0, 1 * S, vad_end=3 * S, stt=3 * S, tr=3 * S, tts=int(3.5 * S), text="uno"),  # cold: left out
+        _tentative(1, 5 * S, "dos", retracted=6 * S, vad_end=int(5.8 * S)),
+        _tentative(2, 5 * S, "dos tres", committed=int(7.4 * S), vad_end=int(7.2 * S), stt=int(7.3 * S),
+                   tr=int(7.5 * S), tts=int(8.2 * S)),
+        _tentative(3, 9 * S, "cuatro", committed=int(11.4 * S), vad_end=int(11.2 * S), stt=int(11.3 * S),
+                   tr=int(11.4 * S), tts=int(11.6 * S)),
+    ]
+    turn = _agg(_raw(THREE, utts), M3)["turn"]
+    assert turn["totalRetracted"]["count"] == 1
+    assert turn["totalRetracted"]["p50"] == pytest.approx(1200.0)  # 8.2 s - speechEnd 7.0 s
+    assert turn["totalClean"]["count"] == 1
+    assert turn["totalClean"]["p50"] == pytest.approx(600.0)  # 11.6 s - 11.0 s
+
+
+def test_old_runs_have_empty_turn_stats():
+    turn = _agg(_raw([TWO[0]], [_utt(0, 1 * S, vad_end=3 * S, stt=3 * S, text="x")]), M2)["turn"]
+    assert turn["retractPct"] == 0.0 and turn["commitMs"]["count"] == 0
+    assert turn["totalRetracted"]["count"] == 0
+
+
 def test_unassigned_counted_and_warned(tmp_path, capsys):
     raw = _raw(TWO, [_utt(0, -1 * S, dropped="stt-empty"), _utt(1, 1 * S, vad_end=3 * S, stt=3 * S, text="x")])
     assert _agg(raw, M2)["unassigned"] == 1
@@ -300,6 +378,24 @@ def test_missing_meta_key_is_value_error(tmp_path):
     del raw["set"]
     _write_line(tmp_path, raw)
     with pytest.raises(ValueError, match="set"):
+        analyze.run(tmp_path, M2, comet=False)
+
+
+def test_build_configuration_recorded_and_defaults_to_debug(tmp_path):
+    _write_line(tmp_path, _raw(TWO, []))
+    assert analyze.run(tmp_path, M2, comet=False)["meta"]["buildConfiguration"] == "Debug"
+    release = _raw(TWO, [])
+    release["meta"]["buildConfiguration"] = "Release"
+    _write_line(tmp_path, release)
+    assert analyze.run(tmp_path, M2, comet=False)["meta"]["buildConfiguration"] == "Release"
+
+
+def test_lines_disagreeing_on_build_configuration_is_value_error(tmp_path):
+    _write_line(tmp_path, _raw(TWO, []), name="basic/a")
+    release = _raw(TWO, [], runLine="outgoing es-419>en")
+    release["meta"]["buildConfiguration"] = "Release"
+    _write_line(tmp_path, release, name="basic/b")
+    with pytest.raises(ValueError, match="buildConfiguration"):
         analyze.run(tmp_path, M2, comet=False)
 
 
@@ -371,3 +467,108 @@ def test_run_writes_pr_aggregates_for_full_set_only(tmp_path):
     result_pr = analyze.run(pr_dir, manifest, comet=False)
     assert "prAggregates" not in result_pr
     assert "prAggregates" not in json.loads((pr_dir / "metrics.json").read_text())
+
+
+def _clone_line(playbacks):
+    """One clip per utterance; the clone answers `translated + (100 + 100 * i) ms` after translation."""
+    clips, utts = [], []
+    for i, pb in enumerate(playbacks):
+        feed = i * 4 * S
+        clips.append(_clip(f"c{i}", feed, feed + 4 * S, feed + S, feed + 2 * S))
+        end = feed + 2 * S
+        utts.append(_utt(i, feed + S, vad_end=end, stt=end + 100 * MS, tr=end + 200 * MS,
+                         tts=end + (300 + 100 * i) * MS, text="x", tts_engine="voiceClone", playback=pb))
+    manifest = _manifest(*[(f"c{i}", "hola", None) for i in range(len(playbacks))])
+    raw = _raw(clips, utts)
+    raw["meta"]["engines"]["expectedTTS"] = "voiceClone"
+    return raw, manifest
+
+
+def test_clone_playback_stats():
+    raw, manifest = _clone_line([None, {"gapCount": 2, "gapMs": 300}, {"gapCount": 0, "gapMs": 0}, None])
+    clone = _agg(raw, manifest)["clone"]
+    assert clone["gapSentencesPct"] == 25.0
+    assert clone["gapMsTotal"] == 300
+    assert clone["firstChunkMs"]["p50"] == pytest.approx(250.0)
+    assert clone["firstChunkMs"]["count"] == 4
+
+
+def test_no_clone_stats_without_clone_utterances():
+    raw = _raw(TWO, [_utt(0, 1 * S, vad_end=3 * S, stt=3 * S, tr=3 * S, tts=3 * S, text="x")])
+    assert "clone" not in _agg(raw, M2)
+
+
+def test_old_runs_without_playback():
+    raw, manifest = _clone_line([None, None])
+    assert all("playback" not in u for u in raw["utterances"])
+    clone = _agg(raw, manifest)["clone"]
+    assert clone["gapSentencesPct"] == 0.0
+    assert clone["gapMsTotal"] == 0
+
+
+def test_clone_stats_do_not_enter_compare():
+    import inspect
+    assert "clone" not in inspect.getsource(compare)
+
+
+def test_merged_attempt_counts_once():
+    raw, manifest = _clone_line([{"gapCount": 2, "gapMs": 300}, None, None, None])
+    for u in raw["utterances"][:2]:
+        u["detail"]["ttsFirstBuffer"]["mergedSeqs"] = "0,1"
+    clone = _agg(raw, manifest)["clone"]
+    assert clone["sentences"] == 3
+    assert clone["gapSentencesPct"] == pytest.approx(100 / 3)
+    assert clone["gapMsTotal"] == 300
+
+
+def test_clone_profile_recorded_and_lookup_failure_marked():
+    raw, manifest = _clone_line([None])
+    raw["meta"]["settings"] = {"voiceProfileId": "P1", "voiceProfileName": "Mi voz", "voiceProfileSeconds": "31.5"}
+    assert _agg(raw, manifest)["clone"]["profile"] == {"id": "P1", "name": "Mi voz", "seconds": 31.5, "lookup": "ok"}
+    raw["meta"]["settings"] = {"voiceProfileId": "P1", "voiceProfileLookup": "failed"}
+    assert _agg(raw, manifest)["clone"]["profile"]["lookup"] == "failed"
+
+
+def test_clone_spoken_share_counts_fallback_sentences():
+    """I3: a sentence the clone was planned for but AVSpeech spoke must lower the share, not vanish."""
+    raw, manifest = _clone_line([{"gapCount": 1, "gapMs": 50}, None, None, None])
+    for u in raw["utterances"][1:3]:
+        u["detail"]["ttsFirstBuffer"]["engine"] = "avSpeech"
+    agg = _agg(raw, manifest)
+    clone = agg["clone"]
+    assert agg["fallbacks"] == 2
+    assert clone["clonePlannedSentences"] == 4
+    assert clone["sentences"] == 2
+    assert clone["cloneSpokenPct"] == 50.0
+    assert clone["gapSentencesPct"] == 50.0      # over the clone-spoken sentences only
+
+
+def test_clone_stats_when_every_sentence_fell_back():
+    raw, manifest = _clone_line([None, None])
+    for u in raw["utterances"]:
+        u["detail"]["ttsFirstBuffer"]["engine"] = "avSpeech"
+    clone = _agg(raw, manifest)["clone"]
+    assert clone["clonePlannedSentences"] == 2
+    assert clone["sentences"] == 0
+    assert clone["cloneSpokenPct"] == 0.0
+    assert clone["gapSentencesPct"] is None
+    assert clone["firstChunkMs"]["count"] == 0
+
+
+def test_clone_spoken_share_merged_attempt_counts_once():
+    raw, manifest = _clone_line([None, None, None])
+    for u in raw["utterances"][:2]:
+        u["detail"]["ttsFirstBuffer"]["engine"] = "avSpeech"
+        u["detail"]["ttsFirstBuffer"]["mergedSeqs"] = "0,1"
+    clone = _agg(raw, manifest)["clone"]
+    assert clone["clonePlannedSentences"] == 2
+    assert clone["cloneSpokenPct"] == pytest.approx(50.0)
+
+
+def test_clone_spoken_share_unknown_without_expected_tts():
+    raw, manifest = _clone_line([None, None])
+    del raw["meta"]["engines"]["expectedTTS"]
+    clone = _agg(raw, manifest)["clone"]
+    assert clone["sentences"] == 2
+    assert clone["clonePlannedSentences"] is None
+    assert clone["cloneSpokenPct"] is None

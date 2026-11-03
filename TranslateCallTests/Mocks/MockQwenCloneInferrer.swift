@@ -1,5 +1,13 @@
 import Foundation
+import Synchronization
 @testable import TranslateCall
+
+// MARK: - MockQwenCloneError
+
+/// The error a stub stream ends with after `failAfter` events: distinct from real cancellation.
+enum MockQwenCloneError: Error, Equatable {
+    case failed
+}
 
 // MARK: - MockQwenCloneInferrer
 
@@ -13,6 +21,25 @@ actor MockQwenCloneInferrer: QwenCloneInferring {
     private var stubSamples: [Float] = Array(repeating: 0.1, count: 2400)
     private var stubError: Error?
     private var stubDelay: Duration?
+
+    /// Opens the `holdBefore` pause of the stub streams started since the last `rearmHold()`.
+    nonisolated var gate: AsyncGate { hold.withLock { $0 } }
+
+    private nonisolated let hold = Mutex(AsyncGate())
+
+    /// Later stub streams pause at `holdBefore` again, on a new closed `gate`.
+    nonisolated func rearmHold() { hold.withLock { $0 = AsyncGate() } }
+
+    private struct StreamStub {
+        var events: [QwenStreamEvent]?
+        var holdBefore: Int?
+        var failAfter: Int?
+        var callCount = 0
+    }
+
+    private nonisolated let streamStub = Mutex(StreamStub())
+
+    nonisolated var streamCallCount: Int { streamStub.withLock { $0.callCount } }
 
     // MARK: - Tracking
 
@@ -35,7 +62,64 @@ actor MockQwenCloneInferrer: QwenCloneInferring {
         stubDelay = delay
     }
 
+    /// `synthesizeStream` yields `events`; it waits on `gate` before event `holdBefore` and throws
+    /// `MockQwenCloneError.failed` after `failAfter` events. Without a stub stream it yields one `.audio`
+    /// of the stub samples, or throws the stub error.
+    func setStubStream(_ events: [QwenStreamEvent], holdBefore: Int? = nil, failAfter: Int? = nil) {
+        streamStub.withLock {
+            $0.events = events
+            $0.holdBefore = holdBefore
+            $0.failAfter = failAfter
+        }
+    }
+
     // MARK: - QwenCloneInferring
+
+    nonisolated func synthesizeStream(
+        text: String,
+        referenceAudio: [Float],
+        referenceTranscript: String,
+        language: String
+    ) -> AsyncThrowingStream<QwenStreamEvent, Error> {
+        let stub = streamStub.withLock { current -> StreamStub in
+            current.callCount += 1
+            return current
+        }
+        let hold = gate
+        let (stream, continuation) = AsyncThrowingStream.makeStream(of: QwenStreamEvent.self)
+        // Not cancelled on termination: like the real model, it runs to its end once started.
+        Task {
+            let events: [QwenStreamEvent]
+            let defaults = await recordStream(text: text, referenceAudioCount: referenceAudio.count, language: language)
+            do {
+                events = try stub.events ?? defaults.get()
+            } catch {
+                continuation.finish(throwing: error)
+                return
+            }
+            for (index, event) in events.enumerated() {
+                if index == stub.holdBefore { await hold.wait() }
+                if index == stub.failAfter {
+                    continuation.finish(throwing: MockQwenCloneError.failed)
+                    return
+                }
+                continuation.yield(event)
+            }
+            continuation.finish()
+        }
+        return stream
+    }
+
+    /// Records a stream call's arguments; returns the default events (the stub samples) or the stub error.
+    private func recordStream(
+        text: String, referenceAudioCount: Int, language: String
+    ) -> Result<[QwenStreamEvent], Error> {
+        lastText = text
+        lastLanguage = language
+        lastReferenceAudioCount = referenceAudioCount
+        if let error = stubError { return .failure(error) }
+        return .success([.audio(stubSamples)])
+    }
 
     func synthesize(
         text: String,

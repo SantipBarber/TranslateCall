@@ -39,6 +39,10 @@ actor QwenCloneModelManager {
     private(set) var state: ModelState = .idle
     private var loadTask: Task<Void, Error>?
     private var inferrer: (any QwenCloneInferring)?
+    /// The loaded model already ran its warm-up (REQ-QS-31): one per load, not one per session.
+    private var warmedSinceLoad = false
+    /// Bumped on every load and unload: a warm-up still draining after a reload must not mark the new model warm.
+    private var loadGeneration = 0
 
     private let stateContinuation: AsyncStream<ModelState>.Continuation
     nonisolated let stateStream: AsyncStream<ModelState>
@@ -109,6 +113,93 @@ actor QwenCloneModelManager {
         }
     }
 
+    /// A streamed Qwen3-TTS inference through the gate (REQ-QS-02/03). Fails fast, as a stream that throws,
+    /// when the model is not loaded or a previous sentence nobody listens to still holds the gate. Once the
+    /// gate admits it, the model is checked again (REQ-QS-08): an unload that slipped in while it queued ends
+    /// it with `.modelNotReady`, and the released client is never used.
+    func synthesizeStream(
+        text: String,
+        referenceAudio: [Float],
+        referenceTranscript: String,
+        language: String
+    ) async -> AsyncThrowingStream<QwenStreamEvent, Error> {
+        guard case .ready = state, inferrer != nil else { return Self.failingStream(.modelNotReady) }
+        if await gate.isHeldByAbandonedStream {
+            logger.info("Voice clone sentence fails fast: a stream nobody listens to still holds the gate")
+            return Self.failingStream(.gateBusyAbandoned)
+        }
+        return gate.runStream(
+            firstElement: .seconds(config.firstChunkTimeoutSeconds),
+            isFirst: { if case .audio = $0 { true } else { false } },
+            admit: { [self] in try await admittedInferrer() },
+            work: { inferrer in
+                inferrer.synthesizeStream(
+                    text: text,
+                    referenceAudio: referenceAudio,
+                    referenceTranscript: referenceTranscript,
+                    language: language
+                )
+            }
+        )
+    }
+
+    /// One short inference with the active voice, so the session's first real sentence is not the model's
+    /// cold first run (REQ-QS-31: measured 1.5–2× slower to first chunk). It goes through the gate like any
+    /// sentence, so a real one that comes meanwhile waits for it, or goes to the fallback under the usual
+    /// rules (REQ-QS-03/07a). Drained to its end, output and errors ignored; a no-op when the model is not
+    /// loaded. Cancelling the caller stops listening only: the gate still drains the model (REQ-QS-06).
+    func warmUp(profileStore: any VoiceProfileStoring, activeProfileId: UUID, locale: Locale) async {
+        guard case .ready = state, !warmedSinceLoad else { return }
+        let generation = loadGeneration
+        let start = ContinuousClock.now
+        var failure: Error?
+        do {
+            let profile = try await profileStore.load(id: activeProfileId)
+            guard let samples = profile.samples, let transcript = profile.transcript else {
+                throw VoiceProfileError.payloadMissing
+            }
+            let events = await synthesizeStream(
+                text: Self.warmUpText(for: locale),
+                referenceAudio: samples,
+                referenceTranscript: transcript,
+                language: QwenCloneConfiguration.language(for: locale) ?? "english"
+            )
+            var audioSeen = false
+            for try await event in events {
+                if case .audio = event { audioSeen = true }
+            }
+            // Warm only once the model produced audio: a warm-up cancelled or failed before that is retried.
+            if audioSeen, generation == loadGeneration { warmedSinceLoad = true }
+        } catch {
+            failure = error
+        }
+        let outcome = SentenceOutcome(ending: failure, cancelled: Task.isCancelled).rawValue
+        let durationMs = Int(((ContinuousClock.now - start).secondsValue * 1_000).rounded())
+        logger.info("""
+            Voice clone warm-up: outcome=\(outcome, privacy: .public) durationMs=\(durationMs, privacy: .public)
+            """)
+    }
+
+    /// "Hola." for a Spanish target, "Hello." otherwise: the shortest sentence that runs the whole model.
+    nonisolated static func warmUpText(for locale: Locale) -> String {
+        locale.language.languageCode == .spanish ? "Hola." : "Hello."
+    }
+
+    /// The loaded client, read with the gate held; `.modelNotReady` when an unload came first.
+    private func admittedInferrer() throws -> any QwenCloneInferring {
+        guard case .ready = state, let inferrer else {
+            logger.info("Voice clone stream refused: model not ready (unloaded while it waited for the gate)")
+            throw QwenCloneError.modelNotReady
+        }
+        return inferrer
+    }
+
+    nonisolated private static func failingStream(
+        _ error: QwenCloneError
+    ) -> AsyncThrowingStream<QwenStreamEvent, Error> {
+        AsyncThrowingStream { $0.finish(throwing: error) }
+    }
+
     /// A `QwenCloneInferring` for `QwenUtteranceSynthesizer` and `VoicePreviewService` whose every
     /// call goes through `synthesize`, i.e. through the gate.
     nonisolated func gatedInferrer() -> any QwenCloneInferring {
@@ -120,6 +211,8 @@ actor QwenCloneModelManager {
     func unload() async {
         loadTask?.cancel()
         loadTask = nil
+        warmedSinceLoad = false
+        loadGeneration += 1
         transition(to: .idle)
         await gate.waitUntilIdle()
         if case .idle = state { inferrer = nil }   // a reload during the wait keeps its new client
@@ -148,6 +241,8 @@ actor QwenCloneModelManager {
         let task = Task<Void, Error> {
             let client = try await loader(repo)
             self.inferrer = client
+            self.warmedSinceLoad = false
+            self.loadGeneration += 1
             self.transition(to: .ready)
         }
         loadTask = task
@@ -190,5 +285,32 @@ nonisolated struct GatedQwenInferrer: QwenCloneInferring {
             referenceTranscript: referenceTranscript,
             language: language
         )
+    }
+
+    /// The manager's stream, relayed (P13): the manager call is async, this one is not.
+    func synthesizeStream(
+        text: String,
+        referenceAudio: [Float],
+        referenceTranscript: String,
+        language: String
+    ) -> AsyncThrowingStream<QwenStreamEvent, Error> {
+        let (stream, continuation) = AsyncThrowingStream.makeStream(of: QwenStreamEvent.self)
+        let manager = manager
+        let relay = Task {
+            let inner = await manager.synthesizeStream(
+                text: text,
+                referenceAudio: referenceAudio,
+                referenceTranscript: referenceTranscript,
+                language: language
+            )
+            do {
+                for try await event in inner { continuation.yield(event) }
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+        continuation.onTermination = { _ in relay.cancel() }
+        return stream
     }
 }

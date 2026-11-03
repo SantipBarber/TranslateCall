@@ -67,6 +67,11 @@ def load_run(run_dir: Path | str) -> tuple[dict[str, Any], dict[str, Any]]:
     return meta, aggregates
 
 
+def build_configuration(meta: dict[str, Any]) -> str:
+    """The build configuration a run or baseline was measured in (absent = Debug, before it was recorded)."""
+    return meta.get("buildConfiguration") or "Debug"
+
+
 def load_pr_aggregates(run_dir: Path | str) -> dict[str, Any] | None:
     """Load the PR-subset aggregates from a run directory, if present."""
     run_dir = Path(run_dir)

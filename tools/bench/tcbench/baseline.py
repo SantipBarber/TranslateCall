@@ -76,6 +76,7 @@ def run(
         "manifestSha256": meta.get("manifestSha256"),
         "macOS": meta.get("macOS"),
         "machine": meta.get("machine"),
+        "buildConfiguration": runs.build_configuration(meta),
         "set": meta.get("set"),
         "aggregates": aggregates,
         "prAggregates": pr_aggregates,

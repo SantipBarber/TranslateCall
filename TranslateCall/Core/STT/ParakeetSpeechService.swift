@@ -108,9 +108,8 @@ actor ParakeetSpeechService: SpeechRecognizerService {
     private func runProcessingLoop(stream: AsyncStream<SpeechSegment>) async {
         for await segment in stream {
             guard !Task.isCancelled else { break }
-            if let result = await transcribeSegment(segment) {
-                continuation?.yield(result)
-            }
+            let result = await transcribeSegment(segment) ?? .empty(for: segment, locale: locale)
+            continuation?.yield(result)
         }
     }
 
@@ -158,7 +157,9 @@ actor ParakeetSpeechService: SpeechRecognizerService {
                 confidence: confidence,
                 locale: locale,
                 capturedAt: segment.capturedAt,
-                audioDuration: audioDuration
+                audioDuration: audioDuration,
+                segmentID: segment.id,
+                kind: segment.kind
             )
         } catch {
             parakeetLogger.error("Parakeet transcription error: \(error.localizedDescription)")
@@ -166,7 +167,12 @@ actor ParakeetSpeechService: SpeechRecognizerService {
         }
     }
 
-    /// Extracts and validates input samples from a speech segment, truncating if needed.
+    /// FluidAudio's `AsrManager` rejects anything shorter than 1 s (`invalidAudioData`), and a short
+    /// tentative ("Yes", "Okay") often is. It zero-pads to the model length anyway (G3 C1).
+    private static let minimumSamples = 16_000
+
+    /// Extracts and validates input samples from a speech segment: truncates past the model capacity,
+    /// zero-pads under FluidAudio's 1 s minimum.
     private func prepareInputSamples(from segment: SpeechSegment) -> [Float]? {
         let samples = segment.audio.toFloatSamples()
         guard !samples.isEmpty else {
@@ -181,6 +187,9 @@ actor ParakeetSpeechService: SpeechRecognizerService {
                 "Segment too long (\(samples.count) samples); truncating to \(maxSamples)"
             )
             return Array(samples.prefix(maxSamples))
+        }
+        if samples.count < Self.minimumSamples {
+            return samples + [Float](repeating: 0, count: Self.minimumSamples - samples.count)
         }
         return samples
     }

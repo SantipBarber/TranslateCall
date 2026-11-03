@@ -48,6 +48,9 @@ final class VoiceProfileManager: ObservableObject {
     @Published private(set) var profiles: [VoiceProfileHeader] = []
     @Published private(set) var recordingState: RecordingState = .idle
     @Published var activeProfileId: UUID?
+    @Published private(set) var recordingMode: RecordingMode = .free
+    /// Counts saves that completed: the sheet closes on a change; a failed save never changes it.
+    @Published private(set) var completedSaves = 0
 
     var activeProfile: VoiceProfileHeader? {
         profiles.first { $0.id == activeProfileId }
@@ -57,7 +60,8 @@ final class VoiceProfileManager: ObservableObject {
 
     /// Exposed for `TTSEngineSelector` voice clone factory injection.
     let profileStore: any VoiceProfileStoring
-    let recorder: VoiceProfileRecorder
+    let recorder: any VoiceRecording
+    private let clock: any Clock<Duration>
     private let defaults: UserDefaults
     private let isSessionActive: () -> Bool
 
@@ -66,16 +70,19 @@ final class VoiceProfileManager: ObservableObject {
     // MARK: - Elapsed timer
 
     private var elapsedTask: Task<Void, Never>?
-    private var elapsedSeconds: Float = 0
+    /// Elapsed time in 100 ms ticks: an integer count, so the auto-stop never drifts like a float sum.
+    private var elapsedTicks = 0
 
     // MARK: - Init
 
     init(
         store: any VoiceProfileStoring = VoiceProfileStore(),
-        recorder: VoiceProfileRecorder = VoiceProfileRecorder(),
+        recorder: any VoiceRecording = VoiceProfileRecorder(),
         defaults: UserDefaults = .standard,
+        clock: any Clock<Duration> = ContinuousClock(),
         isSessionActive: @escaping () -> Bool = { false }
     ) {
+        self.clock = clock
         self.profileStore = store
         self.recorder = recorder
         self.defaults = defaults
@@ -108,27 +115,39 @@ final class VoiceProfileManager: ObservableObject {
 
     // MARK: - Recording Flow
 
-    func startRecording() async {
+    func startRecording(mode: RecordingMode = .free) async {
         guard !isSessionActive() else {
             recordingState = .error(VoiceProfileRecorderError.sessionConflict.localizedDescription)
             return
         }
+        recordingMode = mode
         recordingState = .recording(elapsedSeconds: 0)
-        elapsedSeconds = 0
-        startElapsedTimer()
+        elapsedTicks = 0
         do {
             try await recorder.startRecording()
         } catch {
-            stopElapsedTimer()
             recordingState = .error(error.localizedDescription)
+            return
         }
+        // Only now: the permission prompt may have taken any time, and none of it is recording.
+        guard recordingState.isRecording else {
+            // Cancelled or stopped while the prompt was open: the recorder started anyway, so release it.
+            _ = try? await recorder.stopRecording(mode: mode)
+            return
+        }
+        startElapsedTimer()
     }
 
     func stopRecording() async {
+        await finishRecording(reachedLimit: false)
+    }
+
+    private func finishRecording(reachedLimit: Bool) async {
         stopElapsedTimer()
         recordingState = .processing
         do {
-            let result = try await recorder.stopRecording()
+            var result = try await recorder.stopRecording(mode: recordingMode)
+            result.reachedLimit = reachedLimit
             recordingState = .reviewing(result)
         } catch {
             recordingState = .error(error.localizedDescription)
@@ -140,7 +159,8 @@ final class VoiceProfileManager: ObservableObject {
     func saveProfile(
         name: String,
         transcript: String,
-        result: RecordingResult
+        result: RecordingResult,
+        makeActive: Bool = false
     ) async throws {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -167,7 +187,9 @@ final class VoiceProfileManager: ObservableObject {
         do {
             try await profileStore.save(profile: profile)
             await loadProfiles()
+            if makeActive { setActiveProfile(id) }
             recordingState = .idle
+            completedSaves += 1
             logger.info("Saved voice profile '\(name)' (\(id))")
         } catch {
             recordingState = .error(error.localizedDescription)
@@ -214,15 +236,18 @@ final class VoiceProfileManager: ObservableObject {
     // MARK: - Private: Elapsed Timer
 
     private func startElapsedTimer() {
+        let clock = clock
+        // Two starts resuming from one permission prompt must not leave two timers running.
+        elapsedTask?.cancel()
         elapsedTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(100))
-                guard let self else { return }
-                self.elapsedSeconds += 0.1
-                self.recordingState = .recording(elapsedSeconds: self.elapsedSeconds)
-                // Auto-stop at 30 s
-                if self.elapsedSeconds >= 30 {
-                    await self.stopRecording()
+                try? await clock.sleep(for: .milliseconds(100))
+                guard !Task.isCancelled, let self else { return }
+                self.elapsedTicks += 1
+                self.recordingState = .recording(elapsedSeconds: Float(self.elapsedTicks) / 10)
+                // Auto-stop at the mode's limit (P5)
+                if self.elapsedTicks >= Int((self.recordingMode.maxSeconds * 10).rounded()) {
+                    await self.finishRecording(reachedLimit: true)
                     return
                 }
             }

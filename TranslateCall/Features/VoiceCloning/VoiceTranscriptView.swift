@@ -4,6 +4,8 @@ struct VoiceTranscriptView: View {
     @EnvironmentObject private var profileManager: VoiceProfileManager
 
     let result: RecordingResult
+    /// The saved voice becomes the active one (the long-voice hint's short sample).
+    var makeActive = false
 
     @State private var profileName: String = ""
     @State private var transcript: String = ""
@@ -15,8 +17,12 @@ struct VoiceTranscriptView: View {
             || isQualityBlocked
     }
 
+    private var showsLimitWarning: Bool {
+        VoiceReviewCopy.showsLimitWarning(mode: profileManager.recordingMode, reachedLimit: result.reachedLimit)
+    }
+
     private var isQualityBlocked: Bool {
-        result.quality.grade == .poor && result.quality.voicedDurationSeconds < 8
+        VoiceQualityRules.isSaveBlocked(result.quality, mode: profileManager.recordingMode)
     }
 
     var body: some View {
@@ -79,25 +85,26 @@ struct VoiceTranscriptView: View {
 
                 Spacer()
 
-                if case .saving = profileManager.recordingState {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Button("Save Profile") {
-                        Task {
-                            try? await profileManager.saveProfile(
-                                name: profileName,
-                                transcript: transcript,
-                                result: result
-                            )
-                        }
+                Button("Save Profile") {
+                    Task {
+                        try? await profileManager.saveProfile(
+                            name: profileName,
+                            transcript: transcript,
+                            result: result,
+                            makeActive: makeActive
+                        )
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isSaveBlocked)
                 }
+                .buttonStyle(.borderedProminent)
+                .disabled(isSaveBlocked)
             }
         }
         .padding(24)
+        .onAppear {
+            if transcript.isEmpty, let guided = profileManager.recordingMode.guidedText {
+                transcript = guided
+            }
+        }
     }
 
     // MARK: - Quality summary
@@ -114,7 +121,7 @@ struct VoiceTranscriptView: View {
             )
             qualityItem(
                 label: "Voiced",
-                value: String(format: "%.0f s", result.quality.voicedDurationSeconds)
+                value: String(format: "%.1f s", result.quality.voicedDurationSeconds)
             )
             qualityItem(
                 label: "Grade",
@@ -149,11 +156,15 @@ struct VoiceTranscriptView: View {
 
     @ViewBuilder
     private var qualityWarnings: some View {
+        if showsLimitWarning {
+            warningBanner(VoiceReviewCopy.limitReached(seconds: Int(profileManager.recordingMode.maxSeconds)),
+                          severity: .warning)
+        }
         if isQualityBlocked {
             warningBanner(
-                "Insufficient speech detected "
-                    + "(\(String(format: "%.0f", result.quality.voicedDurationSeconds))s voiced). "
-                    + "Please re-record with more speech.",
+                VoiceReviewCopy.tooShort(mode: profileManager.recordingMode,
+                                         voicedSeconds: result.quality.voicedDurationSeconds,
+                                         peakRmsDbfs: result.quality.peakRmsDbfs),
                 severity: .critical
             )
         } else if result.quality.hasClipping {

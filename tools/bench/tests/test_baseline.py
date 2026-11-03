@@ -84,6 +84,7 @@ def test_baseline_roundtrip(tmp_path, monkeypatch):
     assert data["commit"] == "deadbeef"
     assert data["manifestSha256"] == "abc123"
     assert data["macOS"] == "15.0"
+    assert data["buildConfiguration"] == "Debug"
     assert data["machine"] == "test-machine"
     assert data["set"] == "full"
     assert "basic/outgoing es-ES>en" in data["aggregates"]

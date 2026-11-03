@@ -194,6 +194,14 @@ final class TTSEngineSelector: ObservableObject {
         self.profileStore = store
     }
 
+    /// Warms the voice clone for a session whose outgoing voice it is (REQ-QS-31); silently nothing when
+    /// another engine speaks `locale` or no profile is active. Returns when the warm-up inference has ended.
+    func warmUpVoiceClone(for locale: Locale) async {
+        guard resolvedEngine(for: locale, direction: .outgoing) == .voiceClone,
+              let profileId = activeVoiceProfileId, let store = profileStore else { return }
+        await voiceCloneManager.warmUp(profileStore: store, activeProfileId: profileId, locale: locale)
+    }
+
     // MARK: - Edge TTS consent
 
     func grantEdgeTTSConsent() {

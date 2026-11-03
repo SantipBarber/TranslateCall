@@ -86,9 +86,8 @@ actor AppleSpeechService: SpeechRecognizerService {
     private func runProcessingLoop(stream: AsyncStream<SpeechSegment>) async {
         for await segment in stream {
             guard !Task.isCancelled else { break }
-            if let result = await transcribeSegment(segment) {
-                continuation?.yield(result)
-            }
+            let result = await transcribeSegment(segment) ?? .empty(for: segment, locale: locale)
+            continuation?.yield(result)
         }
     }
 
@@ -96,13 +95,7 @@ actor AppleSpeechService: SpeechRecognizerService {
         guard let recognizer else { return nil }
 
         let startDate = Date()
-        let request = SFSpeechAudioBufferRecognitionRequest()
-        request.shouldReportPartialResults = false
-        if recognizer.supportsOnDeviceRecognition && config.preferOnDevice {
-            request.requiresOnDeviceRecognition = true
-        }
-        request.append(segment.audio)
-        request.endAudio()
+        let request = makeRequest(for: segment, recognizer: recognizer)
 
         // Extract only Sendable values (String + [Float]) inside callback to avoid data race
         // on non-Sendable SFSpeechRecognitionResult across actor boundary.
@@ -144,13 +137,28 @@ actor AppleSpeechService: SpeechRecognizerService {
                 confidence: confidence,
                 locale: locale,
                 capturedAt: segment.capturedAt,
-                audioDuration: duration
+                audioDuration: duration,
+                segmentID: segment.id,
+                kind: segment.kind
             )
         } catch {
             activeRecognitionTask = nil
             logger.error("Recognition failed: \(error.localizedDescription)")
             return nil
         }
+    }
+
+    private func makeRequest(
+        for segment: SpeechSegment, recognizer: SFSpeechRecognizer
+    ) -> SFSpeechAudioBufferRecognitionRequest {
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = false
+        if recognizer.supportsOnDeviceRecognition && config.preferOnDevice {
+            request.requiresOnDeviceRecognition = true
+        }
+        request.append(segment.audio)
+        request.endAudio()
+        return request
     }
 
     private func recordSTTMetrics(segment: SpeechSegment, startDate: Date, confidence: Float, textLength: Int) {

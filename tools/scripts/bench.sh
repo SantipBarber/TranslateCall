@@ -17,6 +17,9 @@ lines=${4:-}
 tcbench() { uv run --locked --project tools/bench tcbench "$@"; }
 # One source for the xcodebuild invocation: the justfile's `xcb` variable (word-split; no spaces in its paths).
 read -r -a xcb <<<"$(just --evaluate xcb)"
+# Release, like the shipped app: in Debug the Swift per-token loops (mlx-audio's Qwen3-TTS) run ~2.3× slower
+# and the voice clone misses real time. Testability keeps @testable imports compiling. Recorded per run.
+xcb+=(-configuration Release ENABLE_TESTABILITY=YES)
 
 # Other builds skew the latencies. Warn (stderr), keep going. Processes descended from this script are not "other".
 descends_from_me() {

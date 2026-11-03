@@ -24,6 +24,12 @@ extension UtteranceSynthesizer {
     nonisolated var maxTextLength: Int { Int.max }
 }
 
+/// An error a synthesizer throws that knows whether it should count toward the primary's circuit
+/// breaker; errors that do not conform always count.
+nonisolated protocol TTSAttemptError: Error {
+    var countsTowardBreaker: Bool { get }
+}
+
 // MARK: - Events
 
 /// Why an utterance was not heard in full (REQ-T-18).

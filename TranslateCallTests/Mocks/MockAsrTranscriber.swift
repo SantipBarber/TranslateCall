@@ -18,6 +18,8 @@ actor MockAsrTranscriber: AsrTranscriber {
 
     private var stubbedOutput = ParakeetTranscriptionOutput(text: "mock transcription", confidence: 0.9, duration: 1.0)
     private var stubbedError: Error?
+    /// When set, shorter inputs throw like FluidAudio's `AsrManager` (`count >= 16_000` guard).
+    private var minimumSamples: Int?
 
     // MARK: - Configuration
 
@@ -30,6 +32,10 @@ actor MockAsrTranscriber: AsrTranscriber {
         stubbedError = error
     }
 
+    func requireMinimumSamples(_ count: Int) {
+        minimumSamples = count
+    }
+
     func clearError() {
         stubbedError = nil
     }
@@ -39,6 +45,7 @@ actor MockAsrTranscriber: AsrTranscriber {
         receivedSamples = []
         stubbedOutput = ParakeetTranscriptionOutput(text: "mock transcription", confidence: 0.9, duration: 1.0)
         stubbedError = nil
+        minimumSamples = nil
     }
 
     // MARK: - AsrTranscriber
@@ -47,6 +54,9 @@ actor MockAsrTranscriber: AsrTranscriber {
         callCount += 1
         receivedSamples.append(samples)
         if let error = stubbedError { throw error }
+        if let minimumSamples, samples.count < minimumSamples {
+            throw NSError(domain: "MockAsrTranscriber", code: 1, userInfo: [NSLocalizedDescriptionKey: "too short"])
+        }
         return stubbedOutput
     }
 }

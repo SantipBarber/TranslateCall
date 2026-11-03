@@ -6,15 +6,35 @@ import Foundation
 nonisolated struct QwenCloneConfiguration: Sendable {
     var modelRepo: String = "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit"
     var maxTokens: Int = 2048
-    var temperature: Float = 0.7
+    /// 0.3, not 0.7: on 20 English sentences from the user's 8 s Spanish reference, 0.7 gave
+    /// occasional higher-pitched, less similar sentences (Task 18); 0.3 gave none (ECAPA 0.546 vs 0.527).
+    var temperature: Float = 0.3
     var topP: Float = 0.95
     var repetitionPenalty: Float = 1.5
     var inferenceTimeoutSeconds: Int = 10
     var textTruncationLimit: Int = 200
     /// Qwen3-TTS (12 Hz codec) output rate, as `QwenCloneClient.sampleRate` reports it.
     var outputSampleRate: Int = 24_000
+    /// Seconds of audio between streamed chunks (mlx-audio `streamingInterval`).
+    var streamingInterval: Double = 0.32
+    /// How long a streamed synthesis may take to produce its first audio chunk.
+    var firstChunkTimeoutSeconds: Double = 3
 
     nonisolated static let `default` = QwenCloneConfiguration()
+
+    // MARK: - Reference recording (REQ-QS-12/13)
+
+    /// Length of the guided reading at a calm pace. P-1 picked an 8 s reference; the passage is longer
+    /// because trimming the pauses between words leaves about 60 % of it voiced (Task 18 Q3).
+    static let guidedTargetSeconds: Double = 10
+    /// The least voiced speech a guided reference may have (60 % of the 8 s P-1 pick).
+    static let guidedMinimumVoicedSeconds: Double = 4.8
+    /// Longest guided recording before it stops by itself.
+    static let guidedMaxSeconds: Double = 20
+    /// Longest free recording.
+    static let freeMaxSeconds: Double = 30
+    /// A reference longer than this is considered long (slower to prefill).
+    static let longReferenceSeconds: Double = 12
 
     static let voiceCloningEnabledKey = "tlk.voiceCloning.enabled"
 
@@ -97,6 +117,8 @@ nonisolated enum QwenCloneError: LocalizedError, Sendable, Equatable {
     case gateBusy
     /// The model returned no audio.
     case emptyOutput
+    /// A previous streamed sentence nobody listens to any more still holds the model.
+    case gateBusyAbandoned
 
     var errorDescription: String? {
         switch self {
@@ -106,6 +128,12 @@ nonisolated enum QwenCloneError: LocalizedError, Sendable, Equatable {
         case .unsupportedLocale: return "Voice clone does not support this language."
         case .gateBusy: return "The voice clone model is busy. Try again in a moment."
         case .emptyOutput: return "Voice clone synthesis produced no audio."
+        case .gateBusyAbandoned: return "The voice clone model is finishing a previous sentence."
         }
     }
+}
+
+extension QwenCloneError: TTSAttemptError {
+    /// An abandoned generation still holds the gate: not the clone's fault, so the breaker ignores it.
+    nonisolated var countsTowardBreaker: Bool { self != .gateBusyAbandoned }
 }

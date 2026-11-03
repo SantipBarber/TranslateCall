@@ -3,11 +3,16 @@ import Testing
 @testable import TranslateCall
 
 @MainActor
-private func makeCoordinator(_ mocks: CoordinatorMocks, noticeClock: TestClock) -> AudioCoordinator {
+private func makeCoordinator(
+    _ mocks: CoordinatorMocks, noticeClock: TestClock, vadGate: AsyncGate? = nil
+) -> AudioCoordinator {
     AudioCoordinator(
         audioCapture: mocks.mockAudioCapture,
         systemCapture: mocks.mockSystemCapture,
-        outgoingVADFactory: { mocks.mockVADFactory },
+        outgoingVADFactory: {
+            await vadGate?.wait()
+            return mocks.mockVADFactory
+        },
         incomingVADFactory: { mocks.mockIncomingVAD },
         outgoingSTTFactory: { _ in mocks.mockOutgoingSTT },
         incomingSTTFactory: { _ in mocks.mockIncomingSTT },
@@ -24,8 +29,77 @@ private func transcript(_ text: String) -> TranscriptionResult {
     TranscriptionResult(text: text, confidence: 1, locale: Locale(identifier: "es-ES"), capturedAt: .now, audioDuration: 1)
 }
 
+/// Suspends until the calling task is cancelled (no polling, no real sleep).
+private func suspendUntilCancelled() async {
+    let gate = AsyncGate()
+    await withTaskCancellationHandler { await gate.wait() } onCancel: { gate.open() }
+}
+
 @Suite("AudioCoordinator TTS", .serialized) @MainActor
 struct AudioCoordinatorTTSTests {
+
+    @Test("the voice clone warm-up starts with the session, never delays it, and stop cancels it (REQ-QS-31)")
+    func voiceCloneWarmUpInBackground() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks, noticeClock: TestClock())
+        let locales = LockedArray<String>()
+        let cancelled = LockedArray<Bool>()
+        coordinator.voiceCloneWarmUp = { locale in
+            locales.append(locale.identifier)
+            await suspendUntilCancelled()
+            cancelled.append(true)
+        }
+
+        await coordinator.start()   // returns while the warm-up still runs
+
+        #expect(coordinator.isOutgoingActive)
+        #expect(await waitUntil { locales.values.count == 1 })
+        #expect(locales.values == [mocks.languagePairManager.targetLanguage.minimalIdentifier])
+        #expect(cancelled.values.isEmpty)
+        await coordinator.stop()
+        #expect(await waitUntil { cancelled.values == [true] })
+    }
+
+    @Test("a failed capture start cancels the voice clone warm-up (REQ-QS-31)")
+    func failedStartCancelsWarmUp() async {
+        let mocks = CoordinatorMocks()
+        mocks.mockAudioCapture.throwOnStartCapture = AudioError.permissionDenied
+        let coordinator = makeCoordinator(mocks, noticeClock: TestClock())
+        let started = LockedArray<Bool>()
+        let cancelled = LockedArray<Bool>()
+        coordinator.voiceCloneWarmUp = { _ in
+            started.append(true)
+            await suspendUntilCancelled()
+            cancelled.append(true)
+        }
+
+        await coordinator.start()
+
+        #expect(!coordinator.isOutgoingActive)
+        #expect(await waitUntil { cancelled.values == [true] })
+    }
+
+    @Test("a superseded start (mic ended mid-start) cancels the voice clone warm-up (REQ-QS-31)")
+    func supersededStartCancelsWarmUp() async {
+        let mocks = CoordinatorMocks()
+        let vadGate = AsyncGate()
+        let coordinator = makeCoordinator(mocks, noticeClock: TestClock(), vadGate: vadGate)
+        let cancelled = LockedArray<Bool>()
+        coordinator.voiceCloneWarmUp = { _ in
+            await suspendUntilCancelled()
+            cancelled.append(true)
+        }
+
+        let starting = Task { await coordinator.start() }
+        #expect(await waitUntil { vadGate.waiterCount == 1 })
+        mocks.mockAudioCapture.stopCapture()   // the mic ends while start() is still coming up
+        #expect(cancelled.values.isEmpty)
+        vadGate.open()
+        await starting.value
+
+        #expect(!coordinator.isOutgoingActive)
+        #expect(await waitUntil { cancelled.values == [true] })
+    }
 
     @Test("outgoing sentences are queued: speak is never preceded by stopSpeaking (REQ-T-40, D-3)")
     func outgoingDoesNotInterrupt() async {
