@@ -3,7 +3,6 @@ import Foundation
 import MLX
 import MLXAudioCore
 import MLXAudioTTS
-import MLXLMCommon
 import Testing
 @testable import TranslateCall
 
@@ -101,7 +100,7 @@ struct QwenCloneProbeTests {
         var samples: [Float] = []
         var tps = 0.0
         let events = model.generateStream(
-            text: sentence.text, voice: nil, refAudio: MLXArray(reference.samples), refText: reference.transcript,
+            text: sentence.text, voice: nil, refAudio: MLXArray(reference.samples).materialized(), refText: reference.transcript,
             language: sentence.language, generationParameters: params,
             streamingInterval: QwenCloneConfiguration.default.streamingInterval)
         for try await event in events {
