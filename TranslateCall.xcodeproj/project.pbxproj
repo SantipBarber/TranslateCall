@@ -535,10 +535,10 @@
 		};
 		6D67203A2F5E70990023D811 /* XCRemoteSwiftPackageReference "mlx-audio-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/Blaizzy/mlx-audio-swift.git";
+			repositoryURL = "https://github.com/SantipBarber/mlx-audio-swift.git";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.1.2;
+				kind = revision;
+				revision = 3b0130297d5c41c75e39349c78b50664d5c894ee;
 			};
 		};
 		6DAA03682F69392600A49B15 /* XCRemoteSwiftPackageReference "WhisperKit" */ = {
