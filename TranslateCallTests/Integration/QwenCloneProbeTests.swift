@@ -46,7 +46,39 @@ struct QwenCloneProbeTests {
         let tokensPerSecond: Double
     }
 
-    @Test func probeReferenceLength() async throws {
+    /// The voice-pitch scenario's sentences (Spanish clips translated to English), for `TC_QWEN_PROBE_MODE=pitch`.
+    private static let pitchSentences = [
+        "Descends from an old family of woodcarvers from Toulouse", "This learning improved Brent's qualities",
+        "The process for encrypting and decrypting is similar", "The plutonium weapon has a more complicated design",
+        "Currently the airport has several emergency response vehicles",
+        "Two months before dying, Osore named him his fieldmaster",
+        "Well then it is believed that the sea was thrown", "Love the things of love, honor and family",
+    ]
+
+    /// `TC_QWEN_PROBE_MODE=pitch`: the model alone (no pipeline) on the active profile, each pitch sentence
+    /// three times, to compare its F0 with the Python port's on the same reference.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["TC_QWEN_PROBE_MODE"] == "pitch"))
+    func probePitch() async throws {
+        let outDir = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["TC_QWEN_PROBE_OUT"]))
+        try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+        let reference = try await Self.activeProfileReference()
+        let config = QwenCloneConfiguration.default
+        let params = GenerateParameters(maxTokens: config.maxTokens, temperature: config.temperature,
+                                        topP: config.topP, repetitionPenalty: config.repetitionPenalty)
+        let model = try await TTS.loadModel(modelRepo: config.modelRepo)
+        _ = try await Self.synthesize(model, Sentence(lang: "en", language: "english", text: "Hello."), reference, params)
+        for (index, text) in Self.pitchSentences.enumerated() {
+            for rep in 0..<3 {
+                let result = try await Self.synthesize(model, Sentence(lang: "en", language: "english", text: text),
+                                                       reference, params)
+                try Self.writeWAV(result.samples, to: outDir.appendingPathComponent("s\(index)-r\(rep).wav"))
+                print("PROBE pitch s\(index)-r\(rep) \(result.samples.count / 24_000)s")
+            }
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["TC_QWEN_PROBE_MODE"] != "pitch"))
+    func probeReferenceLength() async throws {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let refsDir = ProcessInfo.processInfo.environment["TC_QWEN_PROBE_REFS"]
             .map { URL(fileURLWithPath: $0) } ?? root.appendingPathComponent("build/qwen-probe/refs")
