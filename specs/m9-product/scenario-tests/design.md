@@ -82,3 +82,67 @@ Rules, each checked from the trace and reported with its numbers:
 - Gain 0.5 and delay 40 ms for the Mac mini speakers into the Brio. The clips come in at about −20 dBFS speech, and a 0.5 echo is about −26 dBFS. That is loud enough for Silero, which is the worst case.
 - Up to 6 clips per scenario, which keeps each scenario around 1.5 min.
 - Basic profile (AVSpeech): the loop is about routing, not the voice. A `best` variant can follow.
+
+## 5. v2: pauses (Task 18 Q4/Q5)
+
+> Status: written 2026-11-04 while the user was away ("Avanza con todo lo que puedas hacer sin que necesites mi ayuda"). Every call below is mine; the user reviews it in the PR.
+
+Both scenarios run outgoing es-ES>en on Best (the profile the user tested by hand), with no echo route.
+
+### 5.1 What Task 18 asked
+
+- Q5: hesitations mid-sentence are not cut more than before; each sentence is spoken once, whole.
+- Q4: stop mid-sentence and talk again at once: the next sentence is in the standard voice, then the clone comes back. The first pass found the interrupted sentence dropped, by design.
+
+Q4's "stop" is the session's Pause button (`AudioCoordinator.pause()`), my reading: pausing stops the clone's playback, so its generation is abandoned and holds the gate (qwen-streaming design §3 point 5). The next clone sentence then falls back at once. A speaker who merely goes quiet gets queued sentences, which are never cut (F8.5.3 D-5), and that cannot give the standard voice.
+
+### 5.2 Clip shapes
+
+Clips are the line's PR set, as in v1. A scenario can reshape them before playing:
+
+- `innerPause(seconds)`: silence inserted at the quietest 20 ms frame between 35 % and 65 % of the clip's speech (`speechStartMs…speechEndMs`). That is most likely a gap between words. The clips have no word timings.
+- `joined(n)`: n consecutive clips played as one, with no gap. This gives a sentence long enough for the clone to still be generating when the user pauses.
+
+### 5.3 Scenarios
+
+- `pause-short` (Q5): `innerPause(0.4)`, which is above the 0.2 s tentative and below the 0.6 s default pause. Rules:
+  - `piecesPerClip(1...1)`: no cut;
+  - `spokenOnce(.outgoing)`;
+  - `wordsKept(0.85)`;
+  - `quietAfter(12 s)`.
+- `pause-long` (Q5): `innerPause(1.0)`, so the cut is expected. Rules:
+  - `piecesPerClip(1...2)`;
+  - `spokenOnce(.outgoing, perClip: 2)`;
+  - `wordsKept(0.85)`;
+  - `quietAfter(12 s)`.
+- `pause-resume` (Q4) runs this script:
+  1. Play 3 clips joined.
+  2. Wait for its first outgoing audio, then 0.5 s.
+  3. `pause()`; 0.3 s of silence; `resume()`.
+  4. At once, 3 more clips, one by one, each settled.
+
+  Its rules:
+  - `noAudioWhilePaused`;
+  - `spokenOnce(.outgoing)`;
+  - `cloneAfterResume`: every clip after the resume is spoken, and the last one by `voiceClone`. The engines are listed. Whether the first sentence after the resume falls back depends on how long the abandoned generation runs, so it is reported, not failed;
+  - `quietAfter(12 s)`.
+
+### 5.4 Rules
+
+A clip's utterances are the outgoing seqs whose `speechStart` falls in its window. The window runs from the clip's start − 0.5 s to the next clip's start − 0.5 s.
+
+- `piecesPerClip(range)`: the count of spoken utterances (with `ttsFirstBuffer`) of each clip is in `range`.
+- `wordsKept(minRecall)`: the share of the transcripts' words, folded as in `WordErrorRate`, found in the recognized text of their clip's spoken utterances, all clips pooled. The worst clip is reported. On this set es-ES WER is 2.7 % (Basic baseline), so 0.85 leaves room for STT noise while a lost half-sentence fails.
+- `spokenOnce(direction, perClip:)`: v1's rule, generalised. The v1 scenarios use `.spokenOnce(.incoming)`.
+- `noAudioWhilePaused`: no TTS buffer of either direction is scheduled from pause + 50 ms to the resume.
+- `cloneAfterResume`: described in §5.3.
+
+### 5.5 First runs (2026-11-04, main 79d8b6b plus this branch)
+
+All three scenarios passed in every run (`pause-*` ran 3 times, the full catalog once).
+
+- `pause-short`: never cut, 100 % of the words kept every time.
+- `pause-long`: cut as expected, 87–96 % of the words kept. Clip 0 lost one of its two pieces in 2 of 3 runs, because Apple Speech returned empty text for it (backlog QS-8).
+  - In one run the clone took 5–9 s per 2–5-word piece. In the run with the audio saved, every piece was 1.5–3.5 s, so the slow run is not explained.
+- `pause-resume`: no audio while paused. The clone spoke every sentence after the resume: the abandoned generation was over before the next sentence was translated. The standard-voice fallback was not exercised (§5.3: reported, not failed).
+- Found while building this, a v1 bug: `BenchOutput.drain()` also cleared the schedule times that `quietAfter` reads. A rule could then only see buffers scheduled after the last drain. The times are now kept for the whole session. The 5 v1 scenarios still pass.

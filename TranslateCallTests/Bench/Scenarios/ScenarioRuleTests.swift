@@ -34,14 +34,14 @@ struct ScenarioRuleTests {
             event(.incoming, 1, .translated, at: 5, ["text": "Adiós."]),
             event(.incoming, 1, .ttsFirstBuffer, at: 6),
         ])
-        #expect(ScenarioRule.spokenOnce.check(once).passed)
+        #expect(ScenarioRule.spokenOnce(.incoming).check(once).passed)
         let twice = seen([
             event(.incoming, 0, .translated, at: 1, ["text": "Hola, amigo."]),
             event(.incoming, 0, .ttsFirstBuffer, at: 2),
             event(.incoming, 1, .translated, at: 5, ["text": "hola amigo"]),
             event(.incoming, 1, .ttsFirstBuffer, at: 6),
         ])
-        let verdict = ScenarioRule.spokenOnce.check(twice)
+        let verdict = ScenarioRule.spokenOnce(.incoming).check(twice)
         #expect(!verdict.passed)
         #expect(verdict.summary.contains("repeated"))
     }
@@ -51,8 +51,8 @@ struct ScenarioRuleTests {
             [event(.incoming, seq, .translated, at: Double(seq), ["text": "frase \(seq)"]),
              event(.incoming, seq, .ttsFirstBuffer, at: Double(seq) + 0.5)]
         }
-        #expect(!ScenarioRule.spokenOnce.check(seen(events, clips: 2)).passed)
-        #expect(ScenarioRule.spokenOnce.check(seen(events, clips: 3)).passed)
+        #expect(!ScenarioRule.spokenOnce(.incoming).check(seen(events, clips: 2)).passed)
+        #expect(ScenarioRule.spokenOnce(.incoming).check(seen(events, clips: 3)).passed)
     }
 
     @Test func mergedSeqsCountAsOneAttempt() {
@@ -62,7 +62,120 @@ struct ScenarioRuleTests {
             event(.incoming, 0, .ttsFirstBuffer, at: 2),
             event(.incoming, 1, .ttsFirstBuffer, at: 2),
         ]
-        #expect(ScenarioRule.spokenOnce.check(seen(events, clips: 1)).passed)
+        #expect(ScenarioRule.spokenOnce(.incoming).check(seen(events, clips: 1)).passed)
+    }
+
+    // MARK: - Pauses (design §5.4)
+
+    /// Clips of 4 s every 10 s from t = 0, each with its transcript.
+    private func pauseSeen(_ events: [TraceEvent], transcripts: [String], paused: ClosedRange<Double>? = nil,
+                           schedules: [Double] = []) -> ScenarioObservation {
+        var seen = seen(events, clips: transcripts.count, schedules: schedules)
+        seen.clips = transcripts.enumerated().map { index, text in
+            ScenarioObservation.Clip(start: origin + .seconds(Double(index) * 10),
+                                     end: origin + .seconds(Double(index) * 10 + 4), transcript: text)
+        }
+        seen.paused = paused.map { (origin + .seconds($0.lowerBound))..<(origin + .seconds($0.upperBound)) }
+        return seen
+    }
+
+    /// One outgoing utterance: speech at `start`, recognized `text`, spoken (by `engine`) unless nil.
+    private func utterance(_ seq: Int, at start: Double, _ text: String, engine: String? = "voiceClone")
+        -> [TraceEvent] {
+        var events = [event(.outgoing, seq, .speechStart, at: start),
+                      event(.outgoing, seq, .sttFinal, at: start + 1, ["text": text]),
+                      event(.outgoing, seq, .translated, at: start + 1.2, ["text": "t\(seq)"])]
+        if let engine { events.append(event(.outgoing, seq, .ttsFirstBuffer, at: start + 2, ["engine": engine])) }
+        return events
+    }
+
+    @Test func aCutClipBreaksOnePiece() {
+        let whole = pauseSeen(utterance(0, at: 0.2, "uno dos") + utterance(1, at: 10.1, "tres cuatro"),
+                              transcripts: ["uno dos", "tres cuatro"])
+        #expect(ScenarioRule.piecesPerClip(1...1).check(whole).passed)
+        let cut = pauseSeen(utterance(0, at: 0.2, "uno") + utterance(1, at: 2, "dos")
+                            + utterance(2, at: 10.1, "tres cuatro"),
+                            transcripts: ["uno dos", "tres cuatro"])
+        let verdict = ScenarioRule.piecesPerClip(1...1).check(cut)
+        #expect(!verdict.passed)
+        #expect(verdict.summary.contains("2 1"))
+        #expect(ScenarioRule.piecesPerClip(1...2).check(cut).passed)
+    }
+
+    @Test func aClipWithNothingSpokenBreaksPieces() {
+        let lost = pauseSeen(utterance(0, at: 0.2, "uno dos", engine: nil) + utterance(1, at: 10.1, "tres cuatro"),
+                             transcripts: ["uno dos", "tres cuatro"])
+        #expect(!ScenarioRule.piecesPerClip(1...2).check(lost).passed)
+    }
+
+    @Test func lostWordsBreakWordsKept() {
+        let transcripts = ["Uno, dos, tres y cuatro.", "Cinco seis siete ocho"]
+        let kept = pauseSeen(utterance(0, at: 0.2, "uno dos") + utterance(1, at: 2, "tres y cuatro")
+                             + utterance(2, at: 10.1, "cinco seis siete ocho"), transcripts: transcripts)
+        #expect(ScenarioRule.wordsKept(minRecall: 0.85).check(kept).passed)
+        // The second piece was recognized but never spoken: its words did not reach the other side.
+        let lost = pauseSeen(utterance(0, at: 0.2, "uno dos") + utterance(1, at: 2, "tres y cuatro", engine: nil)
+                             + utterance(2, at: 10.1, "cinco seis siete ocho"), transcripts: transcripts)
+        let verdict = ScenarioRule.wordsKept(minRecall: 0.85).check(lost)
+        #expect(!verdict.passed)
+        #expect(verdict.summary.contains("67%"))   // 6 of 9 words
+        #expect(verdict.summary.contains("#0 40%"))
+    }
+
+    @Test func outgoingRepeatsBreakSpokenOnce() {
+        let events = [
+            event(.outgoing, 0, .translated, at: 1, ["text": "Hello."]),
+            event(.outgoing, 0, .ttsFirstBuffer, at: 2),
+            event(.outgoing, 1, .translated, at: 5, ["text": "hello"]),
+            event(.outgoing, 1, .ttsFirstBuffer, at: 6),
+        ]
+        #expect(ScenarioRule.spokenOnce(.incoming).check(seen(events)).passed)
+        #expect(!ScenarioRule.spokenOnce(.outgoing).check(seen(events)).passed)
+    }
+
+    @Test func piecesPerClipRaiseTheAttemptLimit() {
+        let events = (0..<4).flatMap { seq in
+            [event(.outgoing, seq, .translated, at: Double(seq), ["text": "frase \(seq)"]),
+             event(.outgoing, seq, .ttsFirstBuffer, at: Double(seq) + 0.5)]
+        }
+        #expect(!ScenarioRule.spokenOnce(.outgoing).check(seen(events, clips: 2)).passed)
+        #expect(ScenarioRule.spokenOnce(.outgoing, perClip: 2).check(seen(events, clips: 2)).passed)
+    }
+
+    @Test func audioWhilePausedFails() {
+        let quiet = pauseSeen([], transcripts: [], paused: 5...6, schedules: [4.9, 5.04, 6.2])
+        #expect(ScenarioRule.noAudioWhilePaused.check(quiet).passed)
+        let loud = pauseSeen([], transcripts: [], paused: 5...6, schedules: [5.5])
+        #expect(!ScenarioRule.noAudioWhilePaused.check(loud).passed)
+        #expect(!ScenarioRule.noAudioWhilePaused.check(pauseSeen([], transcripts: [])).passed)   // never paused
+    }
+
+    @Test func theCloneMustComeBackAfterTheResume() {
+        let transcripts = ["a", "b", "c"]
+        let back = pauseSeen(utterance(0, at: 0.2, "a") + utterance(1, at: 10.1, "b", engine: "avSpeech")
+                             + utterance(2, at: 20.1, "c"), transcripts: transcripts, paused: 5...6)
+        let verdict = ScenarioRule.cloneAfterResume.check(back)
+        #expect(verdict.passed)
+        #expect(verdict.summary.contains("avSpeech → voiceClone"))
+        let stuck = pauseSeen(utterance(0, at: 0.2, "a") + utterance(1, at: 10.1, "b", engine: "avSpeech")
+                              + utterance(2, at: 20.1, "c", engine: "avSpeech"), transcripts: transcripts, paused: 5...6)
+        #expect(!ScenarioRule.cloneAfterResume.check(stuck).passed)
+        let lost = pauseSeen(utterance(0, at: 0.2, "a") + utterance(1, at: 10.1, "b", engine: nil)
+                             + utterance(2, at: 20.1, "c"), transcripts: transcripts, paused: 5...6)
+        #expect(!ScenarioRule.cloneAfterResume.check(lost).passed)
+    }
+
+    @Test func innerPauseGoesIntoTheQuietestGap() throws {
+        // Speech from 1000 to 9000 samples with a quiet stretch at 5000..<5320; 16 kHz.
+        var samples = [Float](repeating: 0, count: 10_000)
+        for index in 1000..<9000 { samples[index] = index % 2 == 0 ? 0.3 : -0.3 }
+        for index in 5000..<5320 { samples[index] = 0.001 }
+        let shaped = ScenarioClipShape.innerPause(seconds: 0.25)
+            .apply(samples, speech: 1000..<9000, rate: 16_000)
+        #expect(shaped.count == 10_000 + 4000)
+        let inserted = try #require(shaped.indices.first { $0 > 1000 && shaped[$0] == 0 })
+        #expect((5000..<5320).contains(inserted))
+        #expect(shaped[inserted..<(inserted + 4000)].allSatisfy { $0 == 0 })
     }
 
     @Test func lateBufferBreaksQuiet() {
@@ -117,6 +230,18 @@ struct BenchEchoPathTests {
         let samples = BenchOutput.mono16k(buffer)
         #expect(samples.count == 1600)
         #expect(samples.allSatisfy { abs($0 - 0.5) < 1e-6 })
+    }
+
+    @Test func drainingKeepsTheScheduleTimes() throws {
+        let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24_000, channels: 1,
+                                                interleaved: false))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 240))
+        buffer.frameLength = 240
+        let output = BenchOutput()
+        _ = try output.schedule(buffer)
+        #expect(output.drain().count == 1)
+        #expect(output.drain().isEmpty)
+        #expect(output.scheduleTimes.count == 1)   // quietAfter and noAudioWhilePaused read these
     }
 
     @Test func mixedSoundReachesTheStream() async throws {

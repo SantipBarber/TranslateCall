@@ -18,7 +18,8 @@ enum WordErrorRate {
         return Double(prev[hyp.count]) / Double(ref.count)
     }
 
-    private static func words(_ text: String) -> [String] {
+    /// The words compared: case, diacritics and punctuation folded away.
+    static func words(_ text: String) -> [String] {
         text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }
