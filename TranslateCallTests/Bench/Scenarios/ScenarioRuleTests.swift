@@ -165,6 +165,19 @@ struct ScenarioRuleTests {
         #expect(!ScenarioRule.cloneAfterResume.check(lost).passed)
     }
 
+    @Test func innerPauseGoesIntoTheWordGapNearestTheMiddle() throws {
+        // Speech from 1000 to 9000 samples (middle 5000), word gaps at 2000, 5600 and 8000; a quieter
+        // stretch at 4000..<4320 that is not a word gap (a consonant inside a word).
+        var samples = [Float](repeating: 0, count: 10_000)
+        for index in 1000..<9000 { samples[index] = index % 2 == 0 ? 0.3 : -0.3 }
+        for index in 4000..<4320 { samples[index] = 0.001 }
+        let shaped = ScenarioClipShape.innerPause(seconds: 0.25)
+            .apply(samples, speech: 1000..<9000, rate: 16_000, wordGaps: [2000, 5600, 8000, 9500])
+        #expect(shaped.count == 10_000 + 4000)
+        #expect(shaped[5600..<9600].allSatisfy { $0 == 0 })
+        #expect(shaped[5599] != 0 && shaped[9600] != 0)
+    }
+
     @Test func innerPauseGoesIntoTheQuietestGap() throws {
         // Speech from 1000 to 9000 samples with a quiet stretch at 5000..<5320; 16 kHz.
         var samples = [Float](repeating: 0, count: 10_000)

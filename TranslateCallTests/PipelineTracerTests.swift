@@ -69,6 +69,18 @@ struct PipelineTracerTests {
         #expect(tracer.openSeqs.isEmpty)
     }
 
+    @Test func lowConfidenceDropKeepsWhatWasRecognized() {
+        let tracer = makeTracer()
+        tracer.segmentClosed(capturedAt: date0, audioSeconds: 1)
+        tracer.transcribed(capturedAt: date0, text: "", engine: "x", confidence: 0,
+                           dropped: DroppedTranscript(text: "tu familia", confidence: 0.566))
+        let detail = sink.event(0, .dropped)?.detail
+        #expect(detail?["reason"] == "low-confidence")
+        #expect(detail?["droppedText"] == "tu familia")
+        #expect(detail?["droppedConfidence"] == "0.566")
+        #expect(tracer.openSeqs.isEmpty)
+    }
+
     @Test func translationFailureDropsWithTheError() {
         let tracer = makeTracer()
         tracer.segmentClosed(capturedAt: date0, audioSeconds: 1)

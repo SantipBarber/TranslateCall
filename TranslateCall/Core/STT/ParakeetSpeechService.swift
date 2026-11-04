@@ -149,7 +149,7 @@ actor ParakeetSpeechService: SpeechRecognizerService {
                 parakeetLogger.debug(
                     "Discarding low-confidence Parakeet result: \(String(format: "%.2f", confidence))"
                 )
-                return nil
+                return .lowConfidence(text, confidence: confidence, for: segment, locale: locale)
             }
 
             return TranscriptionResult(

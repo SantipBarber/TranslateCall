@@ -90,7 +90,8 @@ actor TracingSTTService: SpeechRecognizerService {
         forward = Task {
             for await result in results {
                 tracer.transcribed(capturedAt: result.capturedAt, text: result.text, engine: engine,
-                                   confidence: result.confidence, segmentID: result.segmentID)
+                                   confidence: result.confidence, segmentID: result.segmentID,
+                                   dropped: result.dropped)
                 continuation.yield(result)
             }
             continuation.finish()

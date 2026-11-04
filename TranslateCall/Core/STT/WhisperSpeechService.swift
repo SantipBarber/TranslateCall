@@ -144,7 +144,7 @@ actor WhisperSpeechService: SpeechRecognizerService {
 
         guard confidence >= config.minimumConfidence else {
             logger.debug("Whisper: low confidence \(confidence), skipping")
-            return nil
+            return .lowConfidence(text, confidence: confidence, for: segment, locale: locale)
         }
 
         return TranslateCall.TranscriptionResult(

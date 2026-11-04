@@ -128,7 +128,7 @@ actor AppleSpeechService: SpeechRecognizerService {
 
             guard confidence >= config.minimumConfidence else {
                 logger.debug("Discarding low-confidence result: \(confidence)")
-                return nil
+                return .lowConfidence(partial.text, confidence: confidence, for: segment, locale: locale)
             }
 
             let duration = Double(segment.audio.frameLength) / segment.audio.format.sampleRate

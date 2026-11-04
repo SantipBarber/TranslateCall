@@ -69,7 +69,11 @@ enum ScenarioRunner {
         var audio = AudioCollector()
         var played: [ScenarioObservation.Clip] = []
         var paused: Range<ContinuousClock.Instant>?
-        var units = try clips.map { try Unit(clip: $0, shape: scenario.shape, cache: env.cache) }
+        var units: [Unit] = []
+        for clip in clips {
+            units.append(try await Unit(clip: clip, shape: scenario.shape, cache: env.cache,
+                                        locale: Locale(identifier: scenario.line.variant)))
+        }
         if case .pauseDuringClone(let joined, let pauseAfterAudio, let pausedFor) = scenario.script {
             try requirePrerequisite(units.count > joined, "pause-during-clone needs more than \(joined) clips")
             let long = Unit(joining: Array(units.prefix(joined)))
@@ -172,12 +176,13 @@ enum ScenarioRunner {
         /// Where the speech is in `samples`.
         let speech: Range<Int>
 
-        init(clip: BenchManifest.Clip, shape: ScenarioClipShape, cache: URL) throws {
+        init(clip: BenchManifest.Clip, shape: ScenarioClipShape, cache: URL, locale: Locale) async throws {
             let rate = BenchClipPlayer.sampleRate
             let audio = try BenchRunner.loadClip(clip, cache: cache)
             let speech = (Int(clip.speechStartMs / 1000 * rate)..<Int(clip.speechEndMs / 1000 * rate))
                 .clamped(to: audio.indices)
-            samples = shape.apply(audio, speech: speech, rate: rate)
+            let gaps = shape == .asIs ? [] : await WordGaps.find(in: audio, rate: rate, locale: locale)
+            samples = shape.apply(audio, speech: speech, rate: rate, wordGaps: gaps)
             self.speech = speech.lowerBound..<(speech.upperBound + samples.count - audio.count)
             transcript = clip.transcript ?? ""
         }

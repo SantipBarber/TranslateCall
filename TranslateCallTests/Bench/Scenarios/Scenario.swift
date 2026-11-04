@@ -34,23 +34,35 @@ struct Scenario: Sendable, CustomStringConvertible {
 /// A change to a clip's audio before it plays (design §5.2).
 enum ScenarioClipShape: Sendable, Equatable {
     case asIs
-    /// Silence inserted at the quietest 20 ms frame between 35 % and 65 % of the speech: a hesitation.
+    /// Silence inserted between two words, at the word gap nearest the middle of the speech: a hesitation.
+    /// Without word gaps, at the quietest 20 ms frame between 35 % and 65 % of the speech (QS-8: that
+    /// frame can be inside a word).
     case innerPause(seconds: Double)
 
-    /// `samples` reshaped; `speech` is the range of samples with speech in them.
-    func apply(_ samples: [Float], speech: Range<Int>, rate: Double) -> [Float] {
+    /// `samples` reshaped; `speech` is the range of samples with speech in them; `wordGaps` the sample
+    /// offsets between words (`WordGaps.find`).
+    func apply(_ samples: [Float], speech: Range<Int>, rate: Double, wordGaps: [Int] = []) -> [Float] {
         guard case .innerPause(let seconds) = self else { return samples }
-        let frame = Int(rate * 0.02)
         let span = speech.clamped(to: samples.indices)
+        let middle = span.lowerBound + span.count / 2
+        let at = wordGaps.filter { span.contains($0) }.min { abs($0 - middle) < abs($1 - middle) }
+            ?? quietestFrame(samples, span: span, rate: rate)
+        guard let at else { return samples }
+        var shaped = samples
+        shaped.insert(contentsOf: [Float](repeating: 0, count: Int(seconds * rate)), at: at)
+        return shaped
+    }
+
+    /// The middle of the quietest 20 ms frame between 35 % and 65 % of `span`.
+    private func quietestFrame(_ samples: [Float], span: Range<Int>, rate: Double) -> Int? {
+        let frame = Int(rate * 0.02)
         let low = span.lowerBound + Int(Double(span.count) * 0.35)
         let high = span.lowerBound + Int(Double(span.count) * 0.65) - frame
-        guard high > low else { return samples }
+        guard high > low else { return nil }
         let quietest = stride(from: low, through: high, by: max(frame / 4, 1)).min { lhs, rhs in
             energy(samples[lhs..<(lhs + frame)]) < energy(samples[rhs..<(rhs + frame)])
         } ?? low
-        var shaped = samples
-        shaped.insert(contentsOf: [Float](repeating: 0, count: Int(seconds * rate)), at: quietest + frame / 2)
-        return shaped
+        return quietest + frame / 2
     }
 
     private func energy(_ frame: ArraySlice<Float>) -> Float { frame.reduce(0) { $0 + $1 * $1 } }
