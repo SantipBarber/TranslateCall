@@ -66,14 +66,32 @@ enum ScenarioRunner {
         try await BenchPipelineFactory.start(session, options: env.options(for: scenario.profile))
         await session.player.playSilence(seconds: 2)   // translation warm-up
         let pause = ConversationSettings.defaultPauseSeconds
-        var lastClipEnd = ContinuousClock.now
         var audio = AudioCollector()
-        for clip in clips {
-            let feed = await session.player.play(try BenchRunner.loadClip(clip, cache: env.cache))
-            lastClipEnd = feed.end
+        var played: [ScenarioObservation.Clip] = []
+        var paused: Range<ContinuousClock.Instant>?
+        var units = try clips.map { try Unit(clip: $0, shape: scenario.shape, cache: env.cache) }
+        if case .pauseDuringClone(let joined, let pauseAfterAudio, let pausedFor) = scenario.script {
+            try requirePrerequisite(units.count > joined, "pause-during-clone needs more than \(joined) clips")
+            let long = Unit(joining: Array(units.prefix(joined)))
+            units.removeFirst(joined)
+            let feed = await session.player.play(long.samples)
+            played.append(.init(start: feed.start, end: feed.end, transcript: long.transcript))
+            try await waitForFirstOutgoingAudio(session)
+            await session.player.playSilence(seconds: pauseAfterAudio.secondsValue)
+            await session.coordinator.pause()
+            let pausedAt = ContinuousClock.now
+            await session.player.playSilence(seconds: pausedFor.secondsValue)
+            session.coordinator.resume()
+            paused = pausedAt..<ContinuousClock.now
+            audio.add(session.output.drain(), events: session.sink.events.filter { $0.direction == .outgoing })
+        }
+        for unit in units {
+            let feed = await session.player.play(unit.samples)
+            played.append(.init(start: feed.start, end: feed.end, transcript: unit.transcript))
             await settle(session, after: feed.end, pause: pause)
             audio.add(session.output.drain(), events: session.sink.events.filter { $0.direction == .outgoing })
         }
+        let lastClipEnd = played.last?.end ?? .now
         // Keep the stream running: a loop feeds itself through the echo routes with no clip playing.
         let observeEnd = lastClipEnd + scenario.observeAfter
         while ContinuousClock.now < observeEnd {
@@ -81,8 +99,10 @@ enum ScenarioRunner {
         }
         let events = session.sink.events
         let schedules = session.output.scheduleTimes
-        var seen = ScenarioObservation(events: events, clipCount: clips.count, lastClipEnd: lastClipEnd,
+        var seen = ScenarioObservation(events: events, clipCount: played.count, lastClipEnd: lastClipEnd,
                                        scheduleTimes: schedules)
+        seen.clips = played
+        seen.paused = paused
         if scenario.rules.contains(where: { if case .pitchNearReference = $0 { true } else { false } }) {
             seen.outgoingF0 = audio.attempts.compactMapValues { PitchEstimator.medianF0($0.samples, rate: $0.rate) }
             if let reference {
@@ -90,6 +110,8 @@ enum ScenarioRunner {
             } else {
                 seen.referenceF0 = try await referenceF0(session)
             }
+        }
+        if !scenario.line.incoming {   // what the other side heard, per attempt, to listen to or measure
             try audio.write(to: env.out.appending(path: scenario.name).appending(path: "audio"))
         }
         let origin = session.origin
@@ -141,6 +163,52 @@ enum ScenarioRunner {
         guard let id = session.tts.activeVoiceProfileId else { return nil }
         let profile = try await VoiceProfileStore().load(id: id)
         return profile.samples.flatMap { PitchEstimator.medianF0($0, rate: 24_000) }
+    }
+
+    /// One sound the user makes: a clip (reshaped), or several joined into one sentence.
+    @MainActor private struct Unit {
+        let samples: [Float]
+        let transcript: String
+        /// Where the speech is in `samples`.
+        let speech: Range<Int>
+
+        init(clip: BenchManifest.Clip, shape: ScenarioClipShape, cache: URL) throws {
+            let rate = BenchClipPlayer.sampleRate
+            let audio = try BenchRunner.loadClip(clip, cache: cache)
+            let speech = (Int(clip.speechStartMs / 1000 * rate)..<Int(clip.speechEndMs / 1000 * rate))
+                .clamped(to: audio.indices)
+            samples = shape.apply(audio, speech: speech, rate: rate)
+            self.speech = speech.lowerBound..<(speech.upperBound + samples.count - audio.count)
+            transcript = clip.transcript ?? ""
+        }
+
+        /// The units back to back as one sentence: 0.1 s between one's speech and the next's (under the
+        /// tentative silence, so the VAD keeps them together).
+        init(joining units: [Unit]) {
+            let pad = Int(BenchClipPlayer.sampleRate * 0.05)
+            var joined: [Float] = []
+            for (index, unit) in units.enumerated() {
+                let from = index == 0 ? 0 : max(unit.speech.lowerBound - pad, 0)
+                let until = index == units.count - 1 ? unit.samples.count : min(unit.speech.upperBound + pad,
+                                                                                  unit.samples.count)
+                joined += unit.samples[from..<until]
+            }
+            samples = joined
+            transcript = units.map(\.transcript).joined(separator: " ")
+            speech = 0..<joined.count
+        }
+    }
+
+    /// Plays silence until the measured direction's first TTS buffer (the clone is speaking).
+    private static func waitForFirstOutgoingAudio(_ session: BenchSession) async throws {
+        let deadline = ContinuousClock.now + idleTimeout
+        while ContinuousClock.now < deadline {
+            if session.sink.events.contains(where: { $0.direction == .outgoing && $0.stage == .ttsFirstBuffer }) {
+                return
+            }
+            await session.player.playSilence(seconds: 0.05)
+        }
+        try requirePrerequisite(false, "the long sentence was never spoken within \(idleTimeout)")
     }
 
     /// Silence until the measured direction has no utterance in flight and `pause + 0.5 s` passed, or the

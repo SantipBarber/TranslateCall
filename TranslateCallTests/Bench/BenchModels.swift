@@ -12,6 +12,8 @@ struct BenchManifest: Decodable, Sendable {
         let audio: String
         let speechStartMs: Double
         let speechEndMs: Double
+        /// What is said (the scenarios' word check); absent in older manifests.
+        let transcript: String?
         let tiers: [String]
         let sha256: String
     }

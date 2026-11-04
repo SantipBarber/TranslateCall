@@ -137,12 +137,15 @@ final class BenchOutput: AudioOutputting, Sendable {
     private let realtime: Realtime?
     private let scheduled = Mutex<[(ContinuousClock.Instant, AVAudioPCMBuffer)]>([])
     private let lines = Mutex<[TraceDirection: Line]>([:])
+    /// Every scheduling instant of the session; `drain()` does not clear it.
+    private let times = Mutex<[ContinuousClock.Instant]>([])
 
     init(realtime: Realtime? = nil) {
         self.realtime = realtime
     }
 
-    var scheduleTimes: [ContinuousClock.Instant] { scheduled.withLock { $0.map(\.0) } }
+    /// When each buffer of the session was scheduled, drained or not.
+    var scheduleTimes: [ContinuousClock.Instant] { times.withLock { $0 } }
 
     /// Takes every buffer scheduled so far (and forgets it).
     func drain() -> [(ContinuousClock.Instant, AVAudioPCMBuffer)] {
@@ -159,7 +162,9 @@ final class BenchOutput: AudioOutputting, Sendable {
 
     func schedule(_ buffer: AVAudioPCMBuffer) throws -> PlaybackHandle {
         let handle = try inner.schedule(buffer)
-        scheduled.withLock { $0.append((.now, buffer)) }
+        let now = ContinuousClock.now
+        scheduled.withLock { $0.append((now, buffer)) }
+        times.withLock { $0.append(now) }
         return handle
     }
 
@@ -172,6 +177,7 @@ final class BenchOutput: AudioOutputting, Sendable {
         guard let realtime else { return try schedule(buffer) }
         let now = ContinuousClock.now
         scheduled.withLock { $0.append((now, buffer)) }
+        times.withLock { $0.append(now) }
         let handle = PlaybackHandle()
         let length = Duration.seconds(Double(buffer.frameLength) / buffer.format.sampleRate)
         let start: ContinuousClock.Instant = lines.withLock { lines in
