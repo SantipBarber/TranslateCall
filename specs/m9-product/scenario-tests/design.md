@@ -100,7 +100,7 @@ Q4's "stop" is the session's Pause button (`AudioCoordinator.pause()`), my readi
 
 Clips are the line's PR set, as in v1. A scenario can reshape them before playing:
 
-- `innerPause(seconds)`: silence inserted at the quietest 20 ms frame between 35 % and 65 % of the clip's speech (`speechStartMs…speechEndMs`). That is most likely a gap between words. The clips have no word timings.
+- `innerPause(seconds)`: silence inserted between two words, at the word gap nearest the middle of the clip's speech (`speechStartMs…speechEndMs`). The clips have no word timings, so the runner asks Apple Speech for them on the original clip (`WordGaps.find`). If recognition finds fewer than two words, it falls back to the quietest 20 ms frame between 35 % and 65 % of the speech. The first version always used that frame, and in cv-es-es-0097 it fell inside "antigua" (the closure of the "g"), which caused QS-8.
 - `joined(n)`: n consecutive clips played as one, with no gap. This gives a sentence long enough for the clone to still be generating when the user pauses.
 
 ### 5.3 Scenarios

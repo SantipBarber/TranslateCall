@@ -167,6 +167,7 @@ struct ParakeetSpeechServiceTests {
         // The segment is not dropped silently: one empty result keeps its id accounted for.
         #expect(results.count == 1)
         #expect(results.first?.text.isEmpty == true)
+        #expect(results.first?.dropped == DroppedTranscript(text: "unclear", confidence: 0.40))
     }
 
     @Test("Transcription result carries correct locale")

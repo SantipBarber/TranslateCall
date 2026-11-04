@@ -135,7 +135,11 @@ nonisolated final class PipelineTracer: Sendable {
     /// STT finished the segment `segmentID` (0: untagged, matched by `capturedAt`). A result whose
     /// segment is not open (retracted) is ignored. Older segments still waiting were dropped by STT
     /// (empty or below the confidence floor). An empty text ends the utterance.
-    func transcribed(capturedAt: Date, text: String, engine: String, confidence: Float, segmentID: UInt64 = 0) {
+    /// `dropped`: what the engine recognized before dropping it for low confidence (QS-8).
+    func transcribed(
+        capturedAt: Date, text: String, engine: String, confidence: Float, segmentID: UInt64 = 0,
+        dropped: DroppedTranscript? = nil
+    ) {
         let stamp = now()
         let (skipped, seq) = state.withLock { current -> ([Int], Int?) in
             guard let index = current.open.firstIndex(where: {
@@ -148,7 +152,15 @@ nonisolated final class PipelineTracer: Sendable {
         skipped.forEach { finish($0, .dropped, at: stamp, ["reason": "stt-empty"]) }
         guard let seq else { return }
         emit(seq, .sttFinal, at: stamp, ["text": text, "engine": engine, "confidence": String(confidence)])
-        if text.isEmpty { finish(seq, .dropped, at: stamp, ["reason": "empty-text"]) }
+        guard text.isEmpty else { return }
+        if let dropped {
+            finish(seq, .dropped, at: stamp, [
+                "reason": "low-confidence", "droppedText": dropped.text,
+                "droppedConfidence": String(dropped.confidence)
+            ])
+        } else {
+            finish(seq, .dropped, at: stamp, ["reason": "empty-text"])
+        }
     }
 
     func translated(source: String, result: String) {

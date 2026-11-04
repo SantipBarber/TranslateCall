@@ -37,6 +37,9 @@ struct TranscriptionResult: Sendable {
     var segmentID: UInt64 = 0
     /// Whether the segment was tentative (may be retracted) or final.
     var kind: SegmentKind = .final
+    /// What the engine recognized before it dropped the result for low confidence (nil otherwise).
+    /// Only the trace reads it (QS-8); the pipeline sees an empty result.
+    var dropped: DroppedTranscript?
 
     /// The result for a segment that produced no usable text (empty transcript, low confidence,
     /// recognition error). Engines yield one for every segment so a downstream committer never
@@ -48,6 +51,21 @@ struct TranscriptionResult: Sendable {
             segmentID: segment.id, kind: segment.kind
         )
     }
+
+    /// An empty result for a recognition dropped below `STTConfiguration.minimumConfidence`.
+    nonisolated static func lowConfidence(
+        _ text: String, confidence: Float, for segment: SpeechSegment, locale: Locale
+    ) -> TranscriptionResult {
+        var result = empty(for: segment, locale: locale)
+        result.dropped = DroppedTranscript(text: text, confidence: confidence)
+        return result
+    }
+}
+
+/// A recognition the engine dropped because its confidence was under the floor.
+struct DroppedTranscript: Sendable, Equatable {
+    let text: String
+    let confidence: Float
 }
 
 // MARK: - STTError
