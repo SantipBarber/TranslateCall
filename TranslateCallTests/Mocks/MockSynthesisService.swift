@@ -22,7 +22,19 @@ actor MockSynthesisService: SynthesisService {
         self.eventsContinuation = eventsContinuation
     }
 
+    /// When set, the next `speak` waits here before queuing until `releaseHeldSpeak()`: the call
+    /// reached the actor late, after a `stopSpeaking()` sent after it (actor jobs are not FIFO).
+    var holdNextSpeak = false
+    private var heldSpeak: CheckedContinuation<Void, Never>?
+    var isHoldingSpeak: Bool { heldSpeak != nil }
+    func setHoldNextSpeak() { holdNextSpeak = true }
+    func releaseHeldSpeak() { heldSpeak?.resume(); heldSpeak = nil }
+
     func speak(text: String, locale: Locale) async {
+        if holdNextSpeak {
+            holdNextSpeak = false
+            await withCheckedContinuation { heldSpeak = $0 }
+        }
         speakCalls.append((text: text, locale: locale.identifier))
         isSpeaking = true
         speakingContinuation.yield(true)

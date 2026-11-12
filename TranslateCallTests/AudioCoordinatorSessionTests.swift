@@ -6,14 +6,27 @@ import Testing
 
 private let callTarget = CaptureTarget.app(bundleID: "com.test.call")
 
+/// A fresh outgoing STT per session: the mock's stream ends at deactivate, so a restart needs a new one.
 @MainActor
-private func makeCoordinator(_ mocks: CoordinatorMocks, gateClock: TestClock = TestClock()) -> AudioCoordinator {
+private final class STTBox {
+    private(set) var current: MockSpeechRecognizerService?
+    func make() -> MockSpeechRecognizerService {
+        let stt = MockSpeechRecognizerService()
+        current = stt
+        return stt
+    }
+}
+
+@MainActor
+private func makeCoordinator(
+    _ mocks: CoordinatorMocks, gateClock: TestClock = TestClock(), outgoingSTT: STTBox? = nil
+) -> AudioCoordinator {
     AudioCoordinator(
         audioCapture: mocks.mockAudioCapture,
         systemCapture: mocks.mockSystemCapture,
         outgoingVADFactory: { mocks.mockVADFactory },
         incomingVADFactory: { mocks.mockIncomingVAD },
-        outgoingSTTFactory: { _ in mocks.mockOutgoingSTT },
+        outgoingSTTFactory: { _ in outgoingSTT?.make() ?? mocks.mockOutgoingSTT },
         incomingSTTFactory: { _ in mocks.mockIncomingSTT },
         outgoingTranslationService: mocks.mockOutgoingTranslation,
         incomingTranslationService: mocks.mockIncomingTranslation,
@@ -180,6 +193,51 @@ struct AudioCoordinatorSessionTests {
         #expect(mocks.mockOutgoingTranslation.lastTranslatedText == "kept")
         #expect(mocks.mockIncomingTranslation.lastTranslatedText == "kept")
         #expect(coordinator.transcript.map(\.original) == ["kept", "kept"])
+        await coordinator.stop()
+    }
+
+    /// UI-B1: `speak` and Pause's `stopSpeaking` hop to the TTS actor separately, and actor jobs are
+    /// not FIFO, so the sentence can be queued after the stop. It must not stay playing while paused.
+    @Test("a sentence whose speak reaches the TTS after Pause's stop is stopped again")
+    func speakLandingAfterPauseIsStopped() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        let tts = mocks.mockOutgoingTTS
+        await coordinator.start()
+        await tts.setHoldNextSpeak()
+
+        await mocks.mockOutgoingSTT.injectTranscription(transcript("hola"))
+        #expect(await waitUntil { await tts.isHoldingSpeak })
+        await coordinator.pause()
+        await tts.releaseHeldSpeak()
+        #expect(await waitUntil { await tts.speakCalls.count == 1 })
+        #expect(await waitUntil { !(await tts.isSpeaking) }, "nothing plays while paused")
+        await coordinator.stop()
+    }
+
+    /// UI-B2: Stop cannot interrupt a translator that ignores cancellation (the Apple bridge), so the
+    /// old session's sentence ends late; its cleanup must not touch the new session's state.
+    @Test("an old session's sentence ending late does not clear the new session's Translating")
+    func staleSentenceKeepsNewTranslating() async {
+        let mocks = CoordinatorMocks()
+        let stt = STTBox()
+        let coordinator = makeCoordinator(mocks, outgoingSTT: stt)
+        let translation = mocks.mockOutgoingTranslation
+        await coordinator.start()
+        translation.holdNext = true
+        await stt.current?.injectTranscription(transcript("old"))
+        #expect(await waitUntil { translation.heldCount == 1 })
+        await coordinator.stop()
+
+        await coordinator.start()
+        translation.holdNext = true
+        await stt.current?.injectTranscription(transcript("new"))
+        #expect(await waitUntil { translation.heldCount == 2 && coordinator.isOutgoingTranslating })
+        translation.releaseHeld()   // the old session's sentence
+        #expect(await waitUntil(timeout: .milliseconds(300)) { !coordinator.isOutgoingTranslating } == false,
+                "still translating the new sentence")
+        translation.releaseHeld()
+        #expect(await waitUntil { !coordinator.isOutgoingTranslating })
         await coordinator.stop()
     }
 

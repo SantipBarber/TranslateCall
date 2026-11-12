@@ -14,17 +14,19 @@ final class MockTranslationService: TranslationService {
     private(set) var lastTranslatedText: String?
     private(set) var warmUpCalls: [(source: Locale.Language, target: Locale.Language)] = []
     /// When set, the next `translate` waits here until `releaseHeld()` (a slow translation).
+    /// Several can be held at once; `releaseHeld()` frees the oldest.
     var holdNext = false
-    private var held: CheckedContinuation<Void, Never>?
-    var isHolding: Bool { held != nil }
-    func releaseHeld() { held?.resume(); held = nil }
+    private var held: [CheckedContinuation<Void, Never>] = []
+    var isHolding: Bool { !held.isEmpty }
+    var heldCount: Int { held.count }
+    func releaseHeld() { if !held.isEmpty { held.removeFirst().resume() } }
 
     func translate(text: String, from source: Locale.Language, to target: Locale.Language) async throws -> String {
         translateCallCount += 1
         lastTranslatedText = text
         if holdNext {
             holdNext = false
-            await withCheckedContinuation { held = $0 }
+            await withCheckedContinuation { held.append($0) }
             try Task.checkCancellation()   // a cancelled translation does not return a result
         }
         if !errors.isEmpty { throw errors.removeFirst() }

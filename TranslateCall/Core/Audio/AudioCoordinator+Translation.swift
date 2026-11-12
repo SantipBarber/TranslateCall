@@ -31,16 +31,16 @@ extension AudioCoordinator {
     /// Shows and speaks one outgoing sentence. `translation` is a translation already started by the caller
     /// (cancelled here if the sentence is dropped); `nil` starts it here, after the guards pass.
     func deliverOutgoing(_ text: String, translation: Task<String, Error>? = nil) async {
+        // Never dropped while the other side speaks (F8.5.3 REQ-H-10): echo is handled by MicEchoGate.
+        // Dropped while paused (M9 UI core REQ-UI-50), before the mute turn so the drop does not use it (UI-B3).
+        guard !text.isEmpty, !isPaused else {
+            translation?.cancel()
+            return
+        }
         // One-shot mute turn: user explicitly requested to skip this utterance.
         if suppressNextOutgoingTurnFlag {
             suppressNextOutgoingTurnFlag = false
             logger.debug("Suppressing next outgoing utterance (mute turn)")
-            translation?.cancel()
-            return
-        }
-        // Never dropped while the other side speaks (F8.5.3 REQ-H-10): echo is handled by MicEchoGate.
-        // Dropped while paused (M9 UI core REQ-UI-50).
-        guard !text.isEmpty, !isPaused else {
             translation?.cancel()
             return
         }
@@ -54,7 +54,10 @@ extension AudioCoordinator {
         let task = translation ?? Task { try await translateOutgoing(text) }
         let entry = appendTranscript(.outgoing, text)
         isOutgoingTranslating = true
-        defer { isOutgoingTranslating = false }
+        let generation = sessionGeneration
+        // Stop cannot interrupt a translator that ignores cancellation: a late end must not
+        // clear the next session's flag (UI-B2).
+        defer { if generation == sessionGeneration { isOutgoingTranslating = false } }
         // No stopSpeaking() first: sentences queue and are coalesced, never cut or dropped (F8.5.3 D-5).
         do {
             let translated = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
@@ -65,6 +68,8 @@ extension AudioCoordinator {
             guard !isPaused else { return }   // paused while translating: shown, not spoken
             let locale = Locale(identifier: languagePairManager.targetLanguage.minimalIdentifier)
             await outgoingTTS?.speak(text: translated, locale: locale)
+            // Pause's stopSpeaking may reach the TTS actor before this speak (jobs are not FIFO) (UI-B1).
+            if isPaused { await outgoingTTS?.stopSpeaking() }
         } catch {
             skipTranscript(entry, error: error)
             handleTranslationFailure(error, outgoing: true)
@@ -82,7 +87,10 @@ extension AudioCoordinator {
         let task = translation ?? Task { try await translateIncoming(text) }
         let entry = appendTranscript(.incoming, text)
         isIncomingTranslating = true
-        defer { isIncomingTranslating = false }
+        let generation = sessionGeneration
+        // Stop cannot interrupt a translator that ignores cancellation: a late end must not
+        // clear the next session's flag (UI-B2).
+        defer { if generation == sessionGeneration { isIncomingTranslating = false } }
         do {
             let translated = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
             // A translator that ignores cancellation (the Apple bridge) must not speak after teardown.
@@ -93,6 +101,8 @@ extension AudioCoordinator {
             let locale = Locale(identifier: languagePairManager.sourceLanguage.minimalIdentifier)
             selfEchoGuard.played(translated, at: .now)
             await incomingTTS?.speak(text: translated, locale: locale)
+            // Pause's stopSpeaking may reach the TTS actor before this speak (jobs are not FIFO) (UI-B1).
+            if isPaused { await incomingTTS?.stopSpeaking() }
         } catch {
             skipTranscript(entry, error: error)
             handleTranslationFailure(error, outgoing: false)
