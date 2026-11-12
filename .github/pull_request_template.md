@@ -6,6 +6,7 @@
 - [ ] Tests added/updated for the change
 - [ ] No integration test disabled, or each `.disabled` / `withKnownIssue` references its fixing task
 - [ ] Docs/specs updated if behavior changed
+- [ ] `CHANGELOG.md` entry added under [Unreleased]
 
 ## Latency (if the pipeline was touched)
 <!-- Paste the relevant rows of build/reports/latency.json -->
