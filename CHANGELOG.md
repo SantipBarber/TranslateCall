@@ -1,12 +1,14 @@
 # Changelog
 
 All notable changes to TranslateCall. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-The project has no git tags yet: each version below is the `MARKETING_VERSION` bump that closed a milestone.
-Everything since 0.8.0 is under **Unreleased**, grouped by milestone. Add an entry with every PR (see the PR template).
+Versions up to 0.8.0 are the `MARKETING_VERSION` bumps that closed a milestone (no git tags).
+From 0.9.0 on, each release is also a git tag (`v0.9.0`). Add an entry with every PR (see the PR template).
 
 ## [Unreleased]
 
-### Known issues and open decisions (as of 2026-11-12)
+## [0.9.0] — 2026-11-12 — M8.5 Stabilization + M9 Product (in progress)
+
+### Known issues and open decisions
 - mlx-audio-swift comes from the fork `SantipBarber/mlx-audio-swift` (branch `translatecall-pitch-fix`). Upstream v0.1.9 (2026-11-09) contains the ICL priming fix (#371); ahead-of-sentence priming is upstream PR #391, still open. Back to the official package once both are released (QS-7).
 - Apple Speech drops results under confidence 0.60 (QS-8). Drops are now traced; whether to lower the threshold waits for real-call data.
 - `voice-pitch` scenario: one sentence goes over the ±12 % tolerance in 2 of 5 runs. Tolerance not decided.
