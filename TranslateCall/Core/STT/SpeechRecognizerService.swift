@@ -60,6 +60,14 @@ struct TranscriptionResult: Sendable {
         result.dropped = DroppedTranscript(text: text, confidence: confidence)
         return result
     }
+
+    /// The same segment with no text: the committer skips it without blocking the head.
+    nonisolated func droppingText() -> TranscriptionResult {
+        TranscriptionResult(
+            text: "", confidence: 0, locale: locale, capturedAt: capturedAt, audioDuration: audioDuration,
+            segmentID: segmentID, kind: kind, dropped: dropped
+        )
+    }
 }
 
 /// A recognition the engine dropped because its confidence was under the floor.
