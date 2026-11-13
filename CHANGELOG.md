@@ -8,6 +8,9 @@ From 0.9.0 on, each release is also a git tag (`v0.9.0`). Add an entry with ever
 
 ### Fixed
 - A sentence heard while paused is no longer spoken when Resume comes before it is delivered (both directions) (#21).
+- A sentence whose playback request reached the TTS after Pause no longer plays while paused (UI-B1).
+- An old session's sentence ending after Stop no longer clears the new session's "Translating" indicator (UI-B2).
+- A sentence dropped by the pause no longer uses up the mute turn (UI-B3).
 
 ## [0.9.0] — 2026-11-12 — M8.5 Stabilization + M9 Product (in progress)
 

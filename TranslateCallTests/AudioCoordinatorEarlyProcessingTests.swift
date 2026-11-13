@@ -127,6 +127,32 @@ struct AudioCoordinatorEarlyProcessingTests {
         await coordinator.stop()
     }
 
+    /// UI-B3: a sentence heard before Pause and committed during it is dropped by the pause; the
+    /// mute turn waits for the next sentence the user actually says.
+    @Test("a sentence the pause drops does not use up the mute turn")
+    func pauseDropKeepsMuteTurn() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start()
+        coordinator.suppressNextOutgoingTurn()
+
+        await mocks.mockOutgoingSTT.injectTranscription(result("antes", id: 1))
+        #expect(await waitUntil { mocks.mockOutgoingTranslation.translateCallCount == 1 })
+        await coordinator.pause()
+        await mocks.mockVADFactory.injectBoundary(.commit(1))
+        await mainQueueHop()
+        #expect(coordinator.suppressNextOutgoingTurnFlag, "the paused drop did not use it")
+        coordinator.resume()
+
+        await mocks.mockOutgoingSTT.injectTranscription(result("secreto", id: 2, .final))
+        #expect(await waitUntil { !coordinator.suppressNextOutgoingTurnFlag })
+        await mocks.mockOutgoingSTT.injectTranscription(result("público", id: 3, .final))
+        #expect(await waitUntil { await mocks.mockOutgoingTTS.speakCalls.count == 1 })
+        #expect(await mocks.mockOutgoingTTS.speakCalls.map(\.text) == ["TRANSLATED: público"])
+        #expect(coordinator.transcript.map(\.original) == ["público"])
+        await coordinator.stop()
+    }
+
     @Test("stop while a committed sentence awaits its held translation: nothing completed, nothing spoken")
     func stopDropsHeldTentative() async {
         let mocks = CoordinatorMocks()
