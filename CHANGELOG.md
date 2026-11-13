@@ -6,6 +6,12 @@ From 0.9.0 on, each release is also a git tag (`v0.9.0`). Add an entry with ever
 
 ## [Unreleased]
 
+### Added
+- Spec for the clause split and look-ahead synthesis: long sentences are translated and spoken in two parts so the first one is heard ~250–290 ms sooner, and the next sentence is synthesized while the current one plays, with no gap (QS-5, `specs/m9-product/clause-split/`).
+
+### Changed
+- QS-8 closed: the Apple Speech confidence threshold stays at 0.60. Bench data shows the dropped texts are mostly misrecognised (no code change).
+
 ### Fixed
 - A sentence heard while paused is no longer spoken when Resume comes before it is delivered (both directions) (#21).
 - A sentence whose playback request reached the TTS after Pause no longer plays while paused (UI-B1).
