@@ -41,12 +41,15 @@ extension AudioCoordinator {
 
     /// Every result reaches the committer, empty ones too (they unblock the head, FR-QS.5); only
     /// non-empty text updates the live caption, which may show a tentative before its commit.
+    /// A result that arrives while paused reaches it emptied: Resume before its delivery must not
+    /// send what was said during the pause (REQ-UI-50). Delivery still drops it if paused then.
     func observeOutgoingTranscriptions(_ stt: some SpeechRecognizerService) {
         outgoingTasks.append(Task { [weak self] in
             for await result in stt.transcriptionStream {
                 guard !Task.isCancelled, let self else { return }
+                let heardWhilePaused = isPaused
                 if !result.text.isEmpty { outgoingTranscription = result.text }
-                outgoingCommitter?.receive(result)
+                outgoingCommitter?.receive(heardWhilePaused ? result.droppingText() : result)
             }
         })
     }
@@ -55,8 +58,9 @@ extension AudioCoordinator {
         incomingTasks.append(Task { [weak self] in
             for await result in stt.transcriptionStream {
                 guard !Task.isCancelled, let self else { return }
+                let heardWhilePaused = isPaused
                 if !result.text.isEmpty { incomingTranscription = result.text }
-                incomingCommitter?.receive(result)
+                incomingCommitter?.receive(heardWhilePaused ? result.droppingText() : result)
             }
         })
     }

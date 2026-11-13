@@ -1,4 +1,5 @@
 import AVFoundation
+import Combine
 import Foundation
 import Testing
 @testable import TranslateCall
@@ -150,6 +151,35 @@ struct AudioCoordinatorSessionTests {
         #expect(await waitUntil { mocks.mockOutgoingTranslation.translateCallCount == 1 })
         #expect(mocks.mockOutgoingTranslation.lastTranslatedText == "kept")
         #expect(coordinator.transcript.map(\.original) == ["kept"])
+        await coordinator.stop()
+    }
+
+    /// Resume lands after the result arrives but before the committer delivers it (the race that
+    /// flaked `pausedTextDropped`): the sentence was heard while paused, so it is still dropped.
+    @Test("text heard while paused is dropped even if Resume comes before its delivery")
+    func pausedTextDroppedWhenResumedBeforeDelivery() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        await coordinator.start(captureTarget: callTarget)
+        await coordinator.pause()
+        // Fires synchronously as each caption is set, inside the observer, before delivery runs.
+        let resumeOnCaption = coordinator.$outgoingTranscription.merge(with: coordinator.$incomingTranscription)
+            .sink { if $0 == "ignored" { coordinator.resume() } }
+        defer { resumeOnCaption.cancel() }
+
+        await mocks.mockOutgoingSTT.injectTranscription(transcript("ignored"))
+        #expect(await waitUntil { !coordinator.isPaused })
+        await coordinator.pause()
+        await mocks.mockIncomingSTT.injectTranscription(transcript("ignored"))
+        #expect(await waitUntil { !coordinator.isPaused })
+        await mocks.mockOutgoingSTT.injectTranscription(transcript("kept"))
+        await mocks.mockIncomingSTT.injectTranscription(transcript("kept"))
+        #expect(await waitUntil {
+            mocks.mockOutgoingTranslation.translateCallCount == 1 && mocks.mockIncomingTranslation.translateCallCount == 1
+        })
+        #expect(mocks.mockOutgoingTranslation.lastTranslatedText == "kept")
+        #expect(mocks.mockIncomingTranslation.lastTranslatedText == "kept")
+        #expect(coordinator.transcript.map(\.original) == ["kept", "kept"])
         await coordinator.stop()
     }
 
