@@ -61,8 +61,12 @@ extension TTSPlaybackService {
     /// buffer when audio was scheduled before it in this generation (REQ-CS-56).
     private func schedule(_ buffer: AVAudioPCMBuffer) -> Bool {
         guard attempt.epoch == outputEpoch else { return false }
+        let current = now()
+        // Before `schedule`, on purpose: a tracing output stamps the first-buffer event inside
+        // `schedule`, and the gap must be known by then (P-3). A refused buffer stops the output,
+        // which drops the pending gap.
         if attempt.bufferCount == 0, let end = scheduledAudioEnd {
-            (output as? any HandoffReporting)?.handoff(gap: max(.zero, end.duration(to: now())))
+            (output as? any HandoffReporting)?.handoff(gap: max(.zero, end.duration(to: current)))
         }
         do {
             attempt.lastHandle = try output.schedule(buffer)
@@ -71,7 +75,6 @@ extension TTSPlaybackService {
             failOutput()
             return false
         }
-        let current = now()
         scheduledAudioEnd = max(current, scheduledAudioEnd ?? current) + Self.length(of: buffer)
         return true
     }

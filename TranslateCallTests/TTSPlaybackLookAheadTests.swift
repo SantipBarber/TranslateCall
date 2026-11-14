@@ -94,6 +94,8 @@ struct TTSPlaybackLookAheadTests {
                                          limits: limits(grace: .seconds(1)))
         await playingWithOneAhead(harness)
         #expect(await waitUntil { primary.gate.waiterCount == 1 })
+        // a's playback bound and b's watchdog are both registered before time moves.
+        #expect(await waitUntil { harness.clock.pendingDeadlines.count == 2 })
 
         harness.clock.advance(by: .seconds(2))                       // a stalls; b's watchdog is at 30 s
 

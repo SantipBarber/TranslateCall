@@ -20,6 +20,8 @@ nonisolated protocol AudioOutputting: AnyObject, Sendable {
 /// An output that wants the handoff gap (clause split REQ-CS-56): `TTSPlaybackService` calls it right
 /// before scheduling the first buffer of an attempt when audio was scheduled earlier in the same
 /// generation, with the silence between the end of that audio and this buffer (zero when in time).
+/// A conformer that holds the gap for the next scheduled buffer drops it on `stop()`: the service
+/// stops the output when that buffer is refused.
 nonisolated protocol HandoffReporting: Sendable {
     func handoff(gap: Duration)
 }

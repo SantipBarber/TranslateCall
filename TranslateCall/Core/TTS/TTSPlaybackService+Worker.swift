@@ -58,6 +58,8 @@ extension TTSPlaybackService {
         case .outputFailed, .cancelled: break
         }
         if case .failed(let message) = end, heardNothing {
+            // The output stopped under this utterance while its attempt was ending: no fallback (REQ-CS-54).
+            guard record.epoch == outputEpoch else { return .decided(.skipped(.outputUnavailable)) }
             guard let fallback, fallbackReady else { return .decided(.skipped(.primaryFailed(message))) }
             return await speakWithFallback(fallback, utterance, gen: gen)
         }

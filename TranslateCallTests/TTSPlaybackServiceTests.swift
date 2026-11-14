@@ -13,7 +13,7 @@ struct TTSPlaybackServiceTests {
         for text in ["one", "two", "three"] { await harness.service.speak(text: text, locale: english) }
         for played in 1...3 {
             #expect(await waitUntil { harness.output.scheduledCount == played + 1 })
-            #expect(harness.primary.texts.count == played + 1, "the next utterance started before this one was heard")
+            #expect(harness.primary.texts.count == played + 1, "more than one utterance synthesized ahead")
             harness.output.complete(index: played - 1)
         }
         harness.output.completeAll()
