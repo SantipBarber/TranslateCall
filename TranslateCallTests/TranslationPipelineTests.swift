@@ -16,6 +16,11 @@ final class MockTranslationService: TranslationService {
     /// When set, the next `translate` waits here until `releaseHeld()` (a slow translation).
     /// Several can be held at once; `releaseHeld()` frees the oldest.
     var holdNext = false
+    /// Texts whose calls are held like `holdNext` (kept in the set; every matching call holds)
+    /// until `releaseHeld()` frees the oldest, or the caller is cancelled.
+    var holdTexts: Set<String> = []
+    /// Error thrown for its key text (checked before `errors` and `shouldThrow`).
+    var failTexts: [String: Error] = [:]
     private var held: [CheckedContinuation<Void, Never>] = []
     var isHolding: Bool { !held.isEmpty }
     var heldCount: Int { held.count }
@@ -24,11 +29,21 @@ final class MockTranslationService: TranslationService {
     func translate(text: String, from source: Locale.Language, to target: Locale.Language) async throws -> String {
         translateCallCount += 1
         lastTranslatedText = text
-        if holdNext {
+        if holdNext || holdTexts.contains(text) {
             holdNext = false
-            await withCheckedContinuation { held.append($0) }
+            if holdTexts.contains(text) {
+                // A cancelled caller must not wait for `releaseHeld()`.
+                await withTaskCancellationHandler {
+                    await withCheckedContinuation { held.append($0) }
+                } onCancel: {
+                    Task { @MainActor [weak self] in self?.releaseHeld() }
+                }
+            } else {
+                await withCheckedContinuation { held.append($0) }
+            }
             try Task.checkCancellation()   // a cancelled translation does not return a result
         }
+        if let error = failTexts[text] { throw error }
         if !errors.isEmpty { throw errors.removeFirst() }
         if let error = shouldThrow { throw error }
         return "TRANSLATED: \(text)"
