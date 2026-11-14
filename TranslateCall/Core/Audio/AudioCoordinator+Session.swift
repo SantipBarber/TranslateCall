@@ -37,6 +37,7 @@ extension AudioCoordinator {
     func pause() async {
         guard isOutgoingActive, !isPaused else { return }
         isPaused = true
+        pauseCount &+= 1
         pauseGate?.setPaused(true)
         await outgoingTTS?.stopSpeaking()
         await incomingTTS?.stopSpeaking()

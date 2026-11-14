@@ -13,7 +13,8 @@ extension AudioCoordinator {
     func speakParts(of sentence: SentenceTranslation, entry: UUID, direction: TranscriptDirection) async throws {
         let tasks = sentence.tasks
         var translations: [String] = []
-        var speaks = true
+        var firstSpokenAt: UInt64?   // `pauseCount` when the first part was handed to TTS
+        var spokenCount = 0
         for (index, task) in tasks.enumerated() {
             let part: String
             do {
@@ -24,22 +25,35 @@ extension AudioCoordinator {
                 try Task.checkCancellation()
             } catch {
                 sentence.cancel()
-                if index == 0 || error is CancellationError { throw error }
+                if index == 0 { throw error }
                 try Task.checkCancellation()   // the session is stopping: silent, as a cancellation
                 markPartlySkipped(entry)
+                // A part cancelled under a live delivery (by the committer) is no failure: no notice.
+                guard !(error is CancellationError) else { return }
                 handleTranslationFailure(error, outgoing: direction == .outgoing)
                 return
             }
             translations.append(part)
             show(translations.joined(separator: " "), entry: entry, direction: direction)
-            // Paused while translating: the rest is shown, not spoken (REQ-CS-14).
-            speaks = speaks && !isPaused
-            if speaks { await speak(part, direction: direction) }
+            // Paused while translating, or since the first part was spoken (even if resumed since):
+            // the rest is shown, not spoken (REQ-CS-14). The first part keeps today's rule.
+            if speaks(index: index, firstSpokenAt: firstSpokenAt) {
+                firstSpokenAt = firstSpokenAt ?? pauseCount
+                spokenCount += 1
+                await speak(part, direction: direction)
+            }
         }
         // An echo the STT hears as one sentence must still be caught (REQ-CS-17).
-        if direction == .incoming, sentence.isSplit, speaks {
+        if direction == .incoming, sentence.isSplit, spokenCount == tasks.count {
             selfEchoGuard.played(translations.joined(separator: " "), at: .now)
         }
+    }
+
+    /// Not paused now; a later part also needs the first spoken and no Pause since (REQ-CS-14).
+    private func speaks(index: Int, firstSpokenAt: UInt64?) -> Bool {
+        guard !isPaused else { return false }
+        guard index > 0 else { return true }
+        return firstSpokenAt == pauseCount
     }
 
     /// The translation so far on the live caption and the transcript entry (twice for a split sentence).

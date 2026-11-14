@@ -88,6 +88,26 @@ struct AudioCoordinatorClauseSplitTests {
         await coordinator.stop()
     }
 
+    @Test("Pause then Resume between the parts: the second is still shown, not spoken (REQ-CS-14)")
+    func pauseResumeBetweenPartsStillSilent() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        let translation = mocks.mockOutgoingTranslation
+        let tts = mocks.mockOutgoingTTS
+        await coordinator.start()
+        translation.holdTexts = [part1]
+
+        await mocks.mockOutgoingSTT.injectTranscription(result(sentenceText, id: 1))
+        #expect(await waitUntil { await tts.speakCalls.count == 1 && translation.heldCount == 1 })
+        await coordinator.pause()
+        coordinator.resume()
+        translation.releaseHeld()
+        #expect(await waitUntil { coordinator.transcript.first?.translation == joined })
+        #expect(await waitUntil { !coordinator.isOutgoingTranslating })
+        #expect(await tts.speakCalls.map(\.text) == [spoken0])
+        await coordinator.stop()
+    }
+
     @Test("Pause landing during a part's speak stops it again (UI-B1 per part)")
     func pauseDuringPartSpeakStopsIt() async {
         let mocks = CoordinatorMocks()
@@ -103,10 +123,11 @@ struct AudioCoordinatorClauseSplitTests {
         translation.releaseHeld()
         #expect(await waitUntil { await tts.isHoldingSpeak })
         await coordinator.pause()
+        await tts.resetStopSpeakingCalled()   // Pause's own stop: the guard's must come after the speak
         await tts.releaseHeldSpeak()
         #expect(await waitUntil { await tts.speakCalls.map(\.text) == [spoken0, spoken1] })
+        #expect(await waitUntil { await tts.stopSpeakingCalled }, "the guard stopped the late speak")
         #expect(await waitUntil { !(await tts.isSpeaking) }, "nothing plays while paused")
-        #expect(await tts.stopSpeakingCalled)
         await coordinator.stop()
     }
 
@@ -180,6 +201,30 @@ struct AudioCoordinatorClauseSplitTests {
         #expect(coordinator.transcript.first?.skipped == false)
         #expect(coordinator.ttsNotice != nil)
         #expect(await waitUntil { !coordinator.isOutgoingTranslating })
+        await coordinator.stop()
+    }
+
+    @Test("the second part cancelled under a live delivery: partly skipped, no notice")
+    func partOneCancelledMarksPartlySkipped() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        let translation = mocks.mockOutgoingTranslation
+        let tts = mocks.mockOutgoingTTS
+        await coordinator.start()
+        translation.holdTexts = [part1]
+        let sentence = SentenceTranslation(sentenceText, split: true) { part in
+            try await translation.translate(text: part, from: .init(identifier: "en"), to: .init(identifier: "es"))
+        }
+        let delivery = Task { await coordinator.deliverOutgoing(sentenceText, translation: sentence) }
+        #expect(await waitUntil { await tts.speakCalls.count == 1 && translation.heldCount == 1 })
+
+        sentence.tasks[1].cancel()   // as the committer's cancel of a sentence, the delivery itself live
+        await delivery.value
+        #expect(coordinator.transcript.first?.partlySkipped == true)
+        #expect(coordinator.transcript.first?.translation == spoken0)
+        #expect(coordinator.transcript.first?.skipped == false)
+        #expect(coordinator.ttsNotice == nil)
+        #expect(await tts.speakCalls.map(\.text) == [spoken0])
         await coordinator.stop()
     }
 

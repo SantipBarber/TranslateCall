@@ -45,6 +45,9 @@ final class AudioCoordinator: ObservableObject {
 
     /// Bumped by start() and stop(); an activation that sees a different value was superseded.
     var sessionGeneration: UInt64 = 0
+    /// Bumped by every pause(): a split sentence stops speaking its parts once it changed, even if
+    /// Resume came before its next part was ready (REQ-CS-14).
+    var pauseCount: UInt64 = 0
     var captureTarget: CaptureTarget?
     /// Subscribed once to `systemCapture.events` and never cancelled: cancelling the iterating
     /// task would terminate the service's long-lived stream (the A1 bug class).
