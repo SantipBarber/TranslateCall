@@ -87,8 +87,6 @@ def _latencies(utt: dict, speech_end_ns: int) -> dict[str, float]:
         out["stt"] = (ev["sttFinal"] - ev["vadEnd"]) * ms
     if "sttFinal" in ev and "translated" in ev:
         out["translate"] = (ev["translated"] - ev["sttFinal"]) * ms
-    if "sttFinal" in ev and "translatedAll" in ev:
-        out["translateAll"] = (ev["translatedAll"] - ev["sttFinal"]) * ms  # diagnosis, not a stage
     if "translated" in ev and "ttsFirstBuffer" in ev:
         out["ttsFirstAudio"] = (ev["ttsFirstBuffer"] - ev["translated"]) * ms
     if "ttsFirstBuffer" in ev:
@@ -234,8 +232,15 @@ def _split_stats(utts: list[dict]) -> dict[str, Any] | None:
     ``handoffGapMs`` summarizes the ``ttsPartBuffer`` gaps: the time a part 1's first buffer was
     scheduled after the audio scheduled before it ended (REQ-CS-56), 0 when it was in time. Part
     buffers without the detail (a part coalesced into one attempt) add no sample.
-    ``backToBackPct`` is the share of whole sentences' first buffers with ``handoffGapMs == "0"``
-    (information).  ``None`` when no sentence was split.
+    ``backToBackPct`` (information): of the whole sentences that were a handoff, those whose
+    ``ttsFirstBuffer`` carries ``handoffGapMs`` (their synthesis started while the audio before was
+    still playing; a sentence after a silence carries none), the share in time (``"0"``). ``None``
+    when there was no such handoff.
+    ``translateAllMs`` (diagnosis, design §7; not a stage): ``translatedAll - sttFinal`` of the
+    split sentences, the time until both parts were translated.
+    ``afterPart`` counts the sentences whose first buffer was a part 1 coalesced ahead of them
+    (``afterPartOf``): their ``ttsFirstBuffer``, and so their latency, is earlier than when they were
+    heard.  ``None`` when no sentence was split.
     """
     parts = [u for u in utts if not _dropped(u) and "ttsPartBuffer" in u["events"]]
     if not parts:
@@ -250,11 +255,21 @@ def _split_stats(utts: list[dict]) -> dict[str, Any] | None:
         if not _dropped(u) and "ttsFirstBuffer" in u["events"]
         and "parts" not in u.get("detail", {}).get("translated", {})
     ]
-    on_time = [u for u in whole if u["detail"]["ttsFirstBuffer"].get("handoffGapMs") == "0"]
+    handoffs = [u.get("detail", {}).get("ttsFirstBuffer", {}).get("handoffGapMs") for u in whole]
+    handoffs = [g for g in handoffs if g is not None]
+    translate_all = [
+        (u["events"]["translatedAll"] - u["events"]["sttFinal"]) * 1e-6
+        for u in parts
+        if "translatedAll" in u["events"] and "sttFinal" in u["events"]
+    ]
     return {
         "sentences": len(parts),
         "handoffGapMs": summary(gaps),
-        "backToBackPct": len(on_time) / len(whole) * 100.0 if whole else None,
+        "backToBackPct": handoffs.count("0") / len(handoffs) * 100.0 if handoffs else None,
+        "translateAllMs": summary(translate_all),
+        "afterPart": sum(
+            "afterPartOf" in u.get("detail", {}).get("ttsFirstBuffer", {}) for u in utts if not _dropped(u)
+        ),
     }
 
 

@@ -40,12 +40,13 @@ nonisolated extension PipelineTracer {
         let part: Int
     }
 
-    /// A synthesis attempt: the items it carries, its text (a fallback retries the same text) and
-    /// whether its synthesizer already finished (buffers may still be scheduled after that).
+    /// A synthesis attempt: the items it carries, its text (a fallback retries the same text), when
+    /// its synthesizer started and whether it already finished (buffers may still be scheduled after).
     struct Attempt {
         var items: [SpokenItem]
         let text: String
         var engine: String
+        var startedAt: ContinuousClock.Instant
         var finished = false
     }
 
@@ -63,12 +64,14 @@ nonisolated extension PipelineTracer {
         let detail: [String: String]
     }
 
-    /// What one `bufferScheduled` call decided: first-heard items, endings, engine and handoff gap.
+    /// What one `bufferScheduled` call decided: first-heard items, endings, engine and handoff gap,
+    /// and whether the attempt started while the audio before it was still playing (`overlapped`).
     struct BufferOutcome {
         var fresh: [SpokenItem] = []
         var endings: [Ending] = []
         var engine = ""
         var gap: Duration?
+        var overlapped = false
     }
 
     /// A translated or failed source: utterance index, and its part (nil: the whole sentence).

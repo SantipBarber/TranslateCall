@@ -38,7 +38,7 @@ nonisolated extension PipelineTracer {
             }
             let taken = current.take(text)
             current.waiting.removeAll { taken.contains($0) }
-            current.attempt = Attempt(items: taken, text: text, engine: engine)
+            current.attempt = Attempt(items: taken, text: text, engine: engine, startedAt: stamp)
             return current.silenced(silent, at: stamp)
         }
         endings.forEach(finish)
@@ -46,7 +46,10 @@ nonisolated extension PipelineTracer {
 
     /// The playback service scheduled a buffer on the output: the attempt's first buffer is
     /// `ttsFirstBuffer` for each sentence (or part 0) it carries and `ttsPartBuffer` for each part 1.
-    /// A handoff gap reported before it goes on its first such event (REQ-CS-56).
+    /// A handoff gap reported before it goes on its first such event (REQ-CS-56): always on a part 1,
+    /// and on a sentence only when its synthesis started while the audio before it was still playing
+    /// (the gap is shorter than the time since the attempt started), so a sentence spoken after a
+    /// silence carries no gap.
     func bufferScheduled() {
         let stamp = now()
         let outcome = state.withLock { current -> BufferOutcome in
@@ -54,6 +57,7 @@ nonisolated extension PipelineTracer {
             current.handoffGap = nil
             guard let attempt = current.attempt else { return BufferOutcome() }
             var outcome = BufferOutcome(engine: attempt.engine, gap: gap)
+            outcome.overlapped = gap.map { $0 == .zero || $0 < attempt.startedAt.duration(to: stamp) } ?? false
             for item in attempt.items {
                 guard let index = current.index(of: item.seq), item.part >= current.open[index].heardParts
                 else { continue }
@@ -89,14 +93,19 @@ nonisolated extension PipelineTracer {
 
     private func emitFirstBuffers(_ outcome: BufferOutcome, at stamp: ContinuousClock.Instant) {
         // Only sentences starting in this attempt share it: a part 1 ahead of them owns no first buffer
-        // here, so the first of them owns the attempt's audio (bench `mergedSeqs`).
+        // here, so the first of them owns the attempt's audio (bench `mergedSeqs`). Their first buffer
+        // is that part 1's audio, so they are heard later than it says: `afterPartOf` marks it.
         let seqs = outcome.fresh.filter { $0.part == 0 }.map(\.seq)
-        var shared = ["engine": outcome.engine]
+        let afterPart = outcome.fresh.first.flatMap { $0.part > 0 ? $0.seq : nil }
+        let shared = ["engine": outcome.engine]
         for (offset, item) in outcome.fresh.enumerated() {
             var detail = shared
-            if offset == 0, let gap = outcome.gap { detail["handoffGapMs"] = Self.ms(gap) }
+            if offset == 0, let gap = outcome.gap, item.part > 0 || outcome.overlapped {
+                detail["handoffGapMs"] = Self.ms(gap)
+            }
             if item.part == 0 {
                 if seqs.count > 1 { detail["mergedSeqs"] = seqs.map(String.init).joined(separator: ",") }
+                if let afterPart { detail["afterPartOf"] = String(afterPart) }
                 emit(item.seq, .ttsFirstBuffer, at: stamp, detail)
             } else {
                 detail["part"] = String(item.part)

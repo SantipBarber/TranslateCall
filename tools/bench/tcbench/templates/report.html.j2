@@ -112,8 +112,9 @@ Informative: not part of the baseline comparison.</p>
 {% endfor %}
 </table>
 <p class="muted">Gap: the handoff gap before a split sentence's second part was scheduled (0 when in time);
-quality is scored on the whole translation. Back-to-back %: whole sentences whose first audio started in
-time (handoff gap 0). Informative: not part of the baseline comparison.</p>
+quality is scored on the whole translation. Back-to-back %: of the whole sentences synthesized while the
+audio before them was still playing, the share whose first audio was scheduled in time (handoff gap 0); a
+sentence spoken after a silence is not counted. Informative: not part of the baseline comparison.</p>
 </section>
 {% endif %}
 

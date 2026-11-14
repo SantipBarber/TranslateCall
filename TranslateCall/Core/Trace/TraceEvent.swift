@@ -23,7 +23,8 @@ nonisolated struct TraceEvent: Sendable, Equatable {
     let time: ContinuousClock.Instant
     /// Stage data: `segmentAudioMs`/`trailingSilenceMs` (vadEnd), `text`/`engine`/`confidence`
     /// (sttFinal), `text` and `parts` when split (translated), `text` (translatedAll), `engine`,
-    /// `mergedSeqs` and `handoffGapMs` (ttsFirstBuffer; ttsPartBuffer adds `part`), `partsSpoken`
+    /// `mergedSeqs`, `handoffGapMs` and `afterPartOf` (ttsFirstBuffer; ttsPartBuffer has `engine`,
+    /// `handoffGapMs` and `part`), `partsSpoken`
     /// when a split sentence's part 1 was not heard (ttsEnd), `reason` (dropped).
     let detail: [String: String]
 }

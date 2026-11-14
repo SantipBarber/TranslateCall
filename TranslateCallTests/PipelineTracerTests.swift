@@ -422,7 +422,7 @@ struct PipelineTracerTests {
         tracer.synthesisStarted(text: Self.text1 + " HOLA", engine: "x")
         tracer.bufferScheduled()
         #expect(sink.event(0, .ttsPartBuffer)?.detail == ["engine": "x", "part": "1"])
-        #expect(sink.event(1, .ttsFirstBuffer)?.detail == ["engine": "x"])
+        #expect(sink.event(1, .ttsFirstBuffer)?.detail == ["engine": "x", "afterPartOf": "0"])
         tracer.synthesisFinished()
         tracer.speakRequested(text: "ADIÓS")
         tracer.synthesisStarted(text: "ADIÓS", engine: "x")
@@ -459,12 +459,40 @@ struct PipelineTracerTests {
         tracer.bufferScheduled()
         tracer.synthesisFinished()
         tracer.synthesisStarted(text: "B", engine: "x")
+        clock.advance(.milliseconds(300))   // B's first chunk took 300 ms: A was still playing at its start
         tracer.handoff(gap: .milliseconds(42))
         tracer.bufferScheduled()
         tracer.bufferScheduled()
         tracer.synthesisFinished()
         #expect(sink.event(1, .ttsFirstBuffer)?.detail == ["engine": "x", "handoffGapMs": "42"])
         #expect(sink.events.filter { $0.detail["handoffGapMs"] != nil }.count == 1)
+    }
+
+    /// M1: a sentence whose synthesis started after the audio before it ended (a silence between them)
+    /// is no handoff: no gap on it. A part 1 keeps its gap however late it started.
+    @Test(arguments: [false, true])
+    func handoffGapOnlyWhenTheAudioBeforeWasPlaying(part: Bool) {
+        let tracer = makeTracer()
+        transcribe(tracer, part ? Self.sentence : "a")
+        if part {
+            tracer.translated(source: Self.part0, result: Self.text0)
+            tracer.translated(source: Self.part1, result: Self.text1)
+            speakAndPlay(tracer, Self.text0)
+        } else {
+            tracer.translated(source: "a", result: "A")
+            speakAndPlay(tracer, "A")
+            transcribe(tracer, "b", seq: 1)
+            tracer.translated(source: "b", result: "B")
+        }
+        let (seq, text) = part ? (0, Self.text1) : (1, "B")
+        clock.advance(.seconds(5))
+        tracer.speakRequested(text: text)
+        tracer.synthesisStarted(text: text, engine: "x")
+        clock.advance(.milliseconds(300))
+        tracer.handoff(gap: .milliseconds(5_300))   // the audio before ended 5 s before this attempt
+        tracer.bufferScheduled()
+        let event = sink.event(seq, part ? .ttsPartBuffer : .ttsFirstBuffer)
+        #expect(event?.detail["handoffGapMs"] == (part ? "5300" : nil))
     }
 
     @Test func handoffGapDroppedOnStop() {

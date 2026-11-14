@@ -119,11 +119,12 @@ struct TracingDecoratorTests {
         tracer.synthesisStarted(text: "A", engine: "x")
         let inner = FakeOutput(autoComplete: true)
         let output = TracingAudioOutput(wrapping: inner, tracer: tracer)
-        output.handoff(gap: .milliseconds(42))
-        #expect(inner.handoffGaps == [.milliseconds(42)])
+        // A zero gap: the audio before was still playing, so it lands whatever the attempt's start.
+        output.handoff(gap: .zero)
+        #expect(inner.handoffGaps == [.zero])
         if stoppedBetween { output.stop() }
         _ = try output.schedule(makePCMBuffer(frames: 1_600))
-        #expect(sink.event(0, .ttsFirstBuffer)?.detail["handoffGapMs"] == (stoppedBetween ? nil : "42"))
+        #expect(sink.event(0, .ttsFirstBuffer)?.detail["handoffGapMs"] == (stoppedBetween ? nil : "0"))
     }
 
     /// The real playback service between the TTS decorators: first buffer and end, merged sentences.

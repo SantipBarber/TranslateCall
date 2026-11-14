@@ -615,7 +615,12 @@ def test_split_handoff_summary():
              first_gap_ms="0"),
         _utt(3, 13 * S, vad_end=14 * S, stt=14 * S, tr=14 * S, tts=14 * S, text="d", translated="seis",
              first_gap_ms="80"),
+        # A whole sentence after a silence carries no gap: no handoff, not in back-to-back %.
+        _utt(4, int(15.5 * S), vad_end=int(15.6 * S), stt=int(15.6 * S), tr=int(15.6 * S),
+             tts=int(15.7 * S), text="e", translated="siete"),
     ]
+    utts[0]["events"]["translatedAll"] = 3 * S + 300_000_000
+    utts[1]["events"]["translatedAll"] = 7 * S + 100_000_000
     agg = _agg(_raw(clips, utts), manifest)
     split = agg["split"]
     assert split["sentences"] == 2
@@ -623,6 +628,19 @@ def test_split_handoff_summary():
     assert split["handoffGapMs"]["p50"] == pytest.approx(105.0)
     assert split["handoffGapMs"]["p90"] == pytest.approx(181.0)
     assert split["backToBackPct"] == pytest.approx(50.0)
+    assert split["translateAllMs"] == analyze.summary([300.0, 100.0])
+
+
+def test_back_to_back_none_without_a_handoff():
+    """Whole sentences that all followed a silence (no gap) give no back-to-back share, not 0 %."""
+    utts = [
+        _utt(0, 1 * S, vad_end=3 * S, stt=3 * S, tr=3 * S, tts=3 * S, text="a", translated="uno",
+             translated_all="uno dos", part=int(3.5 * S), part_gap_ms="0"),
+        _utt(1, 5 * S, vad_end=7 * S, stt=7 * S, tr=7 * S, tts=7 * S, text="b", translated="tres"),
+    ]
+    split = _agg(_raw(TWO, utts), M2)["split"]
+    assert split["backToBackPct"] is None
+    assert split["translateAllMs"] == analyze.summary([])
 
 
 def test_split_handoff_summary_ignores_parts_without_a_gap():
@@ -633,9 +651,12 @@ def test_split_handoff_summary_ignores_parts_without_a_gap():
         _utt(1, 5 * S, vad_end=7 * S, stt=7 * S, tr=7 * S, tts=7 * S, text="b", translated="tres",
              translated_all="tres cuatro", part=int(7.5 * S), part_gap_ms="40"),
     ]
+    # Seq 1's first buffer was seq 0's part 1, coalesced ahead of it.
+    utts[1]["detail"]["ttsFirstBuffer"]["afterPartOf"] = "0"
     split = _agg(_raw(TWO, utts), M2)["split"]
     assert split["handoffGapMs"] == analyze.summary([40.0])
     assert split["sentences"] == 2
+    assert split["afterPart"] == 1
 
 
 def test_no_split_section_without_parts():
