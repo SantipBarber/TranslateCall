@@ -9,8 +9,7 @@ struct SetupManagerTests {
 
     // Shared helper: fresh isolated UserDefaults for each test
     private func makeDefaults() -> UserDefaults {
-        let suite = "test-\(UUID().uuidString)"
-        return UserDefaults(suiteName: suite)!
+        ScratchDefaults.make("SetupManager")
     }
 
     // MARK: - T1: Initial state — not completed
@@ -153,7 +152,7 @@ struct SetupManagerTests {
 struct SetupManagerBundleSelectionTests {
 
     private func makeDefaults() -> UserDefaults {
-        UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        ScratchDefaults.make("SetupManager")
     }
 
     @Test("an app that is not running can be selected; the target and the published ID follow")

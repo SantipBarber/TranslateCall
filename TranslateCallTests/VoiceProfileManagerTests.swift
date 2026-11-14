@@ -6,7 +6,7 @@ import Testing
 struct VoiceProfileManagerTests {
 
     private func makeManager(
-        suite: String = UUID().uuidString,
+        suite: String = ScratchDefaults.suiteName("VoiceProfileManager"),
         mockStore: MockVoiceProfileStore = MockVoiceProfileStore()
     ) -> (VoiceProfileManager, MockVoiceProfileStore) {
         let defaults = UserDefaults(suiteName: suite)!
@@ -59,7 +59,7 @@ struct VoiceProfileManagerTests {
     // MARK: - Tests
 
     @Test func activeProfilePersistedAndRestored() async throws {
-        let suite = UUID().uuidString
+        let suite = ScratchDefaults.suiteName("VoiceProfileManager")
         let mockStore = MockVoiceProfileStore()
         let profile = makeTestProfile()
         await mockStore.forceStore(profile)
@@ -80,8 +80,7 @@ struct VoiceProfileManagerTests {
     }
 
     @Test func activeProfileResetWhenFileMissing() async throws {
-        let suite = UUID().uuidString
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = ScratchDefaults.make("VoiceProfileManager")
         let missingId = UUID()
         defaults.set(missingId.uuidString, forKey: "tlk.voiceCloning.activeProfileId")
 

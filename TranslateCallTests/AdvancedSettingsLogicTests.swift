@@ -31,7 +31,7 @@ struct AdvancedSettingsLogicTests {
 
     @Test("the voice detector: Silero by default; Basic makes the next session use the energy VAD (REQ-ST-33)")
     func voiceDetector() async {
-        let defaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        let defaults = ScratchDefaults.make("AdvancedSettingsLogic")
         #expect(VADPreference.engine(in: defaults) == .silero)
         VADPreference.set(.energy, in: defaults)
         #expect(VADPreference.engine(in: defaults) == .energy)

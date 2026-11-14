@@ -7,7 +7,7 @@ struct SettingsOpenerTests {
 
     @Test("open(tab:) stores the tab, activates the app and calls SwiftUI's openSettings")
     func opensOnTab() {
-        let defaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        let defaults = ScratchDefaults.make("SettingsOpener")
         var activations = 0
         var opens = 0
         let opener = SettingsOpener(defaults: defaults, activate: { activations += 1 })
@@ -27,7 +27,7 @@ struct SettingsOpenerTests {
 
     @Test("before the setup window handed openSettings over, it reports failure but keeps the tab")
     func noHandlerYet() {
-        let defaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        let defaults = ScratchDefaults.make("SettingsOpener")
         let opener = SettingsOpener(defaults: defaults, activate: {})
         #expect(!opener.open(tab: .general))
         #expect(defaults.string(forKey: SettingsOpener.tabKey) == "general")

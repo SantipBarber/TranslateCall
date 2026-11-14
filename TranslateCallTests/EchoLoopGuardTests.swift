@@ -145,11 +145,11 @@ struct EchoLoopWiringTests {
         let monitor = OutputRouteMonitor(resolve: { id in watched.append(id); return id == 5 ? .speakers : .unknown })
         let viewModel = AudioViewModel(
             coordinator: coordinator,
-            audioManager: AudioManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!,
+            audioManager: AudioManager(defaults: ScratchDefaults.make("EchoLoopGuard"),
                                        configure: { _, _ in }),
             languagePairManager: mocks.languagePairManager,
-            setupManager: SetupManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!),
-            conversationSettings: ConversationSettings(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!),
+            setupManager: SetupManager(defaults: ScratchDefaults.make("EchoLoopGuard")),
+            conversationSettings: ConversationSettings(defaults: ScratchDefaults.make("EchoLoopGuard")),
             outputRoute: monitor
         )
         #expect(viewModel.effectiveListeningMode == .headphones)

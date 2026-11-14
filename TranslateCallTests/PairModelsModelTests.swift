@@ -46,9 +46,7 @@ private struct SheetHarness {
 
     init(onDisk: Set<DownloadableModel> = [.whisper, .parakeet, .kokoro], cloudAllowed: Bool = false,
          session: Bool = false) {
-        let name = "PairModelsModelTests.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: name)!
-        defaults.removePersistentDomain(forName: name)
+        defaults = ScratchDefaults.make("PairModelsModel")
         defaults.set(cloudAllowed, forKey: CloudPolicy.allowedKey)
         choices = PairModelChoices(defaults: defaults)
         fake.onDisk.withLock { $0 = onDisk }

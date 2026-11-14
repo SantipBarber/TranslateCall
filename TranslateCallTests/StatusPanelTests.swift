@@ -117,7 +117,7 @@ struct StatusPanelTests {
 
     @Test("moving the panel saves its top-left; a new controller restores it, still compact")
     func persistsTopLeft() throws {
-        let defaults = try #require(UserDefaults(suiteName: "test-\(UUID().uuidString)"))
+        let defaults = ScratchDefaults.make("StatusPanel")
         let first = StatusPanelController(size: size, autosaveName: "T", defaults: defaults,
                                           visibleFrames: { [screen] }) { _ in NSView() }
         defer { first.panel.close() }
@@ -143,7 +143,7 @@ struct StatusPanelTests {
 
     @Test("the panel shows while the session runs and hides when it ends; off, it stays hidden (REQ-UI-40/47)")
     func followsTheSession() async throws {
-        let on = try #require(UserDefaults(suiteName: "test-\(UUID().uuidString)"))
+        let on = ScratchDefaults.make("StatusPanel")
         UISettingsKeys.registerDefaults(in: on)
         let harness = SessionHarness()
         let controller = makeController()
@@ -154,7 +154,7 @@ struct StatusPanelTests {
         await harness.session.stop()
         #expect(await waitUntil { !controller.isVisible })
 
-        let off = try #require(UserDefaults(suiteName: "test-\(UUID().uuidString)"))
+        let off = ScratchDefaults.make("StatusPanel")
         off.set(false, forKey: UISettingsKeys.showStatusPanel)
         let other = makeController()
         defer { other.panel.close() }
@@ -168,7 +168,7 @@ struct StatusPanelTests {
 
     @Test("turning Show the status panel off mid-call hides the panel; on again shows it (REQ-UI-40)")
     func settingFollowedMidCall() async throws {
-        let defaults = try #require(UserDefaults(suiteName: "test-\(UUID().uuidString)"))
+        let defaults = ScratchDefaults.make("StatusPanel")
         UISettingsKeys.registerDefaults(in: defaults)
         let harness = SessionHarness()
         let controller = makeController()

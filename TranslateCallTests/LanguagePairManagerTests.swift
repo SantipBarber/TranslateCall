@@ -30,10 +30,7 @@ struct LanguagePairManagerTests {
 
     /// Isolated UserDefaults for a single test — avoids polluting .standard.
     private func makeDefaults() -> UserDefaults {
-        let suiteName = "test-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: suiteName)!
-        suite.removePersistentDomain(forName: suiteName)
-        return suite
+        ScratchDefaults.make("LanguagePairManager")
     }
 
     /// Fake language loader — avoids calling LanguageAvailability (slow, real network/disk).
