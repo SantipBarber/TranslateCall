@@ -15,6 +15,9 @@ nonisolated enum TranscriptRules {
         case pending
         /// Translation failed: dimmed with "Not translated".
         case skipped
+        /// The end of a split sentence failed: its translation so far, then "Rest not translated",
+        /// not dimmed (REQ-CS-16, P-7).
+        case partlyTranslated
         /// Never translated and no live session (cancelled by Stop): the original alone, no state.
         case neutral
     }
@@ -23,7 +26,7 @@ nonisolated enum TranscriptRules {
     /// "Translating…" while a session can still translate it (T8 review carry-over).
     static func state(of entry: TranscriptEntry, sessionActive: Bool) -> BubbleState {
         if entry.skipped { return .skipped }
-        if entry.translation != nil { return .translated }
+        if entry.translation != nil { return entry.partlySkipped ? .partlyTranslated : .translated }
         return sessionActive ? .pending : .neutral
     }
 
@@ -160,6 +163,11 @@ struct TranscriptBubble: View {
             if let translation = entry.translation {
                 Text(translation).font(.system(size: 12)).foregroundStyle(.secondary)
             }
+        case .partlyTranslated:
+            if let translation = entry.translation {
+                Text(translation).font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+            Text("Rest not translated").font(.system(size: 12)).foregroundStyle(.secondary)
         case .pending:
             Text("Translating…").font(.system(size: 12)).foregroundStyle(.secondary)
         case .skipped:

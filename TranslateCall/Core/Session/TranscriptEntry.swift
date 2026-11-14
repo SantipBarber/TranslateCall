@@ -14,6 +14,8 @@ nonisolated struct TranscriptEntry: Identifiable, Sendable, Equatable {
     var translation: String?
     /// Translation failed: shown dimmed with a note.
     var skipped = false
+    /// Only the end of a split sentence failed: its first part's translation is kept (REQ-CS-16).
+    var partlySkipped = false
     let date: Date
     /// From `LatencyProvider` when available.
     var latency: Duration?

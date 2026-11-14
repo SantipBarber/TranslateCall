@@ -70,4 +70,10 @@ extension AudioCoordinator {
               let index = transcript.firstIndex(where: { $0.id == id }) else { return }
         transcript[index].skipped = true
     }
+
+    /// The end of a split sentence failed: its first part stays shown and spoken (REQ-CS-16).
+    func markPartlySkipped(_ id: UUID) {
+        guard let index = transcript.firstIndex(where: { $0.id == id }) else { return }
+        transcript[index].partlySkipped = true
+    }
 }

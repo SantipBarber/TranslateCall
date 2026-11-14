@@ -19,6 +19,17 @@ struct TranscriptRulesTests {
         #expect(TranscriptRules.state(of: skipped, sessionActive: false) == .skipped)
     }
 
+    @Test("a partly skipped entry with a translation is partly translated; skipped still wins (REQ-CS-16)")
+    func partlySkippedState() {
+        var partly = entry()
+        partly.translation = "Hallo"
+        partly.partlySkipped = true
+        #expect(TranscriptRules.state(of: partly, sessionActive: true) == .partlyTranslated)
+        #expect(TranscriptRules.state(of: partly, sessionActive: false) == .partlyTranslated)
+        partly.skipped = true
+        #expect(TranscriptRules.state(of: partly, sessionActive: true) == .skipped)
+    }
+
     @Test("a pending entry is Translating only while a session is active; otherwise neutral")
     func pendingVersusNeutral() {
         #expect(TranscriptRules.state(of: entry(), sessionActive: true) == .pending)
