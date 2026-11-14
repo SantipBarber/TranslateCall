@@ -17,7 +17,13 @@ final class SentenceTranslation {
     init(_ text: String, split: Bool, translate: @escaping Translate) {
         source = text
         parts = split ? ClauseSplitter.split(text) : [text]
-        tasks = parts.map { part in Task { try await translate(part) } }
+        // A later part continues the sentence: no capital after the first part's comma.
+        tasks = parts.enumerated().map { index, part in
+            Task {
+                let translation = try await translate(part)
+                return index == 0 ? translation : ClauseSplitter.continuing(translation, source: part)
+            }
+        }
     }
 
     /// One part around an already started task (callers holding a Task).

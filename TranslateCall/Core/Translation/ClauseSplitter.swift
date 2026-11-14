@@ -25,4 +25,18 @@ nonisolated enum ClauseSplitter {
         }
         return [text]
     }
+
+    /// The translation of a later part, which continues a sentence: its first letter is lowercased
+    /// when the source part starts lowercase, so the joined text reads "lentos, los estilos", not
+    /// "lentos, Los estilos". Kept as is: a source starting uppercase (a name, "I"), a source whose
+    /// second word is capitalised ("the West" → "Occidente"), and an all-caps first word (an acronym).
+    static func continuing(_ translation: String, source: String) -> String {
+        let sourceWords = source.split(whereSeparator: \.isWhitespace)
+        guard let sourceFirst = sourceWords.first?.first, sourceFirst.isLowercase,
+              !(sourceWords.dropFirst().first?.first?.isUppercase ?? false),
+              let first = translation.first, first.isUppercase else { return translation }
+        let firstWord = translation.prefix { !$0.isWhitespace }
+        let isAcronym = firstWord.filter(\.isLetter).count > 1 && firstWord.allSatisfy { !$0.isLowercase }
+        return isAcronym ? translation : first.lowercased() + translation.dropFirst()
+    }
 }

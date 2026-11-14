@@ -139,8 +139,10 @@ nonisolated final class PipelineTracer: Sendable {
             guard let first = utterance.translation(ofPart: 0) else { return (seq, []) }   // part 1 came first
             var stamps: [Stamp] = []
             if part == 0 { stamps.append(Stamp(stage: .translated, detail: ["text": first, "parts": "2"])) }
-            if let second = utterance.translation(ofPart: 1) {
-                stamps.append(Stamp(stage: .translatedAll, detail: ["text": first + " " + second]))
+            if let second = utterance.translation(ofPart: 1) {   // as the app shows it (SentenceTranslation)
+                let shown = utterance.sttParts.count == 2
+                    ? ClauseSplitter.continuing(second, source: utterance.sttParts[1]) : second
+                stamps.append(Stamp(stage: .translatedAll, detail: ["text": first + " " + shown]))
             }
             return (seq, stamps)
         }
