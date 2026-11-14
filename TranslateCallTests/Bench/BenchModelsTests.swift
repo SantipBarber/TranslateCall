@@ -208,12 +208,13 @@ struct BenchModelsTests {
         // Real order: the device stamps a buffer, then the tracer stamps ttsFirstBuffer a moment later.
         // Seq 0: 3 buffers (100/200/300 frames), its ttsEnd precedes the last buffer (synthesis split).
         // Seq 1: ttsFirstBuffer and ttsEnd share one stamp (synthesis finished first); 2 buffers.
-        let buffers = [(at(10), Self.buffer(frames: 100)), (at(20), Self.buffer(frames: 200)),
-                       (at(30), Self.buffer(frames: 300)), (at(100), Self.buffer(frames: 400)),
+        // Each buffer is scheduled before the audio before it ends: no silence between them.
+        let buffers = [(at(10), Self.buffer(frames: 100)), (at(12), Self.buffer(frames: 200)),
+                       (at(13), Self.buffer(frames: 300)), (at(100), Self.buffer(frames: 400)),
                        (at(110), Self.buffer(frames: 500))]
         let events = [
             Self.first(0, at: at(11)),
-            TraceEvent(direction: .outgoing, seq: 0, stage: .ttsEnd, time: at(25), detail: [:]),
+            TraceEvent(direction: .outgoing, seq: 0, stage: .ttsEnd, time: at(12), detail: [:]),
             Self.first(1, at: at(101)),
             TraceEvent(direction: .outgoing, seq: 1, stage: .ttsEnd, time: at(101), detail: [:]),
         ]
@@ -229,13 +230,88 @@ struct BenchModelsTests {
     @Test func audioCollectorSharesAMergedAttemptsAudio() {
         let t0 = ContinuousClock.now
         let buffers = [(t0.advanced(by: .milliseconds(5)), Self.buffer(frames: 100)),
-                       (t0.advanced(by: .milliseconds(15)), Self.buffer(frames: 150))]
+                       (t0.advanced(by: .milliseconds(7)), Self.buffer(frames: 150))]
         let stamp = t0.advanced(by: .milliseconds(6))
         var collector = AudioCollector()
         collector.add(buffers, events: [Self.first(3, at: stamp), Self.first(4, at: stamp)])
         #expect(collector.frameCount(seq: 3) == 250)
         #expect(collector.audioPath(seq: 4) == "audio/3.wav")
         #expect(collector.frameCount(seq: 4) == 250)
+    }
+
+    /// 441 frames at 22.05 kHz: 20 ms of a constant non-zero level, to tell audio from inserted silence.
+    private static func tone(_ count: Int = 441) -> AVAudioPCMBuffer {
+        let buffer = buffer(frames: count)
+        for index in 0..<count { buffer.floatChannelData![0][index] = 0.5 }
+        return buffer
+    }
+
+    private static func part(_ seq: Int, at time: ContinuousClock.Instant) -> TraceEvent {
+        TraceEvent(direction: .outgoing, seq: seq, stage: .ttsPartBuffer, time: time, detail: ["part": "1"])
+    }
+
+    /// I2: a track is what a listener hears: a buffer scheduled after the audio before it ended starts
+    /// after that much silence; one scheduled earlier queues behind it with none.
+    @Test func audioCollectorPadsTheSilenceOfTheScheduleTimeline() throws {
+        let t0 = ContinuousClock.now
+        func at(_ ms: Int) -> ContinuousClock.Instant { t0.advanced(by: .milliseconds(ms)) }
+        // 20 ms buffers at 0, 5 (queued: plays 20…40) and 100 ms (60 ms after the audio ends at 40).
+        let buffers = [(at(0), Self.tone()), (at(5), Self.tone()), (at(100), Self.tone())]
+        var collector = AudioCollector()
+        collector.add(buffers, events: [Self.first(0, at: at(1))])
+        let samples = try #require(collector.samples(seq: 0))
+        let silence = 1_323   // 60 ms at 22.05 kHz
+        #expect(samples.count == 3 * 441 + silence)
+        #expect(samples[0..<882].allSatisfy { $0 != 0 })
+        #expect(samples[882..<882 + silence].allSatisfy { $0 == 0 })
+        #expect(samples[(882 + silence)...].allSatisfy { $0 != 0 })
+    }
+
+    /// I2, M3: a split sentence whose part 1 is an attempt of its own holds both parts in its file, with
+    /// the handoff gap as silence; the gap is not a stream gap of the voice (the tracker restarts).
+    @Test func audioCollectorKeepsALatePartInItsSentence() throws {
+        let t0 = ContinuousClock.now
+        func at(_ ms: Int) -> ContinuousClock.Instant { t0.advanced(by: .milliseconds(ms)) }
+        // Part 0 plays 0…20 ms; part 1 is scheduled at 200 ms (180 ms handoff gap), then seq 1.
+        let buffers = [(at(0), Self.tone()), (at(200), Self.tone()), (at(1_000), Self.tone())]
+        let events = [Self.first(0, at: at(1)), Self.part(0, at: at(201)), Self.first(1, at: at(1_001))]
+        var collector = AudioCollector()
+        collector.add(buffers, events: events)
+        #expect(collector.frameCount(seq: 0) == 2 * 441 + 3_969)   // 180 ms of silence between the parts
+        #expect(collector.playback(seq: 0) == .init(gapCount: 0, gapMs: 0))
+        #expect(collector.partAudioPath(seq: 0) == nil)
+        #expect(collector.frameCount(seq: 1) == 441)
+    }
+
+    /// I2: a part 1 coalesced ahead of the next sentence ([A1,B0]) is at the start of B's file, which
+    /// the sentence's `partAudio` names.
+    @Test func audioCollectorNamesTheFileOfACoalescedPart() throws {
+        let t0 = ContinuousClock.now
+        func at(_ ms: Int) -> ContinuousClock.Instant { t0.advanced(by: .milliseconds(ms)) }
+        let buffers = [(at(0), Self.tone()), (at(10), Self.tone()), (at(20), Self.tone())]
+        let events = [Self.first(0, at: at(1)), Self.part(0, at: at(11)), Self.first(1, at: at(11))]
+        var collector = AudioCollector()
+        collector.add(buffers, events: events)
+        #expect(collector.frameCount(seq: 0) == 441)
+        #expect(collector.frameCount(seq: 1) == 2 * 441)
+        #expect(collector.partAudioPath(seq: 0) == "audio/1.wav")
+        #expect(collector.partAudioPath(seq: 1) == nil)
+        let utterances = RawRun.Utterance.from(events, origin: t0, audio: collector.audioPath(seq:),
+                                               partAudio: collector.partAudioPath(seq:))
+        #expect(utterances.first { $0.seq == 0 }?.partAudio == "audio/1.wav")
+    }
+
+    // MARK: - Run settings
+
+    /// REQ-CS-21: the split switch is written to `meta.settings`, so on and off runs stay apart.
+    @Test(arguments: [true, false])
+    func runSettingsRecordTheClauseSplit(on: Bool) {
+        let options = BenchOptions(profile: .best, clauseSplit: on)
+        let settings = BenchRunner.runSettings(pause: 0.6, listeningMode: "auto", options: options,
+                                               voiceProfile: ["voiceProfileId": "x"])
+        #expect(settings["clauseSplit"] == (on ? "1" : "0"))
+        #expect(settings["pauseSeconds"] == "0.6")
+        #expect(settings["voiceProfileId"] == "x")
     }
 
     // MARK: - Playback
