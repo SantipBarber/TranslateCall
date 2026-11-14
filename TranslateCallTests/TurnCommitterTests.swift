@@ -138,9 +138,10 @@ struct TurnCommitterTests {
         probe.open("siete ocho nueve diez once doce trece")
         #expect(await waitUntil { probe.delivered.count == 1 })
         #expect(probe.delivered.first?.text == sentence)
+        // Part 1 continues the sentence, so its fake translation starts lowercase (ClauseSplitter.continuing).
         #expect(
             probe.delivered.first?.translation
-                == "EN(uno dos tres cuatro cinco seis,) EN(siete ocho nueve diez once doce trece)"
+                == "EN(uno dos tres cuatro cinco seis,) eN(siete ocho nueve diez once doce trece)"
         )
         #expect(probe.translated.count == 2, "each part translated once")
         #expect(committer.heldCount == 0)
