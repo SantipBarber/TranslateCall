@@ -88,14 +88,15 @@ nonisolated extension PipelineTracer {
     }
 
     private func emitFirstBuffers(_ outcome: BufferOutcome, at stamp: ContinuousClock.Instant) {
-        var seqs: [Int] = []
-        for item in outcome.fresh where !seqs.contains(item.seq) { seqs.append(item.seq) }
+        // Only sentences starting in this attempt share it: a part 1 ahead of them owns no first buffer
+        // here, so the first of them owns the attempt's audio (bench `mergedSeqs`).
+        let seqs = outcome.fresh.filter { $0.part == 0 }.map(\.seq)
         var shared = ["engine": outcome.engine]
-        if seqs.count > 1 { shared["mergedSeqs"] = seqs.map(String.init).joined(separator: ",") }
         for (offset, item) in outcome.fresh.enumerated() {
             var detail = shared
             if offset == 0, let gap = outcome.gap { detail["handoffGapMs"] = Self.ms(gap) }
             if item.part == 0 {
+                if seqs.count > 1 { detail["mergedSeqs"] = seqs.map(String.init).joined(separator: ",") }
                 emit(item.seq, .ttsFirstBuffer, at: stamp, detail)
             } else {
                 detail["part"] = String(item.part)

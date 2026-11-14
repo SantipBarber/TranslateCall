@@ -174,7 +174,8 @@ nonisolated final class PipelineTracer: Sendable {
         state.withLock { $0.handoffGap = nil }
     }
 
-    /// Ends every open utterance as dropped (session stop, bench idle timeout).
+    /// Ends every open utterance as dropped (session stop, bench idle timeout); a split sentence whose
+    /// part 0 was heard ends `ttsEnd` at part 0's end with `partsSpoken: "1"` and the `reason`.
     func closeOpen(reason: String) {
         let stamp = now()
         let closed = state.withLock { current -> [Utterance] in
@@ -187,7 +188,12 @@ nonisolated final class PipelineTracer: Sendable {
         }
         for utterance in closed {
             if let interval = utterance.interval { signposter.endInterval("Utterance", interval) }
-            emit(utterance.seq, .dropped, at: stamp, ["reason": reason])
+            // A split sentence whose part 0 was heard ends there: it was spoken, not dropped (P-6).
+            if let end = utterance.firstPartEnd {
+                emit(utterance.seq, .ttsEnd, at: end, ["partsSpoken": "1", "reason": reason])
+            } else {
+                emit(utterance.seq, .dropped, at: stamp, ["reason": reason])
+            }
         }
     }
 

@@ -373,6 +373,81 @@ struct PipelineTracerTests {
         #expect(sink.event(0, .translatedAll)?.detail["text"] == Self.text0 + " " + Self.text1)
     }
 
+    @Test func unspokenPartOneEndsAtPartZeroOnClose() throws {
+        let tracer = makeTracer()
+        transcribe(tracer, Self.sentence)
+        tracer.translated(source: Self.part0, result: Self.text0)
+        speakAndPlay(tracer, Self.text0)          // part 1 never translated nor spoken (Pause)
+        let partZeroEnd = clock.now
+        transcribe(tracer, "hola", seq: 1)        // never heard: dropped as today
+        clock.advance(.seconds(2))
+        tracer.closeOpen(reason: "stop")
+        let end = try #require(sink.event(0, .ttsEnd))
+        #expect(end.time == partZeroEnd)
+        #expect(end.detail == ["partsSpoken": "1", "reason": "stop"])
+        #expect(sink.event(0, .dropped) == nil)
+        #expect(sink.event(1, .dropped)?.detail == ["reason": "stop"])
+    }
+
+    @Test func silentPartOneAtCloseEndsAtPartZero() throws {
+        let tracer = makeTracer()
+        transcribe(tracer, Self.sentence)
+        tracer.translated(source: Self.part0, result: Self.text0)
+        tracer.translated(source: Self.part1, result: Self.text1)
+        speakAndPlay(tracer, Self.text0)
+        let partZeroEnd = clock.now
+        clock.advance(.seconds(1))
+        tracer.speakRequested(text: Self.text1)
+        tracer.synthesisStarted(text: Self.text1, engine: "x")
+        tracer.synthesisFinished()                // no audio
+        tracer.closeOpen(reason: "idle-timeout")
+        let end = try #require(sink.event(0, .ttsEnd))
+        #expect(end.time == partZeroEnd)
+        #expect(end.detail == ["partsSpoken": "1", "reason": "idle-timeout"])
+    }
+
+    /// A part 1 coalesced ahead of the next sentence owns no first buffer: that sentence owns the attempt.
+    @Test func partOneAheadOfASentenceLeavesItTheOwner() {
+        let tracer = makeTracer()
+        transcribe(tracer, Self.sentence)
+        tracer.translated(source: Self.part0, result: Self.text0)
+        tracer.translated(source: Self.part1, result: Self.text1)
+        speakAndPlay(tracer, Self.text0)
+        for (seq, text) in ["hola", "adiós"].enumerated() {
+            transcribe(tracer, text, seq: seq + 1)
+            tracer.translated(source: text, result: text.uppercased())
+        }
+        tracer.speakRequested(text: Self.text1)
+        tracer.speakRequested(text: "HOLA")
+        tracer.synthesisStarted(text: Self.text1 + " HOLA", engine: "x")
+        tracer.bufferScheduled()
+        #expect(sink.event(0, .ttsPartBuffer)?.detail == ["engine": "x", "part": "1"])
+        #expect(sink.event(1, .ttsFirstBuffer)?.detail == ["engine": "x"])
+        tracer.synthesisFinished()
+        tracer.speakRequested(text: "ADIÓS")
+        tracer.synthesisStarted(text: "ADIÓS", engine: "x")
+        tracer.bufferScheduled()
+        #expect(sink.event(2, .ttsFirstBuffer)?.detail == ["engine": "x"])
+    }
+
+    @Test func partOneAheadOfTwoSentencesMergesOnlyThem() {
+        let tracer = makeTracer()
+        transcribe(tracer, Self.sentence)
+        tracer.translated(source: Self.part0, result: Self.text0)
+        tracer.translated(source: Self.part1, result: Self.text1)
+        speakAndPlay(tracer, Self.text0)
+        for (seq, text) in ["hola", "adiós"].enumerated() {
+            transcribe(tracer, text, seq: seq + 1)
+            tracer.translated(source: text, result: text.uppercased())
+        }
+        [Self.text1, "HOLA", "ADIÓS"].forEach { tracer.speakRequested(text: $0) }
+        tracer.synthesisStarted(text: Self.text1 + " HOLA ADIÓS", engine: "x")
+        tracer.bufferScheduled()
+        #expect(sink.event(0, .ttsPartBuffer)?.detail["mergedSeqs"] == nil)
+        #expect(sink.event(1, .ttsFirstBuffer)?.detail["mergedSeqs"] == "1,2")
+        #expect(sink.event(2, .ttsFirstBuffer)?.detail["mergedSeqs"] == "1,2")
+    }
+
     @Test func handoffGapOnFirstBuffer() {
         let tracer = makeTracer()
         for (seq, text) in ["a", "b"].enumerated() {
