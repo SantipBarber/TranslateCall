@@ -10,14 +10,9 @@ extension TTSPlaybackService {
     /// Runs one synthesizer on one utterance under the watchdog, scheduling each buffer it yields.
     func runAttempt(
         _ synthesizer: any UtteranceSynthesizer, _ utterance: Utterance, gen: UInt64
-    ) async -> AttemptEnd {
-        guard gen == generation else { return .cancelled }
-        attemptStartedAt = .now
-        attemptFirstBufferAt = nil
-        attemptBufferCount = 0
-        attemptAudioSeconds = 0
-        attemptLastHandle = nil
-        attemptCountsTowardBreaker = true
+    ) async -> (end: AttemptEnd, record: AttemptRecord) {
+        guard gen == generation else { return (.cancelled, AttemptRecord(startedAt: now())) }
+        attempt = AttemptRecord(startedAt: now())
         setSpeaking(true)
         let stream = synthesizer.synthesize(text: utterance.text, locale: utterance.locale)
         let consumer = Task { await self.consume(stream, gen: gen) }
@@ -31,7 +26,7 @@ extension TTSPlaybackService {
         watchdog.cancel()
         let timedOut = await watchdog.value
         attemptTask = nil
-        return end == .cancelled && timedOut && gen == generation ? .timedOut : end
+        return (end == .cancelled && timedOut && gen == generation ? .timedOut : end, attempt)
     }
 
     private func consume(_ stream: AsyncThrowingStream<AVAudioPCMBuffer, Error>, gen: UInt64) async -> AttemptEnd {
@@ -40,19 +35,19 @@ extension TTSPlaybackService {
                 guard gen == generation, !Task.isCancelled else { return .cancelled }
                 guard buffer.frameLength > 0 else { continue }
                 do {
-                    attemptLastHandle = try output.schedule(buffer)
+                    attempt.lastHandle = try output.schedule(buffer)
                 } catch {
                     logger.error("TTS output refused a buffer: \(error.localizedDescription, privacy: .public)")
                     return .outputFailed
                 }
                 bufferObserver?(buffer)
-                if attemptFirstBufferAt == nil { attemptFirstBufferAt = .now }
-                attemptBufferCount += 1
-                attemptAudioSeconds += Double(buffer.frameLength) / buffer.format.sampleRate
+                if attempt.firstBufferAt == nil { attempt.firstBufferAt = now() }
+                attempt.bufferCount += 1
+                attempt.audioSeconds += Double(buffer.frameLength) / buffer.format.sampleRate
             }
         } catch {
             guard gen == generation, !Task.isCancelled else { return .cancelled }
-            attemptCountsTowardBreaker = (error as? any TTSAttemptError)?.countsTowardBreaker ?? true
+            attempt.countsTowardBreaker = (error as? any TTSAttemptError)?.countsTowardBreaker ?? true
             return .failed(error.localizedDescription)
         }
         guard gen == generation, !Task.isCancelled else { return .cancelled }
@@ -60,13 +55,15 @@ extension TTSPlaybackService {
     }
 
     /// Waits for the attempt's audio to play out, then names the outcome (REQ-T-13/16/21).
-    func conclude(_ end: AttemptEnd, engine: TTSEngine, utterance: Utterance, gen: UInt64) async -> Outcome {
+    func conclude(
+        _ end: AttemptEnd, record: AttemptRecord, engine: TTSEngine, utterance: Utterance, gen: UInt64
+    ) async -> Outcome {
         if end == .cancelled { return .stale }
         if end == .outputFailed {
             output.stop()
             return .skipped(.outputUnavailable)
         }
-        switch await drainPlayback() {
+        switch await drainPlayback(record) {
         case .stopped:
             return gen == generation ? .skipped(.outputUnavailable) : .stale
         case .stalled:
@@ -75,16 +72,16 @@ extension TTSPlaybackService {
         case .played:
             if end == .timedOut { return .skipped(.timeout) }
             guard end == .finished else { return .skipped(.interrupted) }
-            await recordMetrics(engine: engine, utterance: utterance)
+            await recordMetrics(record, engine: engine, utterance: utterance)
             return .played
         }
     }
 
     /// Waits for the attempt's last buffer to be played back, bounded by the audio's length plus
     /// `playbackGrace`, so a device that never reports back cannot keep `isSpeaking` true (REQ-T-16).
-    private func drainPlayback() async -> Drain {
-        guard let handle = attemptLastHandle else { return .played }
-        let bound = Duration.seconds(attemptAudioSeconds) + limits.playbackGrace
+    private func drainPlayback(_ record: AttemptRecord) async -> Drain {
+        guard let handle = record.lastHandle else { return .played }
+        let bound = Duration.seconds(record.audioSeconds) + limits.playbackGrace
         let clock = self.clock
         return await withTaskGroup(of: Drain.self) { group in
             group.addTask {
@@ -101,9 +98,9 @@ extension TTSPlaybackService {
         }
     }
 
-    private func recordMetrics(engine: TTSEngine, utterance: Utterance) async {
-        guard let firstBufferAt = attemptFirstBufferAt else { return }   // nothing was heard
-        let latency = attemptStartedAt.duration(to: firstBufferAt)
+    private func recordMetrics(_ record: AttemptRecord, engine: TTSEngine, utterance: Utterance) async {
+        guard let firstBufferAt = record.firstBufferAt else { return }   // nothing was heard
+        let latency = record.startedAt.duration(to: firstBufferAt)
         await metrics.record(TTSMetrics(
             engine: engine,
             synthesisLatencyMs: Int(latency / .milliseconds(1)),
