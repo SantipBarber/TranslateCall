@@ -158,6 +158,7 @@ def _cmd_compare(args: argparse.Namespace) -> int:
         baseline_doc = {
             "manifestSha256": base_meta.get("manifestSha256"),
             "macOS": base_meta.get("macOS"),
+            "buildConfiguration": base_meta.get("buildConfiguration"),
             "aggregates": base_metrics,
         }
         if base_meta.get("set") == "pr":

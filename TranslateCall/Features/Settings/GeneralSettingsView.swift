@@ -161,6 +161,11 @@ struct GeneralSettingsContent: View {
                     .font(.caption).fontWeight(.semibold).foregroundStyle(Theme.accent)
                     .frame(maxWidth: .infinity)
             }
+            Toggle(isOn: $settings.clauseSplit) {
+                Text("Start long sentences sooner")
+                Text("Long sentences are spoken in two parts, from the first comma. "
+                     + "Applies from the next conversation.")
+            }
         }
     }
 

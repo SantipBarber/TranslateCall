@@ -9,7 +9,7 @@ from tcbench import runs
 from tcbench.cli import REPO, _repo_is_dirty, main
 
 
-def _write_run(path, set_type="full", aggregates=None, pr_aggregates=None):
+def _write_run(path, set_type="full", aggregates=None, pr_aggregates=None, build_configuration=None):
     payload = {
         "meta": {
             "set": set_type,
@@ -23,6 +23,8 @@ def _write_run(path, set_type="full", aggregates=None, pr_aggregates=None):
         },
         "aggregates": aggregates or {},
     }
+    if build_configuration is not None:
+        payload["meta"]["buildConfiguration"] = build_configuration
     if pr_aggregates is not None:
         payload["prAggregates"] = pr_aggregates
     path.mkdir(parents=True, exist_ok=True)
@@ -138,6 +140,33 @@ def test_baseline_from_run_pr_uses_its_aggregates_as_pr_aggregates(tmp_path, mon
         "--thresholds", str(thresholds),
     ])
     assert code == 0
+
+
+def test_baseline_from_run_keeps_release_build_configuration(tmp_path, monkeypatch, capsys):
+    base = tmp_path / "base"
+    run = tmp_path / "run"
+    aggs = {"basic/outgoing es-ES>en": _entry()}
+    _write_run(base, set_type="pr", aggregates=aggs, build_configuration="Release")
+    _write_run(run, set_type="pr", aggregates=aggs, build_configuration="Release")
+    monkeypatch.setattr("tcbench.cli.REPO", tmp_path)
+    thresholds = tmp_path / "thresholds.json"
+    thresholds.write_text(json.dumps({
+        "latencyP50RegressionPct": 10,
+        "latencyP90RegressionPct": 15,
+        "werIncreasePts": 5.0,
+        "chrfDropPts": 4.0,
+        "cutRateMaxPct": 12.5,
+        "cutRateIncreasePts": 2.0,
+    }))
+
+    code = main([
+        "compare", str(run),
+        "--baseline-from-run", str(base),
+        "--thresholds", str(thresholds),
+    ])
+
+    assert code == 0
+    assert "build configuration changed" not in capsys.readouterr().out
 
 
 def test_baseline_from_run_full_loads_pr_aggregates(tmp_path, monkeypatch):

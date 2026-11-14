@@ -53,4 +53,31 @@ struct ClauseSplitterTests {
         #expect(parts.count == 2)
         #expect(parts.joined(separator: " ") == text.split(whereSeparator: \.isWhitespace).joined(separator: " "))
     }
+
+    // MARK: - A later part's translation continues the sentence (lowercase start)
+
+    @Test func continuingLowercasesWhenTheSourceStartsLowercase() {
+        #expect(ClauseSplitter.continuing("Los estilos en Occidente", source: "styles in the West")
+            == "los estilos en Occidente")
+        #expect(ClauseSplitter.continuing("Él irá mañana", source: "he will go tomorrow") == "él irá mañana")
+    }
+
+    @Test func continuingKeepsAProperNounOfTheSource() {
+        #expect(ClauseSplitter.continuing("Berlín no está cerca", source: "Berlin is nowhere near")
+            == "Berlín no está cerca")
+        #expect(ClauseSplitter.continuing("I will call", source: "I will call") == "I will call")
+    }
+
+    /// "the West" → "Occidente": an article before a capitalised word is likely a name the translation leads with.
+    @Test func continuingKeepsANameAfterASourceArticle() {
+        #expect(ClauseSplitter.continuing("Occidente se encontró", source: "the West found itself")
+            == "Occidente se encontró")
+    }
+
+    @Test func continuingKeepsAnAcronymAndEdgeCases() {
+        #expect(ClauseSplitter.continuing("EE. UU. dijo", source: "the us said") == "EE. UU. dijo")
+        #expect(ClauseSplitter.continuing("OTAN dijo", source: "nato said") == "OTAN dijo")
+        #expect(ClauseSplitter.continuing("", source: "styles") == "")
+        #expect(ClauseSplitter.continuing("ya está", source: "it is done") == "ya está")
+    }
 }

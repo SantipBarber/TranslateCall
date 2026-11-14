@@ -35,6 +35,16 @@ struct SentenceTranslationTests {
         #expect(try await translation.tasks[1].value == "TRANSLATED: \(translation.parts[1])")
     }
 
+    @Test("a later part continues the sentence: lowercase start (ClauseSplitter.continuing)")
+    func laterPartStartsLowercase() async throws {
+        let translation = SentenceTranslation(thirteenWordsWithComma, split: true) { text in
+            text.hasPrefix("When") ? "Cuando lleguemos a la estación," : "Te llamaremos desde el taxi"
+        }
+
+        #expect(try await translation.tasks[0].value == "Cuando lleguemos a la estación,")
+        #expect(try await translation.tasks[1].value == "te llamaremos desde el taxi")
+    }
+
     @Test("cancel() cancels every part still translating")
     func cancelCancelsEveryPart() async throws {
         let mock = MockTranslationService()

@@ -245,6 +245,15 @@ struct PipelineTracerTests {
         tracer.synthesisFinished()
     }
 
+    /// The joined text reads as the app shows it: no capital after the comma (ClauseSplitter.continuing).
+    @Test func translatedAllLowercasesTheContinuingPart() {
+        let tracer = makeTracer()
+        transcribe(tracer, Self.sentence)
+        tracer.translated(source: Self.part0, result: Self.text0)
+        tracer.translated(source: Self.part1, result: "Te llamaremos desde el taxi")
+        #expect(sink.event(0, .translatedAll)?.detail == ["text": Self.text0 + " " + Self.text1])
+    }
+
     @Test func splitUtteranceStampsPartsOnce() throws {
         let tracer = makeTracer()
         transcribe(tracer, Self.sentence)
