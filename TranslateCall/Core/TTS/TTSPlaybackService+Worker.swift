@@ -6,10 +6,15 @@ nonisolated private let logger = Logger(subsystem: "com.spbarber.TranslateCall",
 
 extension TTSPlaybackService {
 
+    /// Synthesis stays serial here: only this loop starts attempts, one at a time. It hands each
+    /// utterance to a drain once its synthesis ended and goes on with the next one, but never more
+    /// than one ahead of the utterance playing (REQ-CS-50/51).
     func runWorker() async {
         for await _ in wakeups {
             while !queue.isEmpty {
-                await play(takeNext())
+                await waitForRoomAhead()
+                guard !queue.isEmpty else { break }   // stopSpeaking cleared it meanwhile
+                await synthesizeNext()
             }
         }
     }
@@ -27,23 +32,22 @@ extension TTSPlaybackService {
         return next
     }
 
-    private func play(_ utterance: Utterance) async {
+    private func synthesizeNext() async {
+        let utterance = takeNext()
         let gen = generation
-        let outcome = await perform(utterance, gen: gen)
+        isSynthesizing = true
+        let synthesis = await perform(utterance, gen: gen)
+        isSynthesizing = false
         guard gen == generation else { return }   // stopSpeaking already reported and cleared
-        if case .skipped(let reason) = outcome {
-            eventsContinuation.yield(.utteranceSkipped(reason))
-            logger.warning("TTS sentence skipped: \(String(describing: reason), privacy: .public)")
-        }
-        if queue.isEmpty { setSpeaking(false) }
+        handOff(Handoff(synthesis: synthesis, utterance: utterance, gen: gen))
     }
 
-    private func perform(_ utterance: Utterance, gen: UInt64) async -> Outcome {
+    private func perform(_ utterance: Utterance, gen: UInt64) async -> Synthesis {
         let fallbackReady = fallback?.canSpeak(utterance.locale) ?? false
         // The breaker only diverts when the fallback can take the sentence: with no usable
         // fallback the primary is the only voice there is, so it keeps being tried.
         guard primary.canSpeak(utterance.locale), !(isBreakerOpen && fallbackReady) else {
-            guard let fallback, fallbackReady else { return .skipped(.noVoice) }
+            guard let fallback, fallbackReady else { return .decided(.skipped(.noVoice)) }
             return await speakWithFallback(fallback, utterance, gen: gen)
         }
         let (end, record) = await runAttempt(primary, utterance, gen: gen)
@@ -54,25 +58,25 @@ extension TTSPlaybackService {
         case .outputFailed, .cancelled: break
         }
         if case .failed(let message) = end, heardNothing {
-            guard let fallback, fallbackReady else { return .skipped(.primaryFailed(message)) }
+            guard let fallback, fallbackReady else { return .decided(.skipped(.primaryFailed(message))) }
             return await speakWithFallback(fallback, utterance, gen: gen)
         }
-        return await conclude(end, record: record, engine: primary.engine, utterance: utterance, gen: gen)
+        return .attempted(Attempted(end: end, record: record, engine: primary.engine))
     }
 
     /// The same utterance again, on the fallback (REQ-T-20/22). The fallback has no fallback.
     private func speakWithFallback(
         _ fallback: any UtteranceSynthesizer, _ utterance: Utterance, gen: UInt64
-    ) async -> Outcome {
+    ) async -> Synthesis {
         // A stopSpeaking() that landed while the primary attempt was awaited must not leave a
         // spurious "fell back" notice behind: stop already reported and cleared this utterance.
-        guard gen == generation else { return .stale }
+        guard gen == generation else { return .decided(.stale) }
         eventsContinuation.yield(.fellBack(from: primary.engine, to: fallback.engine))
         let (end, record) = await runAttempt(fallback, utterance, gen: gen)
         if case .failed(let message) = end, record.bufferCount == 0 {
-            return .skipped(.primaryFailed(message))
+            return .decided(.skipped(.primaryFailed(message)))
         }
-        return await conclude(end, record: record, engine: fallback.engine, utterance: utterance, gen: gen)
+        return .attempted(Attempted(end: end, record: record, engine: fallback.engine))
     }
 
     // MARK: Circuit breaker (REQ-T-23)

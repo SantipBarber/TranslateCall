@@ -12,7 +12,7 @@ extension TTSPlaybackService {
         _ synthesizer: any UtteranceSynthesizer, _ utterance: Utterance, gen: UInt64
     ) async -> (end: AttemptEnd, record: AttemptRecord) {
         guard gen == generation else { return (.cancelled, AttemptRecord(startedAt: now())) }
-        attempt = AttemptRecord(startedAt: now())
+        attempt = AttemptRecord(startedAt: now(), epoch: outputEpoch)
         setSpeaking(true)
         let stream = synthesizer.synthesize(text: utterance.text, locale: utterance.locale)
         let consumer = Task { await self.consume(stream, gen: gen) }
@@ -34,12 +34,7 @@ extension TTSPlaybackService {
             for try await buffer in stream {
                 guard gen == generation, !Task.isCancelled else { return .cancelled }
                 guard buffer.frameLength > 0 else { continue }
-                do {
-                    attempt.lastHandle = try output.schedule(buffer)
-                } catch {
-                    logger.error("TTS output refused a buffer: \(error.localizedDescription, privacy: .public)")
-                    return .outputFailed
-                }
+                guard schedule(buffer) else { return .outputFailed }
                 bufferObserver?(buffer)
                 if attempt.firstBufferAt == nil { attempt.firstBufferAt = now() }
                 attempt.bufferCount += 1
@@ -54,20 +49,55 @@ extension TTSPlaybackService {
         return .finished
     }
 
+    /// Schedules one buffer of the attempt in flight; false when the output was stopped under the
+    /// attempt (REQ-CS-54) or refused the buffer. Reports the handoff gap before the attempt's first
+    /// buffer when audio was scheduled before it in this generation (REQ-CS-56).
+    private func schedule(_ buffer: AVAudioPCMBuffer) -> Bool {
+        guard attempt.epoch == outputEpoch else { return false }
+        if attempt.bufferCount == 0, let end = scheduledAudioEnd {
+            (output as? any HandoffReporting)?.handoff(gap: max(.zero, end.duration(to: now())))
+        }
+        do {
+            attempt.lastHandle = try output.schedule(buffer)
+        } catch {
+            logger.error("TTS output refused a buffer: \(error.localizedDescription, privacy: .public)")
+            failOutput()
+            return false
+        }
+        let current = now()
+        scheduledAudioEnd = max(current, scheduledAudioEnd ?? current) + Self.length(of: buffer)
+        return true
+    }
+
+    /// Exact for integer sample rates, so the audio timeline does not drift by rounding.
+    private static func length(of buffer: AVAudioPCMBuffer) -> Duration {
+        let rate = buffer.format.sampleRate
+        guard rate > 0 else { return .zero }
+        guard rate == rate.rounded() else { return .seconds(Double(buffer.frameLength) / rate) }
+        return .seconds(Int64(buffer.frameLength)) / Int64(rate)
+    }
+
+    /// Stops the output on a failure or stall: everything scheduled is lost, including the audio of
+    /// an utterance synthesized ahead, which the epoch bump tells (REQ-CS-54).
+    func failOutput() {
+        output.stop()
+        outputEpoch &+= 1
+        scheduledAudioEnd = nil
+    }
+
     /// Waits for the attempt's audio to play out, then names the outcome (REQ-T-13/16/21).
     func conclude(
         _ end: AttemptEnd, record: AttemptRecord, engine: TTSEngine, utterance: Utterance, gen: UInt64
     ) async -> Outcome {
-        if end == .cancelled { return .stale }
-        if end == .outputFailed {
-            output.stop()
-            return .skipped(.outputUnavailable)
-        }
+        guard end != .cancelled, gen == generation else { return .stale }
+        // The output refused this attempt's audio, or was stopped under it while the utterance
+        // before it played (both already stopped the output).
+        guard end != .outputFailed, record.epoch == outputEpoch else { return .skipped(.outputUnavailable) }
         switch await drainPlayback(record) {
-        case .stopped:
-            return gen == generation ? .skipped(.outputUnavailable) : .stale
-        case .stalled:
-            output.stop()
+        case .stopped, .stalled:
+            guard gen == generation else { return .stale }
+            // Lost or stalled under this utterance: the one ahead, if any, went with it.
+            if record.epoch == outputEpoch { failOutput() }
             return .skipped(.outputUnavailable)
         case .played:
             if end == .timedOut { return .skipped(.timeout) }

@@ -26,12 +26,15 @@ nonisolated struct TTSPlaybackLimits: Sendable {
 
 /// The one `SynthesisService` the coordinator gets, whatever the engine (F8.5.2 REQ-T-10…19).
 ///
-/// `speak` enqueues and returns; nothing is ever dropped (F8.5.3 REQ-Q-01). One worker runs
+/// `speak` enqueues and returns; nothing is ever dropped (F8.5.3 REQ-Q-01). One worker synthesizes
 /// utterances strictly one at a time, coalescing the sentences that queued up meanwhile into one
-/// utterance to catch up (REQ-Q-02): it starts the synthesizer, schedules each buffer as it arrives
-/// and waits only for the last one to be played back. `stopSpeaking` bumps `generation`, so nothing
-/// synthesized before it is ever scheduled. `isSpeakingStream` is truthful: `false` only once the
-/// last queued audio has been heard, or at once on stop.
+/// utterance to catch up (REQ-Q-02): it starts the synthesizer and schedules each buffer as it
+/// arrives. Once an utterance's synthesis has ended, a drain chained after the previous one waits for
+/// its last buffer to be played back and reports its outcome, while the worker already synthesizes
+/// the next utterance, at most one ahead of the one playing (clause split FR-CS.5, design §7a).
+/// `stopSpeaking` bumps `generation`, so nothing synthesized before it is ever scheduled.
+/// `isSpeakingStream` is truthful: `false` only once the last queued audio has been heard, or at
+/// once on stop.
 actor TTSPlaybackService: SynthesisService {
 
     // MARK: Public streams
@@ -49,7 +52,7 @@ actor TTSPlaybackService: SynthesisService {
         let locale: Locale
     }
 
-    enum AttemptEnd: Equatable {
+    enum AttemptEnd: Equatable, Sendable {
         case finished
         case failed(String)
         case outputFailed
@@ -61,7 +64,7 @@ actor TTSPlaybackService: SynthesisService {
         case played, stopped, stalled
     }
 
-    enum Outcome {
+    enum Outcome: Sendable {
         case played
         case skipped(TTSSkipReason)
         case stale
@@ -76,6 +79,8 @@ actor TTSPlaybackService: SynthesisService {
         var audioSeconds: Double = 0
         var lastHandle: PlaybackHandle?
         var countsTowardBreaker = true
+        /// `outputEpoch` when the attempt started: its audio was lost if the epoch moved since.
+        var epoch: UInt64 = 0
     }
 
     // MARK: Dependencies
@@ -114,6 +119,19 @@ actor TTSPlaybackService: SynthesisService {
 
     /// The attempt in flight. Only the worker starts attempts, one at a time.
     var attempt: AttemptRecord
+    /// The worker is running an utterance's attempt(s); its drain is not queued yet.
+    var isSynthesizing = false
+
+    // Look-ahead (FR-CS.5).
+    /// Utterances whose synthesis ended and whose outcome is not reported yet, oldest first:
+    /// the one playing, then at most one synthesized ahead of it.
+    var drains: [PendingDrain] = []
+    var nextDrainID: UInt64 = 0
+    /// Bumped each time the service stops the output on a failure or stall, so an utterance
+    /// synthesized ahead knows its audio went with the one playing (REQ-CS-54).
+    var outputEpoch: UInt64 = 0
+    /// When the audio scheduled so far in this generation ends (REQ-CS-56); nil after any stop.
+    var scheduledAudioEnd: ContinuousClock.Instant?
 
     // MARK: Init
 
@@ -144,7 +162,7 @@ actor TTSPlaybackService: SynthesisService {
         (wakeups, wakeupContinuation) = AsyncStream.makeStream(of: Void.self, bufferingPolicy: .bufferingNewest(1))
     }
 
-    /// Utterances waiting behind the one in flight.
+    /// Sentences waiting in the queue (not yet taken for synthesis).
     var pendingCount: Int { queue.count }
 
     // MARK: SynthesisService
@@ -166,7 +184,10 @@ actor TTSPlaybackService: SynthesisService {
         queue.removeAll()
         backlogNoticed = false
         attemptTask?.cancel()
+        drains.forEach { $0.task.cancel() }
+        drains.removeAll()
         output.stop()
+        scheduledAudioEnd = nil
         setSpeaking(false)
     }
 

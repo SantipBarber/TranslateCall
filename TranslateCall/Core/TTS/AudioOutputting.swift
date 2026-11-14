@@ -15,6 +15,15 @@ nonisolated protocol AudioOutputting: AnyObject, Sendable {
     func shutdown()
 }
 
+// MARK: - HandoffReporting
+
+/// An output that wants the handoff gap (clause split REQ-CS-56): `TTSPlaybackService` calls it right
+/// before scheduling the first buffer of an attempt when audio was scheduled earlier in the same
+/// generation, with the silence between the end of that audio and this buffer (zero when in time).
+nonisolated protocol HandoffReporting: Sendable {
+    func handoff(gap: Duration)
+}
+
 // MARK: - PlaybackHandle
 
 /// Completion of one scheduled buffer, resolved exactly once: played back, or cancelled.
