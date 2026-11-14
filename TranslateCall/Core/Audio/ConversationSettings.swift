@@ -30,7 +30,8 @@ final class ConversationSettings: ObservableObject {
         }
     }
 
-    /// Split outgoing STT text into clauses for earlier, faster translation turns (M9, REQ-CS-20).
+    /// Split long STT sentences into two clauses, in both directions, so the first one is translated
+    /// and spoken sooner (M9, REQ-CS-20).
     /// Read when a session starts, like `pauseSeconds`.
     @Published var clauseSplit: Bool {
         didSet { defaults.set(clauseSplit, forKey: Self.clauseSplitKey) }

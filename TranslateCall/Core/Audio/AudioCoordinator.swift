@@ -127,7 +127,7 @@ final class AudioCoordinator: ObservableObject {
     /// which skips it when the clone is not the outgoing voice. Nil (tests, previews): no warm-up.
     var voiceCloneWarmUp: ((Locale) async -> Void)?
 
-    /// Whether the session splits outgoing sentences into clauses (REQ-CS-20); `AppContainer` wires it
+    /// Whether the session splits sentences into clauses, in both directions (REQ-CS-20); `AppContainer` wires it
     /// to `ConversationSettings`. Nil (tests, previews): clause split is off.
     var clauseSplitSetting: (() -> Bool)?
     /// The clause-split decision of the current session, read once at start(). Stays fixed while the

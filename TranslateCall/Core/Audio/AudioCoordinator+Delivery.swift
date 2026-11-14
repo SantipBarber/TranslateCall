@@ -28,7 +28,8 @@ extension AudioCoordinator {
                 if index == 0 { throw error }
                 try Task.checkCancellation()   // the session is stopping: silent, as a cancellation
                 markPartlySkipped(entry)
-                // A part cancelled under a live delivery (by the committer) is no failure: no notice.
+                // A part cancelled from outside while this delivery runs (`SentenceTranslation.cancel()`;
+                // the committer's `cancelAll` cancels the delivery too, caught above) is no failure.
                 guard !(error is CancellationError) else { return }
                 handleTranslationFailure(error, outgoing: direction == .outgoing)
                 return

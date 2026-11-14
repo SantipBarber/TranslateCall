@@ -129,6 +129,30 @@ struct TTSPlaybackLookAheadTests {
         await harness.service.deactivate()
     }
 
+    @Test("the utterance ahead runs under its own watchdog: it times out while the current one plays on (REQ-CS-52)")
+    func watchdogOnAheadWhileCurrentPlays() async {
+        let primary = FakeSynthesizer(scripts: [FakeSynthesizer.Script(),
+                                                FakeSynthesizer.Script(buffers: [], hang: true)])
+        let harness = TTSPlaybackHarness(primary: primary, output: FakeOutput(autoComplete: false),
+                                         limits: limits(grace: .seconds(60)))
+        await harness.service.speak(text: "a", locale: english)
+        #expect(await waitUntil { harness.output.scheduledCount == 1 })
+        await harness.service.speak(text: "b", locale: english)
+        // a's playback bound (~60 s) and b's watchdog (30 s) are both registered before time moves.
+        #expect(await waitUntil { primary.texts == ["a", "b"] && harness.clock.pendingDeadlines.count == 2 })
+
+        harness.clock.advance(by: .seconds(30))
+
+        #expect(await waitUntil { primary.cancelledCount == 1 }, "b's synthesizer was not cancelled")
+        await mainQueueHop()
+        #expect(harness.events.values.isEmpty, "b's skip came before a was heard")
+        #expect(harness.output.stopCount == 0, "a was cut")
+        harness.output.completeAll()
+        #expect(await waitUntil { harness.events.values == [.utteranceSkipped(.timeout)] })
+        #expect(await waitUntil { harness.speaking.values == [true, false] })
+        await harness.service.deactivate()
+    }
+
     @Test("isSpeaking stays true across the handoff to the utterance ahead (REQ-CS-55)")
     func speakingStaysTrueAcrossHandoff() async {
         let harness = TTSPlaybackHarness(output: FakeOutput(autoComplete: false))

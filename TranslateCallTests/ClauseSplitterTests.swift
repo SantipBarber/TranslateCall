@@ -18,6 +18,13 @@ struct ClauseSplitterTests {
         #expect(ClauseSplitter.split(text) == ["Yes, I really think so,", "we can meet tomorrow at the main square"])
     }
 
+    /// REQ-CS-03: two eligible marks: one cut only, at the first; the second stays inside part 1.
+    @Test func twoEligibleMarksCutOnceAtTheFirst() {
+        let text = "When we get to the station, we will call you from the taxi, and then we can talk"
+        #expect(ClauseSplitter.split(text)
+            == ["When we get to the station,", "we will call you from the taxi, and then we can talk"])
+    }
+
     @Test func tooFewAfterWhole() { // 3 words after the only eligible mark
         let text = "We can meet tomorrow at the main square near the station; fine by me"
         #expect(ClauseSplitter.split(text) == [text])
