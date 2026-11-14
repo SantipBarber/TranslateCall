@@ -18,6 +18,8 @@ struct BenchEnvironment: Sendable {
     let dirty: Bool
     /// Run-line slugs selected by `TC_BENCH_LINES`; nil runs every line.
     let lines: Set<String>?
+    /// The clause-split switch (REQ-CS-21): on unless `TC_CLAUSE_SPLIT=0`.
+    let clauseSplit: Bool
 
     func selects(_ line: BenchRunLine) -> Bool { lines?.contains(line.slug) ?? true }
 
@@ -62,6 +64,13 @@ struct BenchEnvironment: Sendable {
             }
             lines = slugs.isEmpty ? nil : Set(slugs)
         }
+        var clauseSplit = true
+        if let raw = env["TC_CLAUSE_SPLIT"], !raw.isEmpty {
+            guard ["0", "1"].contains(raw) else {
+                throw BenchSetupError(description: "TC_CLAUSE_SPLIT must be 0 or 1, got \(raw)")
+            }
+            clauseSplit = raw == "1"
+        }
         let home = FileManager.default.homeDirectoryForCurrentUser
         return BenchEnvironment(
             set: set,
@@ -74,12 +83,14 @@ struct BenchEnvironment: Sendable {
             manifest: path(env["TC_BENCH_MANIFEST"] ?? "bench/manifests/phase1.json"),
             commit: env["TC_COMMIT"] ?? "unknown",
             dirty: ["1", "true"].contains(env["TC_DIRTY"] ?? "0"),
-            lines: lines
+            lines: lines,
+            clauseSplit: clauseSplit
         )
     }
 
     func options(for profile: BenchProfile) -> BenchOptions {
-        BenchOptions(profile: profile, edge: edge, overrideSTT: overrideSTT, overrideTTS: overrideTTS)
+        BenchOptions(profile: profile, edge: edge, overrideSTT: overrideSTT, overrideTTS: overrideTTS,
+                     clauseSplit: clauseSplit)
     }
 }
 
@@ -281,6 +292,8 @@ enum BenchRunner {
             "pauseSeconds": String(pause),
             "vadChunkSamples": "4096",
             "listeningMode": session.coordinator.listeningMode.rawValue,
+            // REQ-CS-21: what the run measured, so split on/off runs stay distinguishable.
+            "clauseSplit": options.clauseSplit ? "1" : "0",
         ]
         settings.merge(voiceProfile) { _, new in new }
         return RawRun.Meta(

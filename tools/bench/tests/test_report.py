@@ -245,6 +245,33 @@ def test_no_clone_table_without_clone(tmp_path, monkeypatch):
     assert "Voice clone" not in _go(run_dir, manifest, tmp_path).read_text()
 
 
+def test_report_renders_split_table(tmp_path, monkeypatch):
+    run_dir, manifest = _build(tmp_path, monkeypatch)
+    raw_path = next(run_dir.rglob("raw.json"))
+    raw = json.loads(raw_path.read_text())
+    first = raw["utterances"][0]
+    first["detail"]["translated"]["parts"] = "2"
+    first["detail"]["translatedAll"] = {"text": "hello world"}
+    first["events"]["translatedAll"] = first["events"]["translated"]
+    first["events"]["ttsPartBuffer"] = first["events"]["ttsFirstBuffer"]
+    first["detail"]["ttsPartBuffer"] = {"part": "1", "handoffGapMs": "30"}
+    second = raw["utterances"][1]
+    second["detail"]["ttsFirstBuffer"]["handoffGapMs"] = "0"
+    raw_path.write_text(json.dumps(raw))
+    analyze.run(run_dir, manifest)
+    html = _go(run_dir, manifest, tmp_path).read_text()
+    assert "Clause split" in html
+    assert "split sentences" in html
+    assert "gap p50" in html and "gap p90" in html
+    assert "back-to-back %" in html
+    assert '<td class="num">1</td>' in html
+
+
+def test_no_split_table_without_parts(tmp_path, monkeypatch):
+    run_dir, manifest = _build(tmp_path, monkeypatch)
+    assert "Clause split" not in _go(run_dir, manifest, tmp_path).read_text()
+
+
 def test_early_processing_table_only_with_tentatives(tmp_path, monkeypatch):
     run_dir, manifest = _build(tmp_path, monkeypatch)
     assert "Early processing" not in _go(run_dir, manifest, tmp_path).read_text()

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Benchmark harness entry point (M9 REQ-BH-60): fetch → build → run in real time → analyse → report → compare.
-# Usage: bench.sh [set=pr|full] [profile=all|basic|best] [edge=0|1] [lines=<comma-separated run-line slugs>]
+# Usage: bench.sh [set=pr|full] [profile=all|basic|best] [edge=0|1] [lines=<comma-separated run-line slugs>] [split=0|1]
 # lines: outgoing-es-ES-en, outgoing-es-419-en, outgoing-en-es, incoming-en-es (empty = all).
+# split: the clause-split switch (REQ-CS-21), 1 default; 0 turns it off for the run.
 # Exits with `tcbench compare`'s exit code (0 when there is no baseline yet).
 set -Eeuo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -10,9 +11,11 @@ set_name=${1:-pr}
 profile=${2:-all}
 edge=${3:-0}
 lines=${4:-}
+split=${5:-1}
 [[ "$set_name" == pr || "$set_name" == full ]] || { echo "✗ set must be pr or full, got $set_name" >&2; exit 2; }
 [[ "$edge" == 0 || "$edge" == 1 ]] || { echo "✗ edge must be 0 or 1, got $edge" >&2; exit 2; }
 [[ "$profile" == all || "$profile" == basic || "$profile" == best ]] || { echo "✗ profile must be all, basic or best, got $profile" >&2; exit 2; }
+[[ "$split" == 0 || "$split" == 1 ]] || { echo "✗ split must be 0 or 1, got $split" >&2; exit 2; }
 
 tcbench() { uv run --locked --project tools/bench tcbench "$@"; }
 # One source for the xcodebuild invocation: the justfile's `xcb` variable (word-split; no spaces in its paths).
@@ -102,7 +105,7 @@ phase=test
 rm -rf build/logs/bench.xcresult
 TEST_RUNNER_TC_BENCH_SET=$set_name TEST_RUNNER_TC_BENCH_PROFILE=$profile TEST_RUNNER_TC_BENCH_EDGE=$edge \
 TEST_RUNNER_TC_BENCH_LINES=$lines TEST_RUNNER_TC_BENCH_OUT=$PWD/$out TEST_RUNNER_TC_BENCH_CACHE=$cache \
-TEST_RUNNER_TC_BENCH_MANIFEST=$manifest \
+TEST_RUNNER_TC_BENCH_MANIFEST=$manifest TEST_RUNNER_TC_CLAUSE_SPLIT=$split \
 TEST_RUNNER_TC_COMMIT=$commit TEST_RUNNER_TC_DIRTY=$dirty TEST_RUNNER_TC_XCODE=$xcode \
   "${xcb[@]}" test-without-building -testPlan Bench -only-testing:TranslateCallTests/BenchTests/BenchRunLineTests \
   -resultBundlePath build/logs/bench.xcresult 2>&1 | tee build/logs/bench.log | xcbeautify

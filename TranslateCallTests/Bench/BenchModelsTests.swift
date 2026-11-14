@@ -164,6 +164,30 @@ struct BenchModelsTests {
         }
     }
 
+    // MARK: - Clause split (REQ-CS-21)
+
+    @Test func clauseSplitDefaultsOnWithoutAVariable() throws {
+        #expect(try BenchEnvironment.parse(["TC_BENCH_OUT": "/o"]).clauseSplit)
+    }
+
+    @Test func clauseSplitZeroTurnsTheSplitOff() throws {
+        let env = try BenchEnvironment.parse(["TC_BENCH_OUT": "/o", "TC_CLAUSE_SPLIT": "0"])
+        #expect(!env.clauseSplit)
+        #expect(!env.options(for: .best).clauseSplit)
+    }
+
+    @Test func clauseSplitOneTurnsTheSplitOn() throws {
+        let env = try BenchEnvironment.parse(["TC_BENCH_OUT": "/o", "TC_CLAUSE_SPLIT": "1"])
+        #expect(env.clauseSplit)
+        #expect(env.options(for: .basic).clauseSplit)
+    }
+
+    @Test func clauseSplitRejectsOtherValues() {
+        #expect(throws: BenchSetupError.self) {
+            try BenchEnvironment.parse(["TC_BENCH_OUT": "/o", "TC_CLAUSE_SPLIT": "x"])
+        }
+    }
+
     // MARK: - AudioCollector
 
     private static func buffer(frames: Int) -> AVAudioPCMBuffer {

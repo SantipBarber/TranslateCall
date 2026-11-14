@@ -87,6 +87,8 @@ struct BenchOptions: Sendable {
     var edge = false
     var overrideSTT: STTEngine?
     var overrideTTS: TTSEngine?
+    /// The clause-split switch (REQ-CS-21), applied to the session's settings.
+    var clauseSplit = true
 }
 
 /// The fake output device: records when each buffer reached it (REQ-BH-20). Nothing is played.
@@ -344,6 +346,7 @@ enum BenchPipelineFactory {
             throw error
         }
         let settings = ConversationSettings(defaults: defaults)
+        settings.clauseSplit = options.clauseSplit
         let vadConfig = settings.vadConfiguration
         let sink = CollectingTraceSink()
         let trailing = Duration.seconds(vadConfig.minSilenceDuration)
@@ -377,6 +380,8 @@ enum BenchPipelineFactory {
             languagePairManager: pair,
             isTranslationPairInstalled: AppleTranslationService.isInstalled
         )
+        // Read at each session start (REQ-CS-20): what `just bench split=` chose.
+        coordinator.clauseSplitSetting = { settings.clauseSplit }
         return BenchSession(
             line: line, coordinator: coordinator, mic: mic, system: system, vads: vads, stt: stt, tts: tts,
             host: host, sink: sink, tracer: line.incoming ? inTracer : outTracer,

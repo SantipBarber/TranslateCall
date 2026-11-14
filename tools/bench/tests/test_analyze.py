@@ -19,7 +19,8 @@ def _clip(cid, feed, feed_end, ss, se):
 
 
 def _utt(seq, start, vad_end=None, stt=None, tr=None, tts=None, text=None, seg_ms=None, translated=None,
-         stt_engine="STT", tts_engine="TTS", merged=None, dropped=None, playback=None):
+         translated_all=None, first_gap_ms=None, part=None, part_gap_ms=None, stt_engine="STT",
+         tts_engine="TTS", merged=None, dropped=None, playback=None):
     events = {"speechStart": start}
     detail = {}
     if vad_end is not None:
@@ -32,9 +33,19 @@ def _utt(seq, start, vad_end=None, stt=None, tr=None, tts=None, text=None, seg_m
     if tr is not None:
         events["translated"] = tr
         detail["translated"] = {"text": translated or ""}
+        if translated_all is not None:
+            detail["translated"]["parts"] = "2"
+            detail["translatedAll"] = {"text": translated_all}
     if tts is not None:
         events["ttsFirstBuffer"] = tts
         detail["ttsFirstBuffer"] = {"engine": tts_engine, **({"mergedSeqs": merged} if merged else {})}
+        if first_gap_ms is not None:
+            detail["ttsFirstBuffer"]["handoffGapMs"] = first_gap_ms
+    if part is not None:
+        events["ttsPartBuffer"] = part
+        detail["ttsPartBuffer"] = {"part": str(part)}
+        if part_gap_ms is not None:
+            detail["ttsPartBuffer"]["handoffGapMs"] = part_gap_ms
     if dropped:
         events["dropped"] = start + S
         detail["dropped"] = {"reason": dropped}
@@ -572,3 +583,67 @@ def test_clone_spoken_share_unknown_without_expected_tts():
     assert clone["sentences"] == 2
     assert clone["clonePlannedSentences"] is None
     assert clone["cloneSpokenPct"] is None
+
+
+# MARK: - Clause split (REQ-CS-31, REQ-CS-40)
+
+
+def test_quality_uses_translated_all():
+    """A split sentence is scored on its whole translation (translatedAll), not on part 0."""
+    utts = [_utt(0, 1 * S, vad_end=3 * S, stt=3 * S, tr=3 * S, tts=3 * S, text="hola mundo",
+                 translated="hola mundo", translated_all="hello world")]
+    agg = _agg(_raw([TWO[0]], utts), _manifest(("a", "hola mundo", "hello world")))
+    assert agg["chrf"]["pipeline"] == pytest.approx(100.0)
+    # A whole sentence without translatedAll still scores on translated.
+    plain = [_utt(0, 1 * S, vad_end=3 * S, stt=3 * S, tr=3 * S, tts=3 * S, text="hola mundo",
+                  translated="hello world")]
+    whole = _agg(_raw([TWO[0]], plain), _manifest(("a", "hola mundo", "hello world")))
+    assert whole["chrf"]["pipeline"] == pytest.approx(100.0)
+
+
+def test_split_handoff_summary():
+    """The gate value REQ-CS-40: the handoff gap of the second clause, p50/p90 over the parts."""
+    clips = TWO + [_clip("c", 8 * S, 12 * S, 9 * S, 11 * S), _clip("d", 12 * S, 16 * S, 13 * S, 15 * S)]
+    manifest = _manifest(("a", "uno", "one"), ("b", "dos", "two"), ("c", "tres", "three"), ("d", "cuatro", "four"))
+    utts = [
+        _utt(0, 1 * S, vad_end=3 * S, stt=3 * S, tr=3 * S, tts=3 * S, text="a", translated="uno",
+             translated_all="uno dos", part=int(3.5 * S), part_gap_ms="10"),
+        _utt(1, 5 * S, vad_end=7 * S, stt=7 * S, tr=7 * S, tts=7 * S, text="b", translated="tres",
+             translated_all="tres cuatro", part=int(7.5 * S), part_gap_ms="200"),
+        # A whole sentence in time: feeds back-to-back % (information).
+        _utt(2, 9 * S, vad_end=10 * S, stt=10 * S, tr=10 * S, tts=10 * S, text="c", translated="cinco",
+             first_gap_ms="0"),
+        _utt(3, 13 * S, vad_end=14 * S, stt=14 * S, tr=14 * S, tts=14 * S, text="d", translated="seis",
+             first_gap_ms="80"),
+    ]
+    agg = _agg(_raw(clips, utts), manifest)
+    split = agg["split"]
+    assert split["sentences"] == 2
+    assert split["handoffGapMs"] == analyze.summary([10.0, 200.0])
+    assert split["handoffGapMs"]["p50"] == pytest.approx(105.0)
+    assert split["handoffGapMs"]["p90"] == pytest.approx(181.0)
+    assert split["backToBackPct"] == pytest.approx(50.0)
+
+
+def test_split_handoff_summary_ignores_parts_without_a_gap():
+    """A part buffer without handoffGapMs (coalesced attempt) adds no gap sample."""
+    utts = [
+        _utt(0, 1 * S, vad_end=3 * S, stt=3 * S, tr=3 * S, tts=3 * S, text="a", translated="uno",
+             translated_all="uno dos", part=int(3.5 * S)),
+        _utt(1, 5 * S, vad_end=7 * S, stt=7 * S, tr=7 * S, tts=7 * S, text="b", translated="tres",
+             translated_all="tres cuatro", part=int(7.5 * S), part_gap_ms="40"),
+    ]
+    split = _agg(_raw(TWO, utts), M2)["split"]
+    assert split["handoffGapMs"] == analyze.summary([40.0])
+    assert split["sentences"] == 2
+
+
+def test_no_split_section_without_parts():
+    utts = [_utt(0, 1 * S, vad_end=3 * S, stt=3 * S, tr=3 * S, tts=3 * S, text="x", translated="one")]
+    assert "split" not in _agg(_raw([TWO[0]], utts), M2)
+    assert "split" not in _agg(_raw(TWO, []), M2)
+
+
+def test_split_stats_do_not_enter_compare():
+    import inspect
+    assert "split" not in inspect.getsource(compare)
