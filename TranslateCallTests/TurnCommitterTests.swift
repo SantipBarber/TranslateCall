@@ -33,16 +33,31 @@ private final class CommitterProbe {
     }
 
     /// Like the coordinator's deliver: awaits the held translation, or translates a final itself.
-    func makeCommitter() -> TurnCommitter {
+    /// Every part is awaited and the joined text is recorded.
+    func makeCommitter(splitsClauses: Bool = false) -> TurnCommitter {
         TurnCommitter(
             translate: { [self] in try await translate($0) },
+            splitsClauses: splitsClauses,
             deliver: { [self] text, translation in
-                let task = translation ?? Task { try await translate(text) }
-                let value = try? await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
-                guard let value else { return }
-                delivered.append((text, value))
+                let sentence = translation ?? makeSentence(text)
+                await deliverParts(text, sentence)
             }
         )
+    }
+
+    private func makeSentence(_ text: String) -> SentenceTranslation {
+        SentenceTranslation(text, split: false) { [self] in try await translate($0) }
+    }
+
+    private func deliverParts(_ text: String, _ sentence: SentenceTranslation) async {
+        var values: [String] = []
+        for task in sentence.tasks {
+            let value = try? await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+            guard let value else { return }
+            values.append(value)
+        }
+        guard !values.isEmpty else { return }
+        delivered.append((text, values.joined(separator: " ")))
     }
 }
 
@@ -100,6 +115,66 @@ struct TurnCommitterTests {
 
         committer.receive(.retract(1))
         #expect(await waitUntil { probe.cancelled.values == ["hola"] })
+        #expect(committer.heldCount == 0)
+        await mainQueueHop()
+        #expect(probe.delivered.isEmpty)
+    }
+
+    @Test("clause split on: a 13-word tentative translates both parts before its commit")
+    func tentativeStartsBothParts() async {
+        let probe = CommitterProbe()
+        let committer = probe.makeCommitter(splitsClauses: true)
+        let sentence = "uno dos tres cuatro cinco seis, siete ocho nueve diez once doce trece"
+        committer.receive(result(sentence, id: 1))
+        #expect(await waitUntil {
+            probe.translated == ["uno dos tres cuatro cinco seis,", "siete ocho nueve diez once doce trece"]
+        })
+        await mainQueueHop()
+        #expect(probe.delivered.isEmpty, "nothing before the commit")
+        #expect(committer.heldCount == 1)
+
+        committer.receive(.commit(1))
+        probe.open("uno dos tres cuatro cinco seis,")
+        probe.open("siete ocho nueve diez once doce trece")
+        #expect(await waitUntil { probe.delivered.count == 1 })
+        #expect(probe.delivered.first?.text == sentence)
+        #expect(
+            probe.delivered.first?.translation
+                == "EN(uno dos tres cuatro cinco seis,) EN(siete ocho nueve diez once doce trece)"
+        )
+        #expect(probe.translated.count == 2, "each part translated once")
+        #expect(committer.heldCount == 0)
+    }
+
+    @Test("clause split on: a retract cancels both parts")
+    func retractCancelsBothParts() async {
+        let probe = CommitterProbe()
+        let committer = probe.makeCommitter(splitsClauses: true)
+        let sentence = "uno dos tres cuatro cinco seis, siete ocho nueve diez once doce trece"
+        committer.receive(result(sentence, id: 1))
+        #expect(await waitUntil { probe.translated.count == 2 })
+
+        committer.receive(.retract(1))
+        #expect(await waitUntil {
+            probe.cancelled.values == ["uno dos tres cuatro cinco seis,", "siete ocho nueve diez once doce trece"]
+        })
+        #expect(committer.heldCount == 0)
+        await mainQueueHop()
+        #expect(probe.delivered.isEmpty)
+    }
+
+    @Test("clause split on: cancelAll cancels both parts")
+    func cancelAllCancelsBothParts() async {
+        let probe = CommitterProbe()
+        let committer = probe.makeCommitter(splitsClauses: true)
+        let sentence = "uno dos tres cuatro cinco seis, siete ocho nueve diez once doce trece"
+        committer.receive(result(sentence, id: 1))
+        #expect(await waitUntil { probe.translated.count == 2 })
+
+        committer.cancelAll()
+        #expect(await waitUntil {
+            probe.cancelled.values == ["uno dos tres cuatro cinco seis,", "siete ocho nueve diez once doce trece"]
+        })
         #expect(committer.heldCount == 0)
         await mainQueueHop()
         #expect(probe.delivered.isEmpty)

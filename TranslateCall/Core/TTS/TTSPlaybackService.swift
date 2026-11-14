@@ -26,12 +26,15 @@ nonisolated struct TTSPlaybackLimits: Sendable {
 
 /// The one `SynthesisService` the coordinator gets, whatever the engine (F8.5.2 REQ-T-10…19).
 ///
-/// `speak` enqueues and returns; nothing is ever dropped (F8.5.3 REQ-Q-01). One worker runs
+/// `speak` enqueues and returns; nothing is ever dropped (F8.5.3 REQ-Q-01). One worker synthesizes
 /// utterances strictly one at a time, coalescing the sentences that queued up meanwhile into one
-/// utterance to catch up (REQ-Q-02): it starts the synthesizer, schedules each buffer as it arrives
-/// and waits only for the last one to be played back. `stopSpeaking` bumps `generation`, so nothing
-/// synthesized before it is ever scheduled. `isSpeakingStream` is truthful: `false` only once the
-/// last queued audio has been heard, or at once on stop.
+/// utterance to catch up (REQ-Q-02): it starts the synthesizer and schedules each buffer as it
+/// arrives. Once an utterance's synthesis has ended, a drain chained after the previous one waits for
+/// its last buffer to be played back and reports its outcome, while the worker already synthesizes
+/// the next utterance, at most one ahead of the one playing (clause split FR-CS.5, design §7a).
+/// `stopSpeaking` bumps `generation`, so nothing synthesized before it is ever scheduled.
+/// `isSpeakingStream` is truthful: `false` only once the last queued audio has been heard, or at
+/// once on stop.
 actor TTSPlaybackService: SynthesisService {
 
     // MARK: Public streams
@@ -49,7 +52,7 @@ actor TTSPlaybackService: SynthesisService {
         let locale: Locale
     }
 
-    enum AttemptEnd: Equatable {
+    enum AttemptEnd: Equatable, Sendable {
         case finished
         case failed(String)
         case outputFailed
@@ -61,33 +64,47 @@ actor TTSPlaybackService: SynthesisService {
         case played, stopped, stalled
     }
 
-    enum Outcome {
+    enum Outcome: Sendable {
         case played
         case skipped(TTSSkipReason)
         case stale
     }
 
+    /// What one attempt did. Only the synthesizing attempt writes `attempt`; `runAttempt` returns
+    /// its final copy, so the utterance's drain and outcome read a value nothing else touches.
+    struct AttemptRecord: Sendable {
+        var startedAt: ContinuousClock.Instant
+        var firstBufferAt: ContinuousClock.Instant?
+        var bufferCount = 0
+        var audioSeconds: Double = 0
+        var lastHandle: PlaybackHandle?
+        var countsTowardBreaker = true
+        /// `outputEpoch` when the attempt started: its audio was lost if the epoch moved since.
+        var epoch: UInt64 = 0
+    }
+
     // MARK: Dependencies
 
-    private let primary: any UtteranceSynthesizer
+    let primary: any UtteranceSynthesizer
     /// Coalescing stops at the smaller of the configured limit and what the primary speaks uncut.
-    private let coalescingLimit: Int
-    private let fallback: (any UtteranceSynthesizer)?
+    let coalescingLimit: Int
+    let fallback: (any UtteranceSynthesizer)?
     let output: any AudioOutputting
     let limits: TTSPlaybackLimits
     let clock: any Clock<Duration>
     let metrics: TTSMetricsCollector
+    let now: @Sendable () -> ContinuousClock.Instant
 
     // MARK: State
 
     private let speakingContinuation: AsyncStream<Bool>.Continuation
-    private let eventsContinuation: AsyncStream<TTSEvent>.Continuation
-    private let wakeups: AsyncStream<Void>
+    let eventsContinuation: AsyncStream<TTSEvent>.Continuation
+    let wakeups: AsyncStream<Void>
     private let wakeupContinuation: AsyncStream<Void>.Continuation
 
-    private var queue: [Utterance] = []
+    var queue: [Utterance] = []
     /// `.backlog` was reported and the queue has not fallen below the threshold since (REQ-Q-03).
-    private var backlogNoticed = false
+    var backlogNoticed = false
     var generation: UInt64 = 0
     private var isSpeaking = false
     private var isDeactivated = false
@@ -96,17 +113,25 @@ actor TTSPlaybackService: SynthesisService {
     var bufferObserver: (@Sendable (AVAudioPCMBuffer) -> Void)?
 
     // Circuit breaker on the primary (REQ-T-23).
-    private var consecutiveFailures = 0
-    private(set) var isBreakerOpen = false
-    private var breakerTask: Task<Void, Never>?
+    var consecutiveFailures = 0
+    var isBreakerOpen = false
+    var breakerTask: Task<Void, Never>?
 
-    // The attempt in flight. Only the worker starts attempts, one at a time.
-    var attemptStartedAt = ContinuousClock.now
-    var attemptFirstBufferAt: ContinuousClock.Instant?
-    var attemptBufferCount = 0
-    var attemptAudioSeconds: Double = 0
-    var attemptLastHandle: PlaybackHandle?
-    var attemptCountsTowardBreaker = true
+    /// The attempt in flight. Only the worker starts attempts, one at a time.
+    var attempt: AttemptRecord
+    /// The worker is running an utterance's attempt(s); its drain is not queued yet.
+    var isSynthesizing = false
+
+    // Look-ahead (FR-CS.5).
+    /// Utterances whose synthesis ended and whose outcome is not reported yet, oldest first:
+    /// the one playing, then at most one synthesized ahead of it.
+    var drains: [PendingDrain] = []
+    var nextDrainID: UInt64 = 0
+    /// Bumped each time the service stops the output on a failure or stall, so an utterance
+    /// synthesized ahead knows its audio went with the one playing (REQ-CS-54).
+    var outputEpoch: UInt64 = 0
+    /// When the audio scheduled so far in this generation ends (REQ-CS-56); nil after any stop.
+    var scheduledAudioEnd: ContinuousClock.Instant?
 
     // MARK: Init
 
@@ -116,7 +141,8 @@ actor TTSPlaybackService: SynthesisService {
         output: any AudioOutputting,
         limits: TTSPlaybackLimits = .default,
         clock: any Clock<Duration> = ContinuousClock(),
-        metrics: TTSMetricsCollector = .shared
+        metrics: TTSMetricsCollector = .shared,
+        now: @escaping @Sendable () -> ContinuousClock.Instant = { .now }
     ) {
         self.primary = primary
         coalescingLimit = min(limits.maxCoalescedCharacters, primary.maxTextLength)
@@ -125,6 +151,8 @@ actor TTSPlaybackService: SynthesisService {
         self.limits = limits
         self.clock = clock
         self.metrics = metrics
+        self.now = now
+        attempt = AttemptRecord(startedAt: now())
         primaryEngine = primary.engine
         fallbackEngine = fallback?.engine
         (isSpeakingStream, speakingContinuation) = AsyncStream.makeStream(
@@ -134,7 +162,7 @@ actor TTSPlaybackService: SynthesisService {
         (wakeups, wakeupContinuation) = AsyncStream.makeStream(of: Void.self, bufferingPolicy: .bufferingNewest(1))
     }
 
-    /// Utterances waiting behind the one in flight.
+    /// Sentences waiting in the queue (not yet taken for synthesis).
     var pendingCount: Int { queue.count }
 
     // MARK: SynthesisService
@@ -156,7 +184,10 @@ actor TTSPlaybackService: SynthesisService {
         queue.removeAll()
         backlogNoticed = false
         attemptTask?.cancel()
+        drains.forEach { $0.task.cancel() }
+        drains.removeAll()
         output.stop()
+        scheduledAudioEnd = nil
         setSpeaking(false)
     }
 
@@ -184,98 +215,6 @@ actor TTSPlaybackService: SynthesisService {
     /// Receives every buffer right after it is scheduled (`setAudioMonitor` installs the monitor here).
     func setBufferObserver(_ observer: (@Sendable (AVAudioPCMBuffer) -> Void)?) {
         bufferObserver = observer
-    }
-
-    // MARK: Worker
-
-    private func runWorker() async {
-        for await _ in wakeups {
-            while !queue.isEmpty {
-                await play(takeNext())
-            }
-        }
-    }
-
-    /// The next utterance: the oldest pending sentence plus the following ones of the same locale,
-    /// joined by a space, while the text stays within `maxCoalescedCharacters` (REQ-Q-02).
-    private func takeNext() -> Utterance {
-        var next = queue.removeFirst()
-        while let following = queue.first, following.locale == next.locale,
-              next.text.count + 1 + following.text.count <= coalescingLimit {
-            next = Utterance(text: next.text + " " + following.text, locale: next.locale)
-            queue.removeFirst()
-        }
-        if queue.count < limits.backlogNoticeThreshold { backlogNoticed = false }
-        return next
-    }
-
-    private func play(_ utterance: Utterance) async {
-        let gen = generation
-        let outcome = await perform(utterance, gen: gen)
-        guard gen == generation else { return }   // stopSpeaking already reported and cleared
-        if case .skipped(let reason) = outcome {
-            eventsContinuation.yield(.utteranceSkipped(reason))
-            logger.warning("TTS sentence skipped: \(String(describing: reason), privacy: .public)")
-        }
-        if queue.isEmpty { setSpeaking(false) }
-    }
-
-    private func perform(_ utterance: Utterance, gen: UInt64) async -> Outcome {
-        let fallbackReady = fallback?.canSpeak(utterance.locale) ?? false
-        // The breaker only diverts when the fallback can take the sentence: with no usable
-        // fallback the primary is the only voice there is, so it keeps being tried.
-        guard primary.canSpeak(utterance.locale), !(isBreakerOpen && fallbackReady) else {
-            guard let fallback, fallbackReady else { return .skipped(.noVoice) }
-            return await speakWithFallback(fallback, utterance, gen: gen)
-        }
-        let end = await runAttempt(primary, utterance, gen: gen)
-        let heardNothing = attemptBufferCount == 0
-        switch end {
-        case .finished: consecutiveFailures = 0
-        case .failed, .timedOut: if heardNothing, attemptCountsTowardBreaker { recordPrimaryFailure() }
-        case .outputFailed, .cancelled: break
-        }
-        if case .failed(let message) = end, heardNothing {
-            guard let fallback, fallbackReady else { return .skipped(.primaryFailed(message)) }
-            return await speakWithFallback(fallback, utterance, gen: gen)
-        }
-        return await conclude(end, engine: primary.engine, utterance: utterance, gen: gen)
-    }
-
-    /// The same utterance again, on the fallback (REQ-T-20/22). The fallback has no fallback.
-    private func speakWithFallback(
-        _ fallback: any UtteranceSynthesizer, _ utterance: Utterance, gen: UInt64
-    ) async -> Outcome {
-        // A stopSpeaking() that landed while the primary attempt was awaited must not leave a
-        // spurious "fell back" notice behind: stop already reported and cleared this utterance.
-        guard gen == generation else { return .stale }
-        eventsContinuation.yield(.fellBack(from: primary.engine, to: fallback.engine))
-        let end = await runAttempt(fallback, utterance, gen: gen)
-        if case .failed(let message) = end, attemptBufferCount == 0 {
-            return .skipped(.primaryFailed(message))
-        }
-        return await conclude(end, engine: fallback.engine, utterance: utterance, gen: gen)
-    }
-
-    private func recordPrimaryFailure() {
-        consecutiveFailures += 1
-        guard consecutiveFailures >= limits.breakerThreshold, !isBreakerOpen else { return }
-        isBreakerOpen = true
-        let failures = consecutiveFailures
-        logger.warning("TTS primary failed \(failures) times in a row: fallback only for the cooldown")
-        let clock = self.clock
-        let cooldown = limits.breakerCooldown
-        breakerTask = Task { [weak self] in
-            do { try await clock.sleep(for: cooldown) } catch { return }
-            await self?.halfOpenBreaker()
-        }
-    }
-
-    /// Cooldown over: the primary is tried again, and one more failure reopens the breaker at once.
-    private func halfOpenBreaker() {
-        isBreakerOpen = false
-        consecutiveFailures = limits.breakerThreshold - 1
-        breakerTask = nil
     }
 
     func setSpeaking(_ speaking: Bool) {

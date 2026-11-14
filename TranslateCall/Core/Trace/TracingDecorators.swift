@@ -201,8 +201,9 @@ nonisolated struct TracingUtteranceSynthesizer: UtteranceSynthesizer {
     }
 }
 
-/// Stamps each buffer as it is scheduled on the device (`ttsFirstBuffer`).
-nonisolated final class TracingAudioOutput: AudioOutputting, Sendable {
+/// Stamps each buffer as it is scheduled on the device (`ttsFirstBuffer`), with the handoff gap the
+/// playback service reports before it (REQ-CS-56). The gap also reaches an inner output that wants it.
+nonisolated final class TracingAudioOutput: AudioOutputting, HandoffReporting, Sendable {
     private let inner: any AudioOutputting
     private let tracer: PipelineTracer
 
@@ -217,6 +218,19 @@ nonisolated final class TracingAudioOutput: AudioOutputting, Sendable {
         return handle
     }
 
-    func stop() { inner.stop() }
-    func shutdown() { inner.shutdown() }
+    func handoff(gap: Duration) {
+        tracer.handoff(gap: gap)
+        (inner as? any HandoffReporting)?.handoff(gap: gap)
+    }
+
+    /// A held gap is dropped: its buffer was refused or will never be scheduled.
+    func stop() {
+        tracer.outputStopped()
+        inner.stop()
+    }
+
+    func shutdown() {
+        tracer.outputStopped()
+        inner.shutdown()
+    }
 }

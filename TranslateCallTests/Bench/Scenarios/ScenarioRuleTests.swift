@@ -65,6 +65,21 @@ struct ScenarioRuleTests {
         #expect(ScenarioRule.spokenOnce(.incoming).check(seen(events, clips: 1)).passed)
     }
 
+    @Test func splitSentenceCountsOnceOnItsWholeTranslation() {
+        // Each sentence's `translated` carries part 0's text only; the sentence spoken is `translatedAll`.
+        let split = seen([
+            event(.incoming, 0, .translated, at: 1, ["text": "Hola", "parts": "2"]),
+            event(.incoming, 0, .translatedAll, at: 1.1, ["text": "Hola, ¿cómo estás?"]),
+            event(.incoming, 0, .ttsFirstBuffer, at: 2),
+            event(.incoming, 0, .ttsPartBuffer, at: 3),
+            event(.incoming, 1, .translated, at: 5, ["text": "Hola", "parts": "2"]),
+            event(.incoming, 1, .translatedAll, at: 5.1, ["text": "Hola, ¿qué tal?"]),
+            event(.incoming, 1, .ttsFirstBuffer, at: 6),
+            event(.incoming, 1, .ttsPartBuffer, at: 7),
+        ], clips: 2)
+        #expect(ScenarioRule.spokenOnce(.incoming).check(split).passed)
+    }
+
     // MARK: - Pauses (design §5.4)
 
     /// Clips of 4 s every 10 s from t = 0, each with its transcript.

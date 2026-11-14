@@ -38,8 +38,7 @@ final class AppContainer: ObservableObject {
         let lpm = LanguagePairManager()
         let audioManager = AudioManager()
         let setup = SetupManager()
-        let outBridge = TranslationBridgeModel()
-        let inBridge = TranslationBridgeModel()
+        let (outBridge, inBridge) = (TranslationBridgeModel(), TranslationBridgeModel())
         translationHost = TranslationHostWindow(outgoing: outBridge, incoming: inBridge)
         let translationSel = TranslationEngineSelector(outgoingBridge: outBridge, incomingBridge: inBridge)
         let selector = STTEngineSelector()
@@ -63,6 +62,7 @@ final class AppContainer: ObservableObject {
         )
 
         coordinator.voiceCloneWarmUp = { [ttsSelector] in await ttsSelector.warmUpVoiceClone(for: $0) }
+        coordinator.clauseSplitSetting = { settings.clauseSplit }   // read at each session start (REQ-CS-20)
 
         let voiceProfiles = VoiceProfileManager(store: VoiceProfileStore(), recorder: VoiceProfileRecorder(),
                                                 isSessionActive: { audioManager.isCapturing })

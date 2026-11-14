@@ -45,6 +45,9 @@ final class AudioCoordinator: ObservableObject {
 
     /// Bumped by start() and stop(); an activation that sees a different value was superseded.
     var sessionGeneration: UInt64 = 0
+    /// Bumped by every pause(): a split sentence stops speaking its parts once it changed, even if
+    /// Resume came before its next part was ready (REQ-CS-14).
+    var pauseCount: UInt64 = 0
     var captureTarget: CaptureTarget?
     /// Subscribed once to `systemCapture.events` and never cancelled: cancelling the iterating
     /// task would terminate the service's long-lived stream (the A1 bug class).
@@ -124,6 +127,13 @@ final class AudioCoordinator: ObservableObject {
     /// which skips it when the clone is not the outgoing voice. Nil (tests, previews): no warm-up.
     var voiceCloneWarmUp: ((Locale) async -> Void)?
 
+    /// Whether the session splits sentences into clauses, in both directions (REQ-CS-20); `AppContainer` wires it
+    /// to `ConversationSettings`. Nil (tests, previews): clause split is off.
+    var clauseSplitSetting: (() -> Bool)?
+    /// The clause-split decision of the current session, read once at start(). Stays fixed while the
+    /// session runs: the setting applies to the next session.
+    private(set) var isClauseSplitOn = false
+
     // MARK: - Conversation state and mic echo gate (F8.5.3)
 
     /// Their recent translations, to drop the mic's echo of them (`SelfEchoGuard`). Reset per session.
@@ -137,16 +147,24 @@ final class AudioCoordinator: ObservableObject {
     @Published var listeningMode: ListeningMode = .headphones {
         didSet { micEchoGate?.setMode(listeningMode) }
     }
-    /// The gate is muting the mic (speakers mode, remote translation playing).
-    @Published private(set) var isMicPaused = false {
+    /// The gate is muting the mic (speakers mode, remote translation playing). Written only by the
+    /// coordinator (here and in AudioCoordinator+EchoGate.swift); the setter is internal rather
+    /// than `private(set)` because the extension lives in another file.
+    @Published var isMicPaused = false {
         didSet { updateConversationState() }
     }
-    @Published private(set) var conversationState: ConversationState = .listening
+    /// Derived from the mic's paused state and both speaking flags. Written only by the coordinator
+    /// (here and in AudioCoordinator+EchoGate.swift); the setter is internal rather than
+    /// `private(set)` because the extension lives in another file.
+    @Published var conversationState: ConversationState = .listening
 
     /// This session's gate between the mic stream and the outgoing VAD; nil outside a session.
-    private(set) var micEchoGate: MicEchoGate?
-    private let echoGateTail: Duration
-    private let echoGateClock: any Clock<Duration>
+    /// Written by AudioCoordinator+EchoGate.swift, hence not `private(set)`.
+    var micEchoGate: MicEchoGate?
+    /// Read by AudioCoordinator+EchoGate.swift, hence not `private`.
+    let echoGateTail: Duration
+    /// Read by AudioCoordinator+EchoGate.swift, hence not `private`.
+    let echoGateClock: any Clock<Duration>
 
     /// When true, the next outgoing utterance from STT is silently dropped (one-shot).
     /// Set via `suppressNextOutgoingTurn()` — resets automatically after one use.
@@ -227,6 +245,7 @@ final class AudioCoordinator: ObservableObject {
         self.captureTarget = captureTarget
         micEchoGate = makeMicEchoGate()
         beginSessionUIState()
+        isClauseSplitOn = clauseSplitSetting?() ?? false
         alertedTranslationErrors.removeAll()
         await warmUpTranslation()   // returns at once: the sessions open while capture starts (REQ-TR-05)
         startVoiceCloneWarmUp()     // in the background: never delays the start (REQ-QS-31)
@@ -353,45 +372,4 @@ final class AudioCoordinator: ObservableObject {
         await incomingSTT?.setLocale(targetLocale)
     }
 
-}
-
-// MARK: - Mic echo gate and conversation state (F8.5.3 REQ-H-02…06, REQ-H-13, design §3.2–3.3)
-
-extension AudioCoordinator {
-    /// A gate for the session that is starting. Its paused reports are advisory (they can arrive
-    /// out of order across threads), so each one only triggers a re-read of the gate on the main
-    /// actor; reports from a session that is over (`sessionGeneration` moved on) are ignored.
-    private func makeMicEchoGate() -> MicEchoGate {
-        let generation = sessionGeneration
-        return MicEchoGate(mode: listeningMode, tail: echoGateTail, clock: echoGateClock) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.syncMicPausedFromGate(generation: generation)
-            }
-        }
-    }
-
-    /// Sets `isMicPaused` from the gate's authoritative state (never from a report's value), so a
-    /// late "paused" report after the mic reopened cannot leave it stuck paused: the gate's
-    /// `onPausedChange` value is advisory, `MicEchoGate.isMicPaused` is authoritative (REQ-H-06).
-    func syncMicPausedFromGate(generation: UInt64) {
-        guard sessionGeneration == generation else { return }
-        isMicPaused = micEchoGate?.isMicPaused ?? false
-    }
-
-    /// The incoming side went away: the mic must not stay muted (REQ-H-06).
-    func reopenMicEchoGate() {
-        micEchoGate?.reset()
-        isMicPaused = false
-    }
-
-    private func releaseMicEchoGate() {
-        reopenMicEchoGate()
-        micEchoGate = nil
-    }
-
-    private func updateConversationState() {
-        let state = ConversationState.derive(micPaused: isMicPaused, outgoingSpeaking: isOutgoingSpeaking,
-                                             incomingSpeaking: isIncomingSpeaking)
-        if state != conversationState { conversationState = state }
-    }
 }

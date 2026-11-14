@@ -78,6 +78,9 @@ struct RawRun: Codable, Equatable {
         let audio: String?
         /// Optional: older runs lack it. Set on the seq that owns the attempt's audio.
         var playback: Playback? = nil
+        /// The file holding a split sentence's part 1 when it is not `audio`: the part was coalesced
+        /// into the next sentence's attempt and is at the start of that file. Absent otherwise.
+        var partAudio: String? = nil
     }
 
     struct MTResult: Codable, Equatable {
@@ -104,7 +107,8 @@ extension RawRun.Utterance {
     /// Groups `events` of one direction by seq, as offsets from `origin`.
     static func from(_ events: [TraceEvent], origin: ContinuousClock.Instant,
                      audio: (Int) -> String? = { _ in nil },
-                     playback: (Int) -> RawRun.Playback? = { _ in nil }) -> [RawRun.Utterance] {
+                     playback: (Int) -> RawRun.Playback? = { _ in nil },
+                     partAudio: (Int) -> String? = { _ in nil }) -> [RawRun.Utterance] {
         Dictionary(grouping: events, by: \.seq).keys.sorted().map { seq in
             let mine = events.filter { $0.seq == seq }
             return RawRun.Utterance(
@@ -114,7 +118,8 @@ extension RawRun.Utterance {
                 detail: Dictionary(mine.filter { !$0.detail.isEmpty }.map { ($0.stage.rawValue, $0.detail) },
                                    uniquingKeysWith: { first, _ in first }),
                 audio: audio(seq),
-                playback: playback(seq)
+                playback: playback(seq),
+                partAudio: partAudio(seq)
             )
         }
     }

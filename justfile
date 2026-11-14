@@ -58,8 +58,9 @@ bench-manifest:
 # Benchmark: fetch → build → real-time Swift tier → analyze → report → compare. set: pr | full;
 # (bench.sh reads the xcodebuild invocation from `xcb` above: one source.)
 # profile: all | basic | best; lines: comma-separated slugs, e.g. outgoing-es-419-en,incoming-en-es (empty = all)
-bench set="pr" profile="all" edge="0" lines="":
-    tools/scripts/bench.sh {{quote(set)}} {{quote(profile)}} {{quote(edge)}} {{quote(lines)}}
+# split: the clause-split switch (REQ-CS-21), 1 default; 0 turns it off for the run
+bench set="pr" profile="all" edge="0" lines="" split="1":
+    tools/scripts/bench.sh {{quote(set)}} {{quote(profile)}} {{quote(edge)}} {{quote(lines)}} {{quote(split)}}
 
 # Scenario tests: the pipeline in real time with an acoustic echo, checked by rules. name: echo-speakers | echo-headphones | echo-both | echo-headphones-both | voice-pitch | all (comma-separated works)
 scenario name="all":

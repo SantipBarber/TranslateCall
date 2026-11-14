@@ -172,16 +172,7 @@ extension ScenarioRule {
             if let first = heard.first { summary += " (first: \"\(first)\")" }
             return verdict(spoken == 0, summary)
         case .spokenOnce(let direction, let perClip):
-            let side = seen.events.filter { $0.direction == direction }
-            let spokenSeqs = Set(side.filter { $0.stage == .ttsFirstBuffer }.map(\.seq))
-            let attempts = Set(side.filter { $0.stage == .ttsFirstBuffer }.map(\.time)).count
-            let texts = side.filter { $0.stage == .translated && spokenSeqs.contains($0.seq) }
-                .compactMap { $0.detail["text"].map(Self.normalized) }
-            let repeated = Dictionary(grouping: texts, by: { $0 }).filter { $0.value.count > 1 }.keys.sorted()
-            let passed = repeated.isEmpty && attempts <= seen.clipCount * perClip
-            var summary = "\(attempts) \(direction.rawValue) attempt(s) spoken for \(seen.clipCount) clip(s)"
-            if !repeated.isEmpty { summary += "; repeated: \(repeated.prefix(3).map { "\"\($0)\"" }.joined(separator: ", "))" }
-            return verdict(passed, summary)
+            return spokenOnceVerdict(direction, perClip, seen)
         case .pitchNearReference(let tolerance):
             return pitchVerdict(seen, tolerance: tolerance)
         case .piecesPerClip(let range):
@@ -209,6 +200,29 @@ extension ScenarioRule {
                 : String(format: "%d TTS buffer(s) after the limit; the last %.1f s after the last clip",
                          late.count, lastSeconds))
         }
+    }
+
+    /// No translation of `direction` is spoken twice, and no more than `perClip` played per clip. A
+    /// split sentence's `translated` carries part 0's text only: the sentence spoken is `translatedAll`.
+    private func spokenOnceVerdict(_ direction: TraceDirection, _ perClip: Int, _ seen: ScenarioObservation)
+        -> ScenarioVerdict {
+        let side = seen.events.filter { $0.direction == direction }
+        let spokenSeqs = Set(side.filter { $0.stage == .ttsFirstBuffer }.map(\.seq))
+        let attempts = Set(side.filter { $0.stage == .ttsFirstBuffer }.map(\.time)).count
+        let texts = spokenSeqs.sorted().compactMap { seq -> String? in
+            let spoken = side.filter { $0.seq == seq }
+            if let whole = spoken.first(where: { $0.stage == .translatedAll }) {
+                return whole.detail["text"].map(Self.normalized)
+            }
+            return spoken.first { $0.stage == .translated }?.detail["text"].map(Self.normalized)
+        }
+        let repeated = Dictionary(grouping: texts, by: { $0 }).filter { $0.value.count > 1 }.keys.sorted()
+        let passed = repeated.isEmpty && attempts <= seen.clipCount * perClip
+        var summary = "\(attempts) \(direction.rawValue) attempt(s) spoken for \(seen.clipCount) clip(s)"
+        if !repeated.isEmpty {
+            summary += "; repeated: \(repeated.prefix(3).map { "\"\($0)\"" }.joined(separator: ", "))"
+        }
+        return verdict(passed, summary)
     }
 
     private func pitchVerdict(_ seen: ScenarioObservation, tolerance: Double) -> ScenarioVerdict {

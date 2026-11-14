@@ -97,6 +97,27 @@ Informative: not part of the baseline comparison.</p>
 </section>
 {% endif %}
 
+{% set splits = aggregates.items()|selectattr("1.split")|list %}
+{% if splits %}
+<h2>Clause split</h2>
+<section class="rows">
+<table>
+<tr><th>profile/runLine</th><th class="num">split sentences</th><th class="num">gap p50 ms</th><th class="num">gap p90 ms</th>
+<th class="num">back-to-back %</th></tr>
+{% for key, a in splits %}
+<tr><td>{{ key }}</td><td class="num">{{ a.split.sentences }}</td>
+<td class="num">{{ "%.0f"|format(a.split.handoffGapMs.p50) if a.split.handoffGapMs.p50 is not none else "n/a" }}</td>
+<td class="num">{{ "%.0f"|format(a.split.handoffGapMs.p90) if a.split.handoffGapMs.p90 is not none else "n/a" }}</td>
+<td class="num">{{ "%.1f"|format(a.split.backToBackPct) if a.split.backToBackPct is not none else "n/a" }}</td></tr>
+{% endfor %}
+</table>
+<p class="muted">Gap: the handoff gap before a split sentence's second part was scheduled (0 when in time);
+quality is scored on the whole translation. Back-to-back %: of the whole sentences synthesized while the
+audio before them was still playing, the share whose first audio was scheduled in time (handoff gap 0); a
+sentence spoken after a silence is not counted. Informative: not part of the baseline comparison.</p>
+</section>
+{% endif %}
+
 {% set turns = aggregates.items()|selectattr("1.turn")|list %}
 {% set early = namespace(on=false) %}
 {% for key, a in turns %}{% if a.turn.committed or a.turn.retracted %}{% set early.on = true %}{% endif %}{% endfor %}

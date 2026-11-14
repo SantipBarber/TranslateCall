@@ -194,10 +194,11 @@ final class FakeSynthesizer: UtteranceSynthesizer, Sendable {
 // MARK: - FakeOutput
 
 /// Recording `AudioOutputting` (design §5.1). Handles complete when the test says so
-/// (`completeAll`, `complete(index:)`), or at once with `autoComplete`.
-final class FakeOutput: AudioOutputting, Sendable {
+/// (`completeAll`, `complete(index:)`), or at once with `autoComplete`. Records handoff gaps.
+final class FakeOutput: AudioOutputting, HandoffReporting, Sendable {
     private struct State {
         var scheduled: [AVAudioPCMBuffer] = []
+        var handoffGaps: [Duration] = []
         var handles: [PlaybackHandle] = []
         var stopCount = 0
         var shutdownCount = 0
@@ -215,6 +216,9 @@ final class FakeOutput: AudioOutputting, Sendable {
     var scheduledCount: Int { state.withLock { $0.scheduled.count } }
     var stopCount: Int { state.withLock { $0.stopCount } }
     var shutdownCount: Int { state.withLock { $0.shutdownCount } }
+    var handoffGaps: [Duration] { state.withLock { $0.handoffGaps } }
+
+    func handoff(gap: Duration) { state.withLock { $0.handoffGaps.append(gap) } }
 
     /// Every later `schedule` throws `error`; nil restores normal behaviour.
     func failSchedules(with error: Error?) { state.withLock { $0.scheduleError = error } }

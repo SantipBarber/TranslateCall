@@ -18,6 +18,8 @@ struct BenchEnvironment: Sendable {
     let dirty: Bool
     /// Run-line slugs selected by `TC_BENCH_LINES`; nil runs every line.
     let lines: Set<String>?
+    /// The clause-split switch (REQ-CS-21): on unless `TC_CLAUSE_SPLIT=0`.
+    let clauseSplit: Bool
 
     func selects(_ line: BenchRunLine) -> Bool { lines?.contains(line.slug) ?? true }
 
@@ -62,6 +64,13 @@ struct BenchEnvironment: Sendable {
             }
             lines = slugs.isEmpty ? nil : Set(slugs)
         }
+        var clauseSplit = true
+        if let raw = env["TC_CLAUSE_SPLIT"], !raw.isEmpty {
+            guard ["0", "1"].contains(raw) else {
+                throw BenchSetupError(description: "TC_CLAUSE_SPLIT must be 0 or 1, got \(raw)")
+            }
+            clauseSplit = raw == "1"
+        }
         let home = FileManager.default.homeDirectoryForCurrentUser
         return BenchEnvironment(
             set: set,
@@ -74,12 +83,14 @@ struct BenchEnvironment: Sendable {
             manifest: path(env["TC_BENCH_MANIFEST"] ?? "bench/manifests/phase1.json"),
             commit: env["TC_COMMIT"] ?? "unknown",
             dirty: ["1", "true"].contains(env["TC_DIRTY"] ?? "0"),
-            lines: lines
+            lines: lines,
+            clauseSplit: clauseSplit
         )
     }
 
     func options(for profile: BenchProfile) -> BenchOptions {
-        BenchOptions(profile: profile, edge: edge, overrideSTT: overrideSTT, overrideTTS: overrideTTS)
+        BenchOptions(profile: profile, edge: edge, overrideSTT: overrideSTT, overrideTTS: overrideTTS,
+                     clauseSplit: clauseSplit)
     }
 }
 
@@ -164,7 +175,7 @@ enum BenchRunner {
             clips: clips,
             utterances: RawRun.Utterance.from(events, origin: session.origin, audio: {
                 audio.audioPath(seq: $0)
-            }, playback: { audio.playback(seq: $0) }),
+            }, playback: { audio.playback(seq: $0) }, partAudio: { audio.partAudioPath(seq: $0) }),
             mtOnly: mtResults
         )
         return (record, audio)
@@ -277,12 +288,8 @@ enum BenchRunner {
         engines["stt"] = first(.sttFinal, "engine")
         engines["tts"] = first(.ttsFirstBuffer, "engine")
         engines["expectedTTS"] = session.builtEngines[line.direction]?.rawValue
-        var settings = [
-            "pauseSeconds": String(pause),
-            "vadChunkSamples": "4096",
-            "listeningMode": session.coordinator.listeningMode.rawValue,
-        ]
-        settings.merge(voiceProfile) { _, new in new }
+        let settings = runSettings(pause: pause, listeningMode: session.coordinator.listeningMode.rawValue,
+                                   options: options, voiceProfile: voiceProfile)
         return RawRun.Meta(
             commit: env.commit, dirty: env.dirty, machine: sysctlString("hw.model"),
             macOS: ProcessInfo.processInfo.operatingSystemVersionString,
@@ -292,6 +299,20 @@ enum BenchRunner {
             engines: engines,
             settings: settings
         )
+    }
+
+    /// `meta.settings`: what the run measured under, so runs stay comparable.
+    nonisolated static func runSettings(pause: Double, listeningMode: String, options: BenchOptions,
+                                        voiceProfile: [String: String]) -> [String: String] {
+        var settings = [
+            "pauseSeconds": String(pause),
+            "vadChunkSamples": "4096",
+            "listeningMode": listeningMode,
+            // REQ-CS-21: what the run measured, so split on/off runs stay distinguishable.
+            "clauseSplit": options.clauseSplit ? "1" : "0",
+        ]
+        settings.merge(voiceProfile) { _, new in new }
+        return settings
     }
 
     private static var buildConfiguration: String {
@@ -358,19 +379,45 @@ enum BenchRunner {
 /// and it owns every buffer up to the next attempt's first. `ttsEnd` is ignored: synthesis can finish
 /// before playback does. Seqs merged into one attempt share its `ttsFirstBuffer` stamp; the WAV is
 /// written under the first seq and the others' `audio` points at the same file.
+///
+/// A track is what a listener hears (REQ-CS-40 listening check): each buffer starts at its schedule
+/// instant or when the audio before it in the track ends, whichever is later (the playback service's
+/// timeline), and the time between is silence. So a split sentence's part 1 scheduled late is heard
+/// after a silence. A part 1 coalesced into the next sentence's attempt ([A1,B0]: its `ttsPartBuffer`
+/// shares B's `ttsFirstBuffer` stamp) is at the start of B's file, which `partAudioPath` names: where
+/// A1 ends inside that attempt is not traced, so it is not moved.
 struct AudioCollector {
+    typealias Scheduled = (instant: ContinuousClock.Instant, buffer: AVAudioPCMBuffer)
+
     private struct Track {
         var rate: Double
         var samples: [Int16]
+        /// When the audio appended so far ends on the schedule timeline.
+        var end: ContinuousClock.Instant?
+
+        mutating func append(_ scheduled: Scheduled) {
+            let (instant, buffer) = scheduled
+            if let end, instant > end {
+                samples += [Int16](repeating: 0, count: Int((end.duration(to: instant).secondsValue * rate).rounded()))
+            }
+            samples += AudioCollector.pcm16(buffer)
+            let length = Duration.seconds(Double(buffer.frameLength) / buffer.format.sampleRate)
+            end = max(instant, end ?? instant) + length
+        }
     }
 
     private var tracks: [Int: Track] = [:]
     /// Seq → the seq whose file holds its audio.
     private var owner: [Int: Int] = [:]
+    /// Seq → the seq whose file holds its part 1, when that is not its own file (coalesced ahead).
+    private var partOwner: [Int: Int] = [:]
     /// File-owner seq → the gaps of its attempt's playback.
     private var gaps: [Int: RawRun.Playback] = [:]
 
     func audioPath(seq: Int) -> String? { owner[seq].map { "audio/\($0).wav" } }
+
+    /// The file holding `seq`'s part 1 when it is another sentence's (at its start); nil otherwise.
+    func partAudioPath(seq: Int) -> String? { partOwner[seq].map { "audio/\($0).wav" } }
 
     /// Playback gaps of the attempt `seq` owns (nil for a seq that only shares another's audio).
     func playback(seq: Int) -> RawRun.Playback? { gaps[seq] }
@@ -383,35 +430,55 @@ struct AudioCollector {
     /// 16-bit frames held for the file `seq` points at (tests).
     func frameCount(seq: Int) -> Int? { owner[seq].flatMap { tracks[$0]?.samples.count } }
 
+    /// The 16-bit frames of the file `seq` points at (tests).
+    func samples(seq: Int) -> [Int16]? { owner[seq].flatMap { tracks[$0]?.samples } }
+
     mutating func add(_ buffers: [(ContinuousClock.Instant, AVAudioPCMBuffer)], events: [TraceEvent]) {
-        let ordered = buffers.sorted { $0.0 < $1.0 }
+        let ordered: [Scheduled] = buffers.sorted { $0.0 < $1.0 }.map { (instant: $0.0, buffer: $0.1) }
         let starts = Dictionary(grouping: events.filter { $0.stage == .ttsFirstBuffer }, by: \.time)
-        for stamp in starts.keys.sorted() {
+        let stamps = starts.keys.sorted()
+        let parts = events.filter { $0.stage == .ttsPartBuffer }
+        // The buffer an event stamp points at: the last scheduled at or before it.
+        func index(_ stamp: ContinuousClock.Instant) -> Int? {
+            ordered.lastIndex { $0.instant <= stamp } ?? ordered.firstIndex { $0.instant > stamp }
+        }
+        // A part 1 in an attempt of its own starts a new attempt inside its sentence's track.
+        let partStarts = parts.filter { starts[$0.time] == nil }.compactMap { index($0.time) }
+        for (offset, stamp) in stamps.enumerated() {
             let seqs = (starts[stamp] ?? []).map(\.seq).sorted()
-            guard let seq = seqs.first,
-                  let first = ordered.lastIndex(where: { $0.0 <= stamp }) ?? ordered.firstIndex(where: { $0.0 > stamp })
-            else { continue }
+            guard let seq = seqs.first, let first = index(stamp) else { continue }
             // Up to the next attempt's first buffer (the next stamp, resolved the same way).
-            let nextStamp = starts.keys.sorted().first { $0 > stamp }
-            let end = nextStamp.flatMap { next in
-                ordered.lastIndex(where: { $0.0 <= next }) ?? ordered.firstIndex(where: { $0.0 > next })
-            } ?? ordered.count
+            let end = (offset + 1 < stamps.count ? index(stamps[offset + 1]) : nil) ?? ordered.count
             guard end > first else { continue }
-            // Arrival of each buffer is its schedule instant, from the attempt's first one.
-            var tracker = StreamGapTracker()
-            let origin = ordered[first].0
-            for (instant, buffer) in ordered[first..<end] {
-                tracker.chunk(arrivedAt: origin.duration(to: instant),
-                              seconds: Double(buffer.frameLength) / buffer.format.sampleRate)
-            }
-            gaps[seq] = RawRun.Playback(gapCount: tracker.gapCount, gapMs: Int((tracker.gapSeconds * 1000).rounded()))
-            for buffer in ordered[first..<end].map(\.1) {
-                var track = tracks[seq] ?? Track(rate: buffer.format.sampleRate, samples: [])
-                track.samples += Self.pcm16(buffer)
-                tracks[seq] = track
-            }
+            let slice = ordered[first..<end]
+            gaps[seq] = Self.playback(slice, restartingAt: Set(partStarts.filter { $0 > first && $0 < end }))
+            var track = tracks[seq] ?? Track(rate: slice[first].buffer.format.sampleRate, samples: [])
+            slice.forEach { track.append($0) }
+            tracks[seq] = track
             seqs.forEach { owner[$0] = seq }
         }
+        for part in parts {
+            if let holder = starts[part.time]?.map(\.seq).min() { partOwner[part.seq] = holder }
+        }
+    }
+
+    /// Stream gaps of one track, measured per attempt: a part 1's own attempt restarts the tracker, so
+    /// the handoff between the parts (`handoffGapMs`) is not counted as a gap of the voice.
+    private static func playback(_ slice: ArraySlice<Scheduled>, restartingAt cuts: Set<Int>) -> RawRun.Playback {
+        var (count, seconds) = (0, 0.0)
+        var tracker = StreamGapTracker()
+        var origin = slice[slice.startIndex].instant
+        for index in slice.indices {
+            let (instant, buffer) = slice[index]
+            if cuts.contains(index) {
+                (count, seconds) = (count + tracker.gapCount, seconds + tracker.gapSeconds)
+                (tracker, origin) = (StreamGapTracker(), instant)
+            }
+            tracker.chunk(arrivedAt: origin.duration(to: instant),
+                          seconds: Double(buffer.frameLength) / buffer.format.sampleRate)
+        }
+        (count, seconds) = (count + tracker.gapCount, seconds + tracker.gapSeconds)
+        return RawRun.Playback(gapCount: count, gapMs: Int((seconds * 1000).rounded()))
     }
 
     /// Writes `<seq>.wav` for each file owner.
@@ -423,7 +490,7 @@ struct AudioCollector {
         }
     }
 
-    private static func pcm16(_ buffer: AVAudioPCMBuffer) -> [Int16] {
+    fileprivate static func pcm16(_ buffer: AVAudioPCMBuffer) -> [Int16] {
         let count = Int(buffer.frameLength)
         if let floats = buffer.floatChannelData?[0] {
             return (0..<count).map { Int16(max(-1, min(1, floats[$0])) * Float(Int16.max)) }

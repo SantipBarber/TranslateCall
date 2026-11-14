@@ -281,21 +281,21 @@ struct AudioCoordinatorSessionTests {
         func started() -> Task<String, Error> { Task { try await Task.sleep(for: .seconds(60)); return "x" } }
 
         coordinator.suppressNextOutgoingTurn()
-        let muted = started()
+        let muted = SentenceTranslation(source: "muted", task: started())
         await coordinator.deliverOutgoing("muted", translation: muted)
-        #expect(await muted.result.isFailure)
+        #expect(await muted.tasks[0].result.isFailure)
 
-        let empty = started()
+        let empty = SentenceTranslation(source: "", task: started())
         await coordinator.deliverOutgoing("", translation: empty)
-        #expect(await empty.result.isFailure)
+        #expect(await empty.tasks[0].result.isFailure)
 
         await coordinator.pause()
-        let pausedOut = started()
-        let pausedIn = started()
+        let pausedOut = SentenceTranslation(source: "paused", task: started())
+        let pausedIn = SentenceTranslation(source: "paused", task: started())
         await coordinator.deliverOutgoing("paused", translation: pausedOut)
         await coordinator.deliverIncoming("paused", translation: pausedIn)
-        #expect(await pausedOut.result.isFailure)
-        #expect(await pausedIn.result.isFailure)
+        #expect(await pausedOut.tasks[0].result.isFailure)
+        #expect(await pausedIn.tasks[0].result.isFailure)
 
         #expect(coordinator.transcript.isEmpty)
         #expect(await mocks.mockOutgoingTTS.speakCalls.isEmpty)
@@ -350,6 +350,37 @@ struct AudioCoordinatorSessionTests {
             await mocks.mockSystemCapture.injectBuffer(makePCMBuffer(frames: 160, fill: 0.5))
         }
         #expect(callPeak == 0)
+        await coordinator.stop()
+    }
+
+    // MARK: Clause split read at session start (REQ-CS-20)
+
+    @Test("clause split is read at start() and stays fixed until the next start (REQ-CS-20)")
+    func clauseSplitReadAtStart() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        var settingOn = true
+        coordinator.clauseSplitSetting = { settingOn }
+
+        await coordinator.start(captureTarget: callTarget)
+        #expect(coordinator.isClauseSplitOn)
+        settingOn = false
+        #expect(coordinator.isClauseSplitOn, "a mid-session change waits for the next start")
+        await coordinator.stop()
+
+        await coordinator.start(captureTarget: callTarget)
+        #expect(!coordinator.isClauseSplitOn)
+        await coordinator.stop()
+    }
+
+    @Test("no clause-split setting: the session runs with the flag off (REQ-CS-20)")
+    func clauseSplitOffWithoutSetting() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        #expect(coordinator.clauseSplitSetting == nil)
+
+        await coordinator.start(captureTarget: callTarget)
+        #expect(!coordinator.isClauseSplitOn)
         await coordinator.stop()
     }
 }

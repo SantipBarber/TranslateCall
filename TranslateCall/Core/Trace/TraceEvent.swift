@@ -10,6 +10,9 @@ nonisolated enum TraceStage: String, Sendable, Codable {
     case speechStart, vadEnd, sttFinal, translated, ttsFirstBuffer, ttsEnd, dropped
     /// Early processing: a tentative segment was confirmed or withdrawn (a retracted utterance ends there).
     case committed, retracted
+    /// Clause split (REQ-CS-31/32): both parts of a split sentence are translated (`text`: joined);
+    /// the first buffer of its second part (`part: "1"`).
+    case translatedAll, ttsPartBuffer
 }
 
 /// One stamp of one utterance. `seq` counts utterances per direction from 0 in each session.
@@ -19,7 +22,10 @@ nonisolated struct TraceEvent: Sendable, Equatable {
     let stage: TraceStage
     let time: ContinuousClock.Instant
     /// Stage data: `segmentAudioMs`/`trailingSilenceMs` (vadEnd), `text`/`engine`/`confidence`
-    /// (sttFinal), `text` (translated), `mergedSeqs` (ttsFirstBuffer), `reason` (dropped).
+    /// (sttFinal), `text` and `parts` when split (translated), `text` (translatedAll), `engine`,
+    /// `mergedSeqs`, `handoffGapMs` and `afterPartOf` (ttsFirstBuffer; ttsPartBuffer has `engine`,
+    /// `handoffGapMs` and `part`), `partsSpoken`
+    /// when a split sentence's part 1 was not heard (ttsEnd), `reason` (dropped).
     let detail: [String: String]
 }
 

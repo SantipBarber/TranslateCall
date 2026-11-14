@@ -106,6 +106,27 @@ struct TracingDecoratorTests {
         #expect(sink.event(1, .translated)?.detail["text"] == "TRANSLATED: hello")
     }
 
+    /// REQ-CS-56: the gap reaches the inner output and lands on the next first buffer, unless the
+    /// output was stopped in between.
+    @Test(arguments: [false, true])
+    func outputForwardsHandoff(stoppedBetween: Bool) throws {
+        let tracer = tracer
+        let date = Date()
+        tracer.segmentClosed(capturedAt: date, audioSeconds: 1)
+        tracer.transcribed(capturedAt: date, text: "a", engine: "x", confidence: 1)
+        tracer.translated(source: "a", result: "A")
+        tracer.speakRequested(text: "A")
+        tracer.synthesisStarted(text: "A", engine: "x")
+        let inner = FakeOutput(autoComplete: true)
+        let output = TracingAudioOutput(wrapping: inner, tracer: tracer)
+        // A zero gap: the audio before was still playing, so it lands whatever the attempt's start.
+        output.handoff(gap: .zero)
+        #expect(inner.handoffGaps == [.zero])
+        if stoppedBetween { output.stop() }
+        _ = try output.schedule(makePCMBuffer(frames: 1_600))
+        #expect(sink.event(0, .ttsFirstBuffer)?.detail["handoffGapMs"] == (stoppedBetween ? nil : "0"))
+    }
+
     /// The real playback service between the TTS decorators: first buffer and end, merged sentences.
     @Test func playbackServiceIsTracedEndToEnd() async throws {
         let tracer = tracer

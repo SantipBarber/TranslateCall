@@ -197,7 +197,8 @@ struct AudioCoordinatorEarlyProcessingTests {
         await coordinator.start()
         let gate = AsyncGate()
         let stubborn = Task<String, Error> { await gate.wait(); return "late" }   // ignores cancel
-        let delivery = Task { await coordinator.deliverOutgoing("hola", translation: stubborn) }
+        let sentence = SentenceTranslation(source: "hola", task: stubborn)
+        let delivery = Task { await coordinator.deliverOutgoing("hola", translation: sentence) }
         #expect(await waitUntil { coordinator.transcript.map(\.original) == ["hola"] })
 
         delivery.cancel()

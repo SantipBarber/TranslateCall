@@ -28,9 +28,10 @@ extension AudioCoordinator {
 
     // MARK: - Deliver (show + speak)
 
-    /// Shows and speaks one outgoing sentence. `translation` is a translation already started by the caller
-    /// (cancelled here if the sentence is dropped); `nil` starts it here, after the guards pass.
-    func deliverOutgoing(_ text: String, translation: Task<String, Error>? = nil) async {
+    /// Shows and speaks one outgoing sentence. `translation` is a sentence translation already started by
+    /// the caller (cancelled here if the sentence is dropped); `nil` starts one here, after the guards pass.
+    /// The guards apply to the whole sentence once (REQ-CS-13); `speakParts` speaks it part by part.
+    func deliverOutgoing(_ text: String, translation: SentenceTranslation? = nil) async {
         // Never dropped while the other side speaks (F8.5.3 REQ-H-10): echo is handled by MicEchoGate.
         // Dropped while paused (M9 UI core REQ-UI-50), before the mute turn so the drop does not use it (UI-B3).
         guard !text.isEmpty, !isPaused else {
@@ -51,25 +52,16 @@ extension AudioCoordinator {
             showTTSNotice(String(localized: "Ignored an echo of their translation. On speakers? Choose Speakers."))
             return
         }
-        let task = translation ?? Task { try await translateOutgoing(text) }
+        let sentence = translation ?? makeSentenceTranslation(text, outgoing: true)
         let entry = appendTranscript(.outgoing, text)
-        isOutgoingTranslating = true
+        isOutgoingTranslating = true   // until the last part is translated and spoken (REQ-CS-18)
         let generation = sessionGeneration
         // Stop cannot interrupt a translator that ignores cancellation: a late end must not
         // clear the next session's flag (UI-B2).
         defer { if generation == sessionGeneration { isOutgoingTranslating = false } }
         // No stopSpeaking() first: sentences queue and are coalesced, never cut or dropped (F8.5.3 D-5).
         do {
-            let translated = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
-            // A translator that ignores cancellation (the Apple bridge) must not speak after teardown.
-            try Task.checkCancellation()
-            outgoingTranslation = translated
-            completeTranscript(entry, translation: translated)
-            guard !isPaused else { return }   // paused while translating: shown, not spoken
-            let locale = Locale(identifier: languagePairManager.targetLanguage.minimalIdentifier)
-            await outgoingTTS?.speak(text: translated, locale: locale)
-            // Pause's stopSpeaking may reach the TTS actor before this speak (jobs are not FIFO) (UI-B1).
-            if isPaused { await outgoingTTS?.stopSpeaking() }
+            try await speakParts(of: sentence, entry: entry, direction: .outgoing)
         } catch {
             skipTranscript(entry, error: error)
             handleTranslationFailure(error, outgoing: true)
@@ -77,32 +69,22 @@ extension AudioCoordinator {
     }
 
     /// Incoming counterpart of `deliverOutgoing`.
-    func deliverIncoming(_ text: String, translation: Task<String, Error>? = nil) async {
+    func deliverIncoming(_ text: String, translation: SentenceTranslation? = nil) async {
         // Never dropped while either TTS speaks (F8.5.3 REQ-H-11): SCStream captures only the call app,
         // which does not play the user's own voice back. Remote sentences queue like outgoing ones.
         guard !text.isEmpty, !isPaused else {
             translation?.cancel()
             return
         }
-        let task = translation ?? Task { try await translateIncoming(text) }
+        let sentence = translation ?? makeSentenceTranslation(text, outgoing: false)
         let entry = appendTranscript(.incoming, text)
-        isIncomingTranslating = true
+        isIncomingTranslating = true   // until the last part is translated and spoken (REQ-CS-18)
         let generation = sessionGeneration
         // Stop cannot interrupt a translator that ignores cancellation: a late end must not
         // clear the next session's flag (UI-B2).
         defer { if generation == sessionGeneration { isIncomingTranslating = false } }
         do {
-            let translated = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
-            // A translator that ignores cancellation (the Apple bridge) must not speak after teardown.
-            try Task.checkCancellation()
-            incomingTranslation = translated
-            completeTranscript(entry, translation: translated)
-            guard !isPaused else { return }   // paused while translating: shown, not spoken
-            let locale = Locale(identifier: languagePairManager.sourceLanguage.minimalIdentifier)
-            selfEchoGuard.played(translated, at: .now)
-            await incomingTTS?.speak(text: translated, locale: locale)
-            // Pause's stopSpeaking may reach the TTS actor before this speak (jobs are not FIFO) (UI-B1).
-            if isPaused { await incomingTTS?.stopSpeaking() }
+            try await speakParts(of: sentence, entry: entry, direction: .incoming)
         } catch {
             skipTranscript(entry, error: error)
             handleTranslationFailure(error, outgoing: false)

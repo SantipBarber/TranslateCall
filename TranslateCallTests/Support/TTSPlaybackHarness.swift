@@ -17,12 +17,13 @@ struct TTSPlaybackHarness {
     init(primary: FakeSynthesizer = FakeSynthesizer(),
          fallback: FakeSynthesizer? = nil,
          output: FakeOutput = FakeOutput(),
-         limits: TTSPlaybackLimits = .uncoalesced) {
+         limits: TTSPlaybackLimits = .uncoalesced,
+         now: @escaping @Sendable () -> ContinuousClock.Instant = { .now }) {
         self.primary = primary
         self.fallback = fallback
         self.output = output
         service = TTSPlaybackService(primary: primary, fallback: fallback, output: output,
-                                     limits: limits, clock: clock, metrics: metrics)
+                                     limits: limits, clock: clock, metrics: metrics, now: now)
         speaking = StreamRecorder(service.isSpeakingStream)
         events = StreamRecorder(service.events)
     }

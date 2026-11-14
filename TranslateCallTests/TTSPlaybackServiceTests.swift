@@ -5,16 +5,19 @@ import Testing
 @Suite("TTSPlaybackService")
 struct TTSPlaybackServiceTests {
 
-    @Test("utterances run one at a time, in FIFO order (REQ-T-11)")
+    @Test("utterances run one at a time, in FIFO order (REQ-T-11), one ahead of the one playing (REQ-CS-51)")
     func fifoOneAtATime() async {
         let harness = TTSPlaybackHarness()
+        await harness.service.speak(text: "zero", locale: english)
+        #expect(await waitUntil { harness.output.scheduledCount == 1 })
         for text in ["one", "two", "three"] { await harness.service.speak(text: text, locale: english) }
         for played in 1...3 {
-            #expect(await waitUntil { harness.output.scheduledCount == played })
-            #expect(harness.primary.texts.count == played, "the next utterance started before this one was heard")
-            harness.output.completeAll()
+            #expect(await waitUntil { harness.output.scheduledCount == played + 1 })
+            #expect(harness.primary.texts.count == played + 1, "more than one utterance synthesized ahead")
+            harness.output.complete(index: played - 1)
         }
-        #expect(harness.primary.texts == ["one", "two", "three"])
+        harness.output.completeAll()
+        #expect(harness.primary.texts == ["zero", "one", "two", "three"])
         await harness.service.deactivate()
     }
 
@@ -45,11 +48,12 @@ struct TTSPlaybackServiceTests {
         let harness = TTSPlaybackHarness()
         await harness.service.speak(text: "first", locale: english)
         await harness.service.speak(text: "second", locale: english)
-        #expect(await waitUntil { harness.output.scheduledCount == 1 && harness.speaking.values == [true] })
-        harness.output.completeAll()
-        #expect(await waitUntil { harness.output.scheduledCount == 2 })
+        #expect(await waitUntil { harness.output.scheduledCount == 2 && harness.speaking.values == [true] })
+        harness.output.complete(index: 0)
+        #expect(await waitUntil { await harness.metrics.recent.count == 1 })   // "first" was heard
+        await mainQueueHop()
         #expect(harness.speaking.values == [true])
-        harness.output.completeAll()
+        harness.output.complete(index: 1)
         #expect(await waitUntil { harness.speaking.values == [true, false] })
         await harness.service.deactivate()
     }
@@ -58,15 +62,17 @@ struct TTSPlaybackServiceTests {
     func stopIsImmediate() async {
         let harness = TTSPlaybackHarness()
         await harness.service.speak(text: "playing", locale: english)
-        await harness.service.speak(text: "queued", locale: english)
         #expect(await waitUntil { harness.output.scheduledCount == 1 })
+        await harness.service.speak(text: "ahead", locale: english)          // look-ahead (REQ-CS-50)
+        #expect(await waitUntil { harness.output.scheduledCount == 2 })
+        await harness.service.speak(text: "queued", locale: english)
 
         await harness.service.stopSpeaking()
 
         #expect(harness.output.stopCount == 1)
         #expect(await harness.service.pendingCount == 0)
         #expect(await waitUntil { harness.speaking.values == [true, false] })
-        #expect(harness.primary.texts == ["playing"])
+        #expect(harness.primary.texts == ["playing", "ahead"])
         #expect(harness.events.values.isEmpty)
         await harness.service.deactivate()
     }

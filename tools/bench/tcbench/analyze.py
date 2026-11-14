@@ -216,6 +216,63 @@ def _joined(utts: list[dict], stage: str) -> str:
     return " ".join(t for t in texts if t)
 
 
+def _quality_text(utts: list[dict]) -> str:
+    """The translations quality scores: a split sentence's whole text (translatedAll), else translated."""
+    texts = (
+        (u.get("detail", {}).get("translatedAll") or u.get("detail", {}).get("translated") or {})
+        .get("text", "").strip()
+        for u in utts
+    )
+    return " ".join(t for t in texts if t)
+
+
+def _split_stats(utts: list[dict]) -> dict[str, Any] | None:
+    """Clause split of a line: the handoff gap of the second clause (REQ-CS-40) and back-to-back starts.
+
+    ``handoffGapMs`` summarizes the ``ttsPartBuffer`` gaps: the time a part 1's first buffer was
+    scheduled after the audio scheduled before it ended (REQ-CS-56), 0 when it was in time. Part
+    buffers without the detail (a part coalesced into one attempt) add no sample.
+    ``backToBackPct`` (information): of the whole sentences that were a handoff, those whose
+    ``ttsFirstBuffer`` carries ``handoffGapMs`` (their synthesis started while the audio before was
+    still playing; a sentence after a silence carries none), the share in time (``"0"``). ``None``
+    when there was no such handoff.
+    ``translateAllMs`` (diagnosis, design §7; not a stage): ``translatedAll - sttFinal`` of the
+    split sentences, the time until both parts were translated.
+    ``afterPart`` counts the sentences whose first buffer was a part 1 coalesced ahead of them
+    (``afterPartOf``): their ``ttsFirstBuffer``, and so their latency, is earlier than when they were
+    heard.  ``None`` when no sentence was split.
+    """
+    parts = [u for u in utts if not _dropped(u) and "ttsPartBuffer" in u["events"]]
+    if not parts:
+        return None
+    gaps = [
+        float(u["detail"]["ttsPartBuffer"]["handoffGapMs"])
+        for u in parts
+        if "handoffGapMs" in u.get("detail", {}).get("ttsPartBuffer", {})
+    ]
+    whole = [
+        u for u in utts
+        if not _dropped(u) and "ttsFirstBuffer" in u["events"]
+        and "parts" not in u.get("detail", {}).get("translated", {})
+    ]
+    handoffs = [u.get("detail", {}).get("ttsFirstBuffer", {}).get("handoffGapMs") for u in whole]
+    handoffs = [g for g in handoffs if g is not None]
+    translate_all = [
+        (u["events"]["translatedAll"] - u["events"]["sttFinal"]) * 1e-6
+        for u in parts
+        if "translatedAll" in u["events"] and "sttFinal" in u["events"]
+    ]
+    return {
+        "sentences": len(parts),
+        "handoffGapMs": summary(gaps),
+        "backToBackPct": handoffs.count("0") / len(handoffs) * 100.0 if handoffs else None,
+        "translateAllMs": summary(translate_all),
+        "afterPart": sum(
+            "afterPartOf" in u.get("detail", {}).get("ttsFirstBuffer", {}) for u in utts if not _dropped(u)
+        ),
+    }
+
+
 def analyze_line(raw: dict, manifest: dict, comet: bool = False, tier: str | None = None) -> dict[str, Any]:
     clips = sorted(raw["clips"], key=lambda c: c["feedStartNs"])
     by_id = {c["id"]: c for c in manifest["clips"]}
@@ -259,14 +316,15 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False, tier: str | Non
         wer_pairs.append((mclip["transcript"], _joined(utts, "sttFinal")))
         ref = mclip.get("translations", {}).get(target) if target else None
         if ref:
-            pipeline.append({"src": mclip["transcript"], "mt": _joined(utts, "translated"), "ref": ref})
+            pipeline.append({"src": mclip["transcript"], "mt": _quality_text(utts), "ref": ref})
         live = [u for u in utts if not _dropped(u)]
         if live:
             last = live[-1]
             bucket = cold if last["seq"] == first_seq else lat
             latencies = _latencies(last, clip["speechEndNs"])
-            for stage, value in latencies.items():
-                bucket[stage].append(value)
+            for stage in STAGES:
+                if stage in latencies:
+                    bucket[stage].append(latencies[stage])
             if bucket is lat and "total" in latencies:
                 kind = "retracted" if last["events"].get("speechStart") in retracted_starts else "clean"
                 totals_by_retract[kind].append(latencies["total"])
@@ -331,6 +389,7 @@ def analyze_line(raw: dict, manifest: dict, comet: bool = False, tier: str | Non
         "unassigned": unassigned,
         "turn": _turn_stats(all_utts, assigned, {c["id"]: c["speechEndNs"] for c in clips}, totals_by_retract),
         **({"clone": clone} if (clone := _clone_stats(included_utts, raw["meta"].get("settings"), exp_tts)) else {}),
+        **({"split": split} if (split := _split_stats(included_utts)) else {}),
     }
 
 

@@ -28,6 +28,7 @@ actor MockSynthesisService: SynthesisService {
     private var heldSpeak: CheckedContinuation<Void, Never>?
     var isHoldingSpeak: Bool { heldSpeak != nil }
     func setHoldNextSpeak() { holdNextSpeak = true }
+    func resetStopSpeakingCalled() { stopSpeakingCalled = false }
     func releaseHeldSpeak() { heldSpeak?.resume(); heldSpeak = nil }
 
     func speak(text: String, locale: Locale) async {

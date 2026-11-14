@@ -10,14 +10,9 @@ extension TTSPlaybackService {
     /// Runs one synthesizer on one utterance under the watchdog, scheduling each buffer it yields.
     func runAttempt(
         _ synthesizer: any UtteranceSynthesizer, _ utterance: Utterance, gen: UInt64
-    ) async -> AttemptEnd {
-        guard gen == generation else { return .cancelled }
-        attemptStartedAt = .now
-        attemptFirstBufferAt = nil
-        attemptBufferCount = 0
-        attemptAudioSeconds = 0
-        attemptLastHandle = nil
-        attemptCountsTowardBreaker = true
+    ) async -> (end: AttemptEnd, record: AttemptRecord) {
+        guard gen == generation else { return (.cancelled, AttemptRecord(startedAt: now())) }
+        attempt = AttemptRecord(startedAt: now(), epoch: outputEpoch)
         setSpeaking(true)
         let stream = synthesizer.synthesize(text: utterance.text, locale: utterance.locale)
         let consumer = Task { await self.consume(stream, gen: gen) }
@@ -31,60 +26,105 @@ extension TTSPlaybackService {
         watchdog.cancel()
         let timedOut = await watchdog.value
         attemptTask = nil
-        return end == .cancelled && timedOut && gen == generation ? .timedOut : end
+        return (end == .cancelled && timedOut && gen == generation ? .timedOut : end, attempt)
     }
 
     private func consume(_ stream: AsyncThrowingStream<AVAudioPCMBuffer, Error>, gen: UInt64) async -> AttemptEnd {
         do {
             for try await buffer in stream {
-                guard gen == generation, !Task.isCancelled else { return .cancelled }
+                if let end = interruption(gen: gen) { return end }
                 guard buffer.frameLength > 0 else { continue }
-                do {
-                    attemptLastHandle = try output.schedule(buffer)
-                } catch {
-                    logger.error("TTS output refused a buffer: \(error.localizedDescription, privacy: .public)")
-                    return .outputFailed
-                }
+                guard schedule(buffer) else { return .outputFailed }
                 bufferObserver?(buffer)
-                if attemptFirstBufferAt == nil { attemptFirstBufferAt = .now }
-                attemptBufferCount += 1
-                attemptAudioSeconds += Double(buffer.frameLength) / buffer.format.sampleRate
+                if attempt.firstBufferAt == nil { attempt.firstBufferAt = now() }
+                attempt.bufferCount += 1
+                attempt.audioSeconds += Double(buffer.frameLength) / buffer.format.sampleRate
             }
         } catch {
-            guard gen == generation, !Task.isCancelled else { return .cancelled }
-            attemptCountsTowardBreaker = (error as? any TTSAttemptError)?.countsTowardBreaker ?? true
+            if let end = interruption(gen: gen) { return end }
+            attempt.countsTowardBreaker = (error as? any TTSAttemptError)?.countsTowardBreaker ?? true
             return .failed(error.localizedDescription)
         }
+        return interruption(gen: gen) ?? .finished
+    }
+
+    /// Why the attempt in flight must end now, if it must: the output was stopped under it
+    /// (`failOutput` also cancels it, REQ-CS-54) or it was stopped, timed out or went stale.
+    private func interruption(gen: UInt64) -> AttemptEnd? {
+        if attempt.epoch != outputEpoch { return .outputFailed }
         guard gen == generation, !Task.isCancelled else { return .cancelled }
-        return .finished
+        return nil
+    }
+
+    /// Schedules one buffer of the attempt in flight; false when the output was stopped under the
+    /// attempt (REQ-CS-54) or refused the buffer. Reports the handoff gap before the attempt's first
+    /// buffer when audio was scheduled before it in this generation (REQ-CS-56).
+    private func schedule(_ buffer: AVAudioPCMBuffer) -> Bool {
+        guard attempt.epoch == outputEpoch else { return false }
+        let current = now()
+        // Before `schedule`, on purpose: a tracing output stamps the first-buffer event inside
+        // `schedule`, and the gap must be known by then (P-3). A refused buffer stops the output,
+        // which drops the pending gap.
+        if attempt.bufferCount == 0, let end = scheduledAudioEnd {
+            (output as? any HandoffReporting)?.handoff(gap: max(.zero, end.duration(to: current)))
+        }
+        do {
+            attempt.lastHandle = try output.schedule(buffer)
+        } catch {
+            logger.error("TTS output refused a buffer: \(error.localizedDescription, privacy: .public)")
+            failOutput()
+            return false
+        }
+        scheduledAudioEnd = max(current, scheduledAudioEnd ?? current) + Self.length(of: buffer)
+        return true
+    }
+
+    /// Exact for integer sample rates, so the audio timeline does not drift by rounding.
+    private static func length(of buffer: AVAudioPCMBuffer) -> Duration {
+        let rate = buffer.format.sampleRate
+        guard rate > 0 else { return .zero }
+        guard rate == rate.rounded() else { return .seconds(Double(buffer.frameLength) / rate) }
+        return .seconds(Int64(buffer.frameLength)) / Int64(rate)
+    }
+
+    /// Stops the output on a failure or stall: everything scheduled is lost, including the audio of
+    /// an utterance synthesized ahead, which the epoch bump tells (REQ-CS-54). An attempt still
+    /// synthesizing ahead is cancelled at once, releasing its synthesizer (and the MLX gate); it
+    /// ends `.outputFailed`, so its drain reports it `outputUnavailable` (design §7a).
+    func failOutput() {
+        output.stop()
+        outputEpoch &+= 1
+        scheduledAudioEnd = nil
+        attemptTask?.cancel()
     }
 
     /// Waits for the attempt's audio to play out, then names the outcome (REQ-T-13/16/21).
-    func conclude(_ end: AttemptEnd, engine: TTSEngine, utterance: Utterance, gen: UInt64) async -> Outcome {
-        if end == .cancelled { return .stale }
-        if end == .outputFailed {
-            output.stop()
-            return .skipped(.outputUnavailable)
-        }
-        switch await drainPlayback() {
-        case .stopped:
-            return gen == generation ? .skipped(.outputUnavailable) : .stale
-        case .stalled:
-            output.stop()
+    func conclude(
+        _ end: AttemptEnd, record: AttemptRecord, engine: TTSEngine, utterance: Utterance, gen: UInt64
+    ) async -> Outcome {
+        guard end != .cancelled, gen == generation else { return .stale }
+        // The output refused this attempt's audio, or was stopped under it while the utterance
+        // before it played (both already stopped the output).
+        guard end != .outputFailed, record.epoch == outputEpoch else { return .skipped(.outputUnavailable) }
+        switch await drainPlayback(record) {
+        case .stopped, .stalled:
+            guard gen == generation else { return .stale }
+            // Lost or stalled under this utterance: the one ahead, if any, went with it.
+            if record.epoch == outputEpoch { failOutput() }
             return .skipped(.outputUnavailable)
         case .played:
             if end == .timedOut { return .skipped(.timeout) }
             guard end == .finished else { return .skipped(.interrupted) }
-            await recordMetrics(engine: engine, utterance: utterance)
+            await recordMetrics(record, engine: engine, utterance: utterance)
             return .played
         }
     }
 
     /// Waits for the attempt's last buffer to be played back, bounded by the audio's length plus
     /// `playbackGrace`, so a device that never reports back cannot keep `isSpeaking` true (REQ-T-16).
-    private func drainPlayback() async -> Drain {
-        guard let handle = attemptLastHandle else { return .played }
-        let bound = Duration.seconds(attemptAudioSeconds) + limits.playbackGrace
+    private func drainPlayback(_ record: AttemptRecord) async -> Drain {
+        guard let handle = record.lastHandle else { return .played }
+        let bound = Duration.seconds(record.audioSeconds) + limits.playbackGrace
         let clock = self.clock
         return await withTaskGroup(of: Drain.self) { group in
             group.addTask {
@@ -101,9 +141,9 @@ extension TTSPlaybackService {
         }
     }
 
-    private func recordMetrics(engine: TTSEngine, utterance: Utterance) async {
-        guard let firstBufferAt = attemptFirstBufferAt else { return }   // nothing was heard
-        let latency = attemptStartedAt.duration(to: firstBufferAt)
+    private func recordMetrics(_ record: AttemptRecord, engine: TTSEngine, utterance: Utterance) async {
+        guard let firstBufferAt = record.firstBufferAt else { return }   // nothing was heard
+        let latency = record.startedAt.duration(to: firstBufferAt)
         await metrics.record(TTSMetrics(
             engine: engine,
             synthesisLatencyMs: Int(latency / .milliseconds(1)),
