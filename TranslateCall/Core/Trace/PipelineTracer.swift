@@ -7,55 +7,14 @@ import Synchronization
 /// and content, never by an id threaded through the stage protocols:
 /// - an STT result belongs to the segment with the same `capturedAt`; older segments without a
 ///   result were dropped by STT;
-/// - a translation and a `speak` belong to the oldest utterance whose text they carry;
-/// - a synthesis attempt carries the joined texts of the utterances `TTSPlaybackService` merged.
+/// - a translation and a `speak` belong to the oldest utterance whose text they carry; a split
+///   sentence's parts (clause split, P-5) are matched against the clauses of its STT text;
+/// - a synthesis attempt carries the joined texts of the items (whole sentences or parts)
+///   `TTSPlaybackService` merged.
 ///
 /// Synchronous and lock-based: callers never await, and the order of calls is the order of events.
 /// Only utterances still in flight are kept (ended ones are forgotten), so memory stays bounded.
 nonisolated final class PipelineTracer: Sendable {
-    struct Utterance {
-        let seq: Int
-        let capturedAt: Date
-        /// The VAD's segment id (0: untagged). Tentatives of one utterance share `capturedAt`, never the id.
-        let segmentID: UInt64
-        var sttText: String?
-        var translation: String?
-        var spoken = false
-        var attempted = false
-        var heard = false
-        var interval: OSSignpostIntervalState?
-    }
-
-    /// A synthesis attempt: the utterances it carries, its text (a fallback retries the same text) and
-    /// whether its synthesizer already finished (buffers may still be scheduled after that).
-    struct Attempt {
-        var seqs: [Int]
-        let text: String
-        var engine: String
-        var finished = false
-    }
-
-    /// What one `bufferScheduled` call decided: first-heard seqs, seqs that end now, and the engine.
-    struct BufferOutcome {
-        var fresh: [Int] = []
-        var done: [Int] = []
-        var engine = ""
-    }
-
-    struct State {
-        var open: [Utterance] = []
-        var nextSeq = 0
-        var attempt: Attempt?
-        /// Boundaries that arrived before their segment (separate streams): by segment id.
-        var earlyBoundaries: [UInt64: SegmentBoundary] = [:]
-        /// The id of the last segment closed. A VAD's ids only grow, so a boundary at or below it with no
-        /// open utterance belongs to a segment that already ended and is not kept (G3 M1). The latest id,
-        /// not the max: a VAD rebuilt under this tracer starts again from 1.
-        var lastSegmentID: UInt64 = 0
-
-        func isHeard(_ seq: Int) -> Bool { open.contains { $0.seq == seq && $0.heard } }
-    }
-
     let direction: TraceDirection
     private let sink: any TraceSink
     private let trailingSilence: Duration
@@ -163,23 +122,56 @@ nonisolated final class PipelineTracer: Sendable {
         }
     }
 
+    /// A translation finished: of a whole sentence (`translated`), or of one clause of a split one
+    /// (P-5). Part 0 is `translated` (`parts: "2"`, REQ-CS-30); once both are in, `translatedAll`
+    /// carries the joined text (REQ-CS-31).
     func translated(source: String, result: String) {
         let stamp = now()
-        let seq = state.withLock { current -> Int? in
-            guard let index = current.open.firstIndex(where: { $0.sttText == source && $0.translation == nil })
-            else { return nil }
-            current.open[index].translation = result
-            return current.open[index].seq
+        let stamped = state.withLock { current -> (seq: Int, stamps: [Stamp])? in
+            guard let match = current.match(source: source) else { return nil }
+            let seq = current.open[match.index].seq
+            guard let part = match.part else {
+                current.open[match.index].translations = [result]
+                return (seq, [Stamp(stage: .translated, detail: ["text": result])])
+            }
+            current.open[match.index].translations[part] = result
+            let utterance = current.open[match.index]
+            guard let first = utterance.translation(ofPart: 0) else { return (seq, []) }   // part 1 came first
+            var stamps: [Stamp] = []
+            if part == 0 { stamps.append(Stamp(stage: .translated, detail: ["text": first, "parts": "2"])) }
+            if let second = utterance.translation(ofPart: 1) {
+                stamps.append(Stamp(stage: .translatedAll, detail: ["text": first + " " + second]))
+            }
+            return (seq, stamps)
         }
-        if let seq { emit(seq, .translated, at: stamp, ["text": result]) }
+        guard let stamped else { return }
+        stamped.stamps.forEach { emit(stamped.seq, $0.stage, at: stamp, $0.detail) }
     }
 
+    /// A whole sentence or its part 0 failed: `dropped`. Its part 1 failed: the sentence ends at
+    /// part 0's synthesis end with `partsSpoken: "1"` (now, or when that synthesis ends).
     func translationFailed(source: String, error: Error) {
         let stamp = now()
-        let seq = state.withLock { current in
-            current.open.first { $0.sttText == source && $0.translation == nil }?.seq
+        let ending = state.withLock { current -> Ending? in
+            guard let match = current.match(source: source) else { return nil }
+            guard match.part == 1 else {
+                return Ending(seq: current.open[match.index].seq, stage: .dropped, stamp: stamp,
+                              detail: ["reason": "translate-\(String(describing: error))"])
+            }
+            return current.partOneFailed(at: match.index)
         }
-        if let seq { finish(seq, .dropped, at: stamp, ["reason": "translate-\(String(describing: error))"]) }
+        if let ending { finish(ending) }
+    }
+
+    /// The playback service will schedule the first buffer of an attempt `gap` after the audio
+    /// scheduled before it ends (REQ-CS-56): kept for the next `bufferScheduled`.
+    func handoff(gap: Duration) {
+        state.withLock { $0.handoffGap = gap }
+    }
+
+    /// The output was stopped: a held handoff gap belongs to no buffer any more.
+    func outputStopped() {
+        state.withLock { $0.handoffGap = nil }
     }
 
     /// Ends every open utterance as dropped (session stop, bench idle timeout).
@@ -187,6 +179,8 @@ nonisolated final class PipelineTracer: Sendable {
         let stamp = now()
         let closed = state.withLock { current -> [Utterance] in
             current.attempt = nil
+            current.waiting.removeAll()
+            current.handoffGap = nil
             current.earlyBoundaries.removeAll()
             defer { current.open.removeAll() }
             return current.open
@@ -204,13 +198,16 @@ nonisolated final class PipelineTracer: Sendable {
     func finish(_ seq: Int, _ stage: TraceStage, at stamp: ContinuousClock.Instant,
                 _ detail: [String: String] = [:]) {
         let removed = state.withLock { current -> Utterance? in
-            guard let index = current.open.firstIndex(where: { $0.seq == seq }) else { return nil }
+            guard let index = current.index(of: seq) else { return nil }
+            current.waiting.removeAll { $0.seq == seq }
             return current.open.remove(at: index)
         }
         guard let removed else { return }
         if let interval = removed.interval { signposter.endInterval("Utterance", interval) }
         emit(seq, stage, at: stamp, detail)
     }
+
+    func finish(_ ending: Ending) { finish(ending.seq, ending.stage, at: ending.stamp, ending.detail) }
 
     func emit(_ seq: Int, _ stage: TraceStage, at stamp: ContinuousClock.Instant,
               _ detail: [String: String] = [:]) {
@@ -219,7 +216,7 @@ nonisolated final class PipelineTracer: Sendable {
         sink.record(TraceEvent(direction: direction, seq: seq, stage: stage, time: stamp, detail: detail))
     }
 
-    private static func ms(_ duration: Duration) -> String {
+    static func ms(_ duration: Duration) -> String {
         String(Int((Double(duration.components.seconds) * 1000
             + Double(duration.components.attoseconds) / 1e15).rounded()))
     }
