@@ -281,21 +281,21 @@ struct AudioCoordinatorSessionTests {
         func started() -> Task<String, Error> { Task { try await Task.sleep(for: .seconds(60)); return "x" } }
 
         coordinator.suppressNextOutgoingTurn()
-        let muted = started()
+        let muted = SentenceTranslation(source: "muted", task: started())
         await coordinator.deliverOutgoing("muted", translation: muted)
-        #expect(await muted.result.isFailure)
+        #expect(await muted.tasks[0].result.isFailure)
 
-        let empty = started()
+        let empty = SentenceTranslation(source: "", task: started())
         await coordinator.deliverOutgoing("", translation: empty)
-        #expect(await empty.result.isFailure)
+        #expect(await empty.tasks[0].result.isFailure)
 
         await coordinator.pause()
-        let pausedOut = started()
-        let pausedIn = started()
+        let pausedOut = SentenceTranslation(source: "paused", task: started())
+        let pausedIn = SentenceTranslation(source: "paused", task: started())
         await coordinator.deliverOutgoing("paused", translation: pausedOut)
         await coordinator.deliverIncoming("paused", translation: pausedIn)
-        #expect(await pausedOut.result.isFailure)
-        #expect(await pausedIn.result.isFailure)
+        #expect(await pausedOut.tasks[0].result.isFailure)
+        #expect(await pausedIn.tasks[0].result.isFailure)
 
         #expect(coordinator.transcript.isEmpty)
         #expect(await mocks.mockOutgoingTTS.speakCalls.isEmpty)

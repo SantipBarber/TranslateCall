@@ -12,6 +12,7 @@ extension AudioCoordinator {
                 guard let self else { throw CancellationError() }
                 return try await translateOutgoing(text)
             },
+            splitsClauses: isClauseSplitOn,
             deliver: { [weak self] in await self?.deliverOutgoing($0, translation: $1) }
         )
         outgoingTasks.append(Task { [weak self] in
@@ -29,6 +30,7 @@ extension AudioCoordinator {
                 guard let self else { throw CancellationError() }
                 return try await translateIncoming(text)
             },
+            splitsClauses: isClauseSplitOn,
             deliver: { [weak self] in await self?.deliverIncoming($0, translation: $1) }
         )
         incomingTasks.append(Task { [weak self] in
@@ -37,6 +39,17 @@ extension AudioCoordinator {
                 self?.incomingCommitter?.receive(boundary)
             }
         })
+    }
+
+    // MARK: - SentenceTranslation
+
+    /// One sentence's translation, split into clauses when the session has clause split on (QS-5,
+    /// design §3); `outgoing` picks the direction's service and language pair.
+    func makeSentenceTranslation(_ text: String, outgoing: Bool) -> SentenceTranslation {
+        SentenceTranslation(text, split: isClauseSplitOn) { [weak self] part in
+            guard let self else { throw CancellationError() }
+            return outgoing ? try await translateOutgoing(part) : try await translateIncoming(part)
+        }
     }
 
     /// Every result reaches the committer, empty ones too (they unblock the head, FR-QS.5); only

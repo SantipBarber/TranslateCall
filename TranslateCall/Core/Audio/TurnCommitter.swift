@@ -19,19 +19,21 @@ nonisolated private let logger = Logger(subsystem: "com.spbarber.TranslateCall",
 @MainActor
 final class TurnCommitter {
     typealias Translate = @MainActor (String) async throws -> String
-    /// `translation` is the held one for a tentative, nil for a final (`deliver` translates it).
-    typealias Deliver = @MainActor (_ text: String, _ translation: Task<String, Error>?) async -> Void
+    /// `translation` is the held one for a tentative (already started on every part), nil for a
+    /// final (`deliver` starts it).
+    typealias Deliver = @MainActor (_ text: String, _ translation: SentenceTranslation?) async -> Void
 
     private struct Entry {
         let id: UInt64
         /// nil until the segment's result arrives (a commit came first).
         var text: String?
         /// Started on a non-empty tentative result; nil for a final and for empty text.
-        var translation: Task<String, Error>?
+        var translation: SentenceTranslation?
         var committed: Bool
     }
 
     private let translate: Translate
+    private let splitsClauses: Bool
     private let deliver: Deliver
     /// Held entries, in id order.
     private var entries: [Entry] = []
@@ -39,7 +41,7 @@ final class TurnCommitter {
     private var retractedIDs: Set<UInt64> = []
     private var deliveryTask: Task<Void, Never>?
     /// The translation being delivered now: cancelled by `cancelAll()` whatever `deliver` does.
-    private var inFlight: Task<String, Error>?
+    private var inFlight: SentenceTranslation?
     /// Set by `cancelAll()`: the direction is torn down, later input is ignored and the delivery
     /// loop stops at its next step.
     private var isCancelled = false
@@ -51,8 +53,11 @@ final class TurnCommitter {
     /// Entries held (not yet delivered or dropped). For tests.
     var heldCount: Int { entries.count }
 
-    init(translate: @escaping Translate, deliver: @escaping Deliver) {
+    /// `splitsClauses` splits each tentative into clauses and translates them in parallel
+    /// (QS-5, design §3); off keeps today's whole-sentence translation.
+    init(translate: @escaping Translate, splitsClauses: Bool = false, deliver: @escaping Deliver) {
         self.translate = translate
+        self.splitsClauses = splitsClauses
         self.deliver = deliver
     }
 
@@ -62,7 +67,7 @@ final class TurnCommitter {
         see(id, isResult: true)
         if retractedIDs.remove(id) != nil { return pump() }
         let eager = result.kind == .tentative && !result.text.isEmpty
-        let translation = eager ? startTranslation(of: result.text) : nil
+        let translation = eager ? SentenceTranslation(result.text, split: splitsClauses, translate: translate) : nil
         // A placeholder left by an early commit: fill it in.
         if let index = entries.firstIndex(where: { $0.id == id && $0.text == nil }) {
             entries[index].text = result.text
@@ -112,11 +117,6 @@ final class TurnCommitter {
     }
 
     // MARK: - Private
-
-    private func startTranslation(of text: String) -> Task<String, Error> {
-        let translate = translate
-        return Task { try await translate(text) }
-    }
 
     private func see(_ id: UInt64, isResult: Bool) {
         maxSeenID = max(maxSeenID, id)

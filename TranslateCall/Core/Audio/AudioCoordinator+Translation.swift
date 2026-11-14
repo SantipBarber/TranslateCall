@@ -28,9 +28,10 @@ extension AudioCoordinator {
 
     // MARK: - Deliver (show + speak)
 
-    /// Shows and speaks one outgoing sentence. `translation` is a translation already started by the caller
-    /// (cancelled here if the sentence is dropped); `nil` starts it here, after the guards pass.
-    func deliverOutgoing(_ text: String, translation: Task<String, Error>? = nil) async {
+    /// Shows and speaks one outgoing sentence. `translation` is a sentence translation already started by
+    /// the caller (cancelled here if the sentence is dropped); `nil` starts one here, after the guards pass.
+    /// For now only the first part is awaited (design §4); Task 7 delivers the later parts too.
+    func deliverOutgoing(_ text: String, translation: SentenceTranslation? = nil) async {
         // Never dropped while the other side speaks (F8.5.3 REQ-H-10): echo is handled by MicEchoGate.
         // Dropped while paused (M9 UI core REQ-UI-50), before the mute turn so the drop does not use it (UI-B3).
         guard !text.isEmpty, !isPaused else {
@@ -51,7 +52,8 @@ extension AudioCoordinator {
             showTTSNotice(String(localized: "Ignored an echo of their translation. On speakers? Choose Speakers."))
             return
         }
-        let task = translation ?? Task { try await translateOutgoing(text) }
+        let sentence = translation ?? makeSentenceTranslation(text, outgoing: true)
+        let task = sentence.tasks[0]
         let entry = appendTranscript(.outgoing, text)
         isOutgoingTranslating = true
         let generation = sessionGeneration
@@ -77,14 +79,15 @@ extension AudioCoordinator {
     }
 
     /// Incoming counterpart of `deliverOutgoing`.
-    func deliverIncoming(_ text: String, translation: Task<String, Error>? = nil) async {
+    func deliverIncoming(_ text: String, translation: SentenceTranslation? = nil) async {
         // Never dropped while either TTS speaks (F8.5.3 REQ-H-11): SCStream captures only the call app,
         // which does not play the user's own voice back. Remote sentences queue like outgoing ones.
         guard !text.isEmpty, !isPaused else {
             translation?.cancel()
             return
         }
-        let task = translation ?? Task { try await translateIncoming(text) }
+        let sentence = translation ?? makeSentenceTranslation(text, outgoing: false)
+        let task = sentence.tasks[0]
         let entry = appendTranscript(.incoming, text)
         isIncomingTranslating = true
         let generation = sessionGeneration
