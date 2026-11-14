@@ -85,7 +85,7 @@ struct TTSPlaybackLookAheadTests {
         await harness.service.deactivate()
     }
 
-    @Test("the utterance ahead still synthesizing schedules nothing after the output stalled (REQ-CS-54)")
+    @Test("the utterance ahead still synthesizing is cancelled when the output stalls and schedules nothing (REQ-CS-54)")
     func aheadStillSynthesizingStopsScheduling() async {
         let two = FakeSynthesizer.Script(buffers: [makePCMBuffer(frames: 1_600, fill: 0.5),
                                                    makePCMBuffer(frames: 1_600, fill: 0.5)], holdBefore: 1)
@@ -96,11 +96,14 @@ struct TTSPlaybackLookAheadTests {
         #expect(await waitUntil { primary.gate.waiterCount == 1 })
 
         harness.clock.advance(by: .seconds(2))                       // a stalls; b's watchdog is at 30 s
-        let skipped = TTSEvent.utteranceSkipped(.outputUnavailable)
-        #expect(await waitUntil { harness.events.values == [skipped] })
-        primary.gate.open()
 
+        // b's attempt is cancelled at once (its synthesizer released), without waiting for its next buffer.
+        let skipped = TTSEvent.utteranceSkipped(.outputUnavailable)
         #expect(await waitUntil { harness.events.values == [skipped, skipped] })
+        #expect(primary.cancelledCount == 1)
+        #expect(primary.gate.waiterCount == 1, "b's next buffer was never released")
+        primary.gate.open()
+        await mainQueueHop()
         #expect(harness.output.scheduledCount == 2)
         #expect(await waitUntil { harness.speaking.values == [true, false] })
         await harness.service.deactivate()

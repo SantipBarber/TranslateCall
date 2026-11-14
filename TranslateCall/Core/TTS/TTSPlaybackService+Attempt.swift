@@ -32,7 +32,7 @@ extension TTSPlaybackService {
     private func consume(_ stream: AsyncThrowingStream<AVAudioPCMBuffer, Error>, gen: UInt64) async -> AttemptEnd {
         do {
             for try await buffer in stream {
-                guard gen == generation, !Task.isCancelled else { return .cancelled }
+                if let end = interruption(gen: gen) { return end }
                 guard buffer.frameLength > 0 else { continue }
                 guard schedule(buffer) else { return .outputFailed }
                 bufferObserver?(buffer)
@@ -41,12 +41,19 @@ extension TTSPlaybackService {
                 attempt.audioSeconds += Double(buffer.frameLength) / buffer.format.sampleRate
             }
         } catch {
-            guard gen == generation, !Task.isCancelled else { return .cancelled }
+            if let end = interruption(gen: gen) { return end }
             attempt.countsTowardBreaker = (error as? any TTSAttemptError)?.countsTowardBreaker ?? true
             return .failed(error.localizedDescription)
         }
+        return interruption(gen: gen) ?? .finished
+    }
+
+    /// Why the attempt in flight must end now, if it must: the output was stopped under it
+    /// (`failOutput` also cancels it, REQ-CS-54) or it was stopped, timed out or went stale.
+    private func interruption(gen: UInt64) -> AttemptEnd? {
+        if attempt.epoch != outputEpoch { return .outputFailed }
         guard gen == generation, !Task.isCancelled else { return .cancelled }
-        return .finished
+        return nil
     }
 
     /// Schedules one buffer of the attempt in flight; false when the output was stopped under the
@@ -78,11 +85,14 @@ extension TTSPlaybackService {
     }
 
     /// Stops the output on a failure or stall: everything scheduled is lost, including the audio of
-    /// an utterance synthesized ahead, which the epoch bump tells (REQ-CS-54).
+    /// an utterance synthesized ahead, which the epoch bump tells (REQ-CS-54). An attempt still
+    /// synthesizing ahead is cancelled at once, releasing its synthesizer (and the MLX gate); it
+    /// ends `.outputFailed`, so its drain reports it `outputUnavailable` (design §7a).
     func failOutput() {
         output.stop()
         outputEpoch &+= 1
         scheduledAudioEnd = nil
+        attemptTask?.cancel()
     }
 
     /// Waits for the attempt's audio to play out, then names the outcome (REQ-T-13/16/21).
