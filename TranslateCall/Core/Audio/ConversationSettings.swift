@@ -13,6 +13,7 @@ final class ConversationSettings: ObservableObject {
     /// Slider step: tenths of a second.
     nonisolated static let pauseStep = 0.1
     nonisolated static let defaultPauseSeconds = 0.6
+    nonisolated static let clauseSplitKey = "conversation.clauseSplit"
 
     @Published var listeningMode: ListeningMode {
         didSet { defaults.set(listeningMode.rawValue, forKey: Self.listeningModeKey) }
@@ -29,6 +30,12 @@ final class ConversationSettings: ObservableObject {
         }
     }
 
+    /// Split outgoing STT text into clauses for earlier, faster translation turns (M9, REQ-CS-20).
+    /// Read when a session starts, like `pauseSeconds`.
+    @Published var clauseSplit: Bool {
+        didSet { defaults.set(clauseSplit, forKey: Self.clauseSplitKey) }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -37,6 +44,7 @@ final class ConversationSettings: ObservableObject {
             ?? .headphones
         pauseSeconds = (defaults.object(forKey: Self.pauseSecondsKey) as? Double).map(Self.clampedPause)
             ?? Self.defaultPauseSeconds
+        clauseSplit = defaults.object(forKey: Self.clauseSplitKey) as? Bool ?? true
     }
 
     /// The VAD configuration for the next session (REQ-V-05), already validated (REQ-V-06).

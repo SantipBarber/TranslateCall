@@ -51,6 +51,25 @@ struct ConversationSettingsTests {
         #expect(settings.pauseSeconds == 0.6)
     }
 
+    @Test("clause split defaults on (REQ-CS-20)")
+    func clauseSplitDefaultsOn() {
+        let store = TestDefaults()
+        defer { store.clear() }
+        let settings = ConversationSettings(defaults: store.defaults)
+        #expect(settings.clauseSplit)
+    }
+
+    @Test("clause split survives a relaunch (REQ-CS-20)")
+    func clauseSplitPersists() {
+        let store = TestDefaults()
+        defer { store.clear() }
+        let first = ConversationSettings(defaults: store.defaults)
+        first.clauseSplit = false
+
+        let second = ConversationSettings(defaults: store.defaults)
+        #expect(!second.clauseSplit)
+    }
+
     @Test("corrupt stored values fall back to the defaults")
     func corruptStoredValues() {
         let store = TestDefaults()

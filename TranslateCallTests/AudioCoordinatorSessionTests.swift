@@ -352,6 +352,37 @@ struct AudioCoordinatorSessionTests {
         #expect(callPeak == 0)
         await coordinator.stop()
     }
+
+    // MARK: Clause split read at session start (REQ-CS-20)
+
+    @Test("clause split is read at start() and stays fixed until the next start (REQ-CS-20)")
+    func clauseSplitReadAtStart() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        var settingOn = true
+        coordinator.clauseSplitSetting = { settingOn }
+
+        await coordinator.start(captureTarget: callTarget)
+        #expect(coordinator.isClauseSplitOn)
+        settingOn = false
+        #expect(coordinator.isClauseSplitOn, "a mid-session change waits for the next start")
+        await coordinator.stop()
+
+        await coordinator.start(captureTarget: callTarget)
+        #expect(!coordinator.isClauseSplitOn)
+        await coordinator.stop()
+    }
+
+    @Test("no clause-split setting: the session runs with the flag off (REQ-CS-20)")
+    func clauseSplitOffWithoutSetting() async {
+        let mocks = CoordinatorMocks()
+        let coordinator = makeCoordinator(mocks)
+        #expect(coordinator.clauseSplitSetting == nil)
+
+        await coordinator.start(captureTarget: callTarget)
+        #expect(!coordinator.isClauseSplitOn)
+        await coordinator.stop()
+    }
 }
 
 private extension Result {
