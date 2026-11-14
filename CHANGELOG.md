@@ -8,8 +8,12 @@ From 0.9.0 on, each release is also a git tag (`v0.9.0`). Add an entry with ever
 
 ### Added
 - Spec for the clause split and look-ahead synthesis: long sentences are translated and spoken in two parts so the first one is heard ~250–290 ms sooner, and the next sentence is synthesized while the current one plays, with no gap (QS-5, `specs/m9-product/clause-split/`).
+- Clause split: a sentence of 12 words or more is cut once at its first `,` `;` `:` (at least 5 words before, 4 after); both parts are translated at once and spoken back to back. On by default (setting `conversation.clauseSplit`, no UI switch yet) (QS-5).
+- Look-ahead synthesis: the next utterance is synthesized while the current one plays (at most one ahead), so the second part follows the first with no gap (bench: handoff gap p50 0 ms, p90 0 ms over 113 split sentences).
+- Bench: `just bench <set> <profile> <edge> <lines> <split>` turns clause split off with `split=0`; quality is scored on the whole translation; the report has a "Clause split" table.
 
 ### Changed
+- en>es Best first audio p50 1366 ms with clause split on vs 1627 ms off in the same session (−16 %); part of the gap is run drift (es-ES>en, with no split sentence, also moved −8 %). chrF++ −0.48 (QS-5).
 - QS-8 closed: the Apple Speech confidence threshold stays at 0.60. Bench data shows the dropped texts are mostly misrecognised (no code change).
 
 ### Fixed
