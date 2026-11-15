@@ -277,10 +277,13 @@ struct BenchEchoPathTests {
         var stream = player.start().makeAsyncIterator()
         _ = await stream.next()   // the stream is running
         player.mix(Array(repeating: 0.25, count: 2048), at: .now)
+        // Read until the mix is heard, not a fixed count: when this task resumes late (full unit tier),
+        // up to 64 silent buffers from before the mix are still queued in the stream ahead of it.
         var heard: Float = 0
-        for _ in 0..<6 {
+        for _ in 0..<(SessionAudioStream.capacity + 16) {
             guard let buffer = await stream.next(), let data = buffer.floatChannelData?[0] else { break }
             heard = max(heard, (0..<Int(buffer.frameLength)).map { data[$0] }.max() ?? 0)
+            if heard > 0 { break }
         }
         player.stop()
         #expect(abs(heard - 0.25) < 1e-6)
