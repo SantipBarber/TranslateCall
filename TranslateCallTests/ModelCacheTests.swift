@@ -1,3 +1,4 @@
+import FluidAudio
 import Foundation
 import Testing
 @testable import TranslateCall
@@ -55,6 +56,32 @@ struct ModelCacheTests {
                           .appendingPathComponent(config.modelSize.whisperKitName
                               .replacingOccurrences(of: "openai_", with: "openai/")))
         #expect(ModelCache.isWhisperReady(config, home: home.url))
+    }
+
+    @Test("Whisper: the tokenizer can also live in the model folder (WhisperKit accepts either)")
+    func whisperTokenizerInModelFolder() throws {
+        let home = TempHome()
+        try home.make(["tokenizer.json"], in: ModelCache.whisperDirectory(for: .base, home: home.url))
+        #expect(ModelCache.hasWhisperTokenizer(for: .base, home: home.url))
+        let config = WhisperConfiguration.default
+        try home.make(ModelCache.whisperRequired,
+                      in: ModelCache.whisperDirectory(for: config.modelSize, home: home.url))
+        #expect(ModelCache.isWhisperReady(config, home: home.url))
+    }
+
+    @Test("Parakeet: empty folder, models without vocabulary, models with vocabulary")
+    func parakeetProbe() throws {
+        let home = TempHome()
+        let folder = home.url.appendingPathComponent(Repo.parakeet.folderName)
+        let required = ModelNames.ASR.requiredModels.sorted()
+
+        #expect(!ModelCache.isParakeetCached(directory: folder), "empty folder")
+
+        try home.make(required, in: folder)
+        #expect(!ModelCache.isParakeetCached(directory: folder), "models without vocabulary")
+
+        try home.make([ModelNames.ASR.vocabulary(for: .parakeet)], in: folder)
+        #expect(ModelCache.isParakeetCached(directory: folder))
     }
 
     @Test("Kokoro: both variants are required")
