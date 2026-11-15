@@ -6,6 +6,16 @@ From 0.9.0 on, each release is also a git tag (`v0.9.0`). Add an entry with ever
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-11-15 — M9 Product: clause split (QS-5)
+
+### Known issues and open decisions
+- mlx-audio-swift still comes from the fork `SantipBarber/mlx-audio-swift` (branch `translatecall-pitch-fix`): upstream v0.1.9 has the ICL priming fix (#371), but ahead-of-sentence priming (upstream PR #391) is still open. Back to the official package once it is released (QS-7).
+- `voice-pitch` scenario: one sentence goes over the ±12 % tolerance in about 1 run in 2. Tolerance not decided.
+- en>es Best latency p50 1366 ms (gate 1.5 s); translation is still the largest stage.
+- Since macOS 27.2, `isSpeaking` ends 190–280 ms after the last audio, over the 150 ms limit (A30, known issue in tests).
+- Edge TTS returns 403 and is shown as "Temporarily unavailable" (A27).
+- Full list: `specs/m9-product/backlog.md`.
+
 ### Added
 - Spec for the clause split and look-ahead synthesis: long sentences are translated and spoken in two parts so the first one is heard ~250–290 ms sooner, and the next sentence is synthesized while the current one plays, with no gap (QS-5, `specs/m9-product/clause-split/`).
 - Clause split: a sentence of 12 words or more is cut once at its first `,` `;` `:` (at least 5 words before, 4 after); both parts are translated at once and spoken back to back. On by default; switch in Settings › General › Rhythm, applied from the next conversation (QS-5).
@@ -23,6 +33,11 @@ From 0.9.0 on, each release is also a git tag (`v0.9.0`). Add an entry with ever
 - A sentence whose playback request reached the TTS after Pause no longer plays while paused (UI-B1).
 - An old session's sentence ending after Stop no longer clears the new session's "Translating" indicator (UI-B2).
 - A sentence dropped by the pause no longer uses up the mute turn (UI-B3).
+- Tests no longer leave `UserDefaults` suites in `~/Library/Preferences` (about 20 000 plists had piled up): suites come from `ScratchDefaults`, which deletes them at exit and sweeps those of finished runs (#25).
+- `BenchEchoPathTests.mixedSoundReachesTheStream` no longer fails intermittently in the full unit tier (#27).
+
+### Tests
+- ModelCache: the Whisper tokenizer in the model folder and the Parakeet probe (part of UI-B5) (#26).
 
 ## [0.9.0] — 2026-11-12 — M8.5 Stabilization + M9 Product (in progress)
 
