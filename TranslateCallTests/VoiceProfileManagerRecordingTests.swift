@@ -29,7 +29,7 @@ struct VoiceProfileManagerRecordingTests {
         store: MockVoiceProfileStore = MockVoiceProfileStore(),
         clock: TestClock = TestClock()
     ) -> VoiceProfileManager {
-        VoiceProfileManager(store: store, recorder: recorder, defaults: UserDefaults(suiteName: UUID().uuidString)!,
+        VoiceProfileManager(store: store, recorder: recorder, defaults: ScratchDefaults.make("VoiceProfileManagerRecording"),
                             clock: clock)
     }
 

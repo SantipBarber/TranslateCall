@@ -27,9 +27,7 @@ private struct Harness {
     let log = LoaderLog()
 
     init(source: String, target: String, probe: ModelCacheProbe) {
-        let name = "ModelPreloaderTests.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: name)!
-        defaults.removePersistentDomain(forName: name)
+        defaults = ScratchDefaults.make("ModelPreloader")
         defaults.set(source, forKey: "tlk.source.language")
         defaults.set(target, forKey: "tlk.target.language")
         stt = STTEngineSelector(appleSpeechFactory: { MockSpeechRecognizerService(locale: $0) },
@@ -161,7 +159,7 @@ struct ModelPreloaderTests {
     @Test("turning \"Use my voice\" on loads a voice clone already on disk (preloadTriggers)")
     func useMyVoiceTriggerLoadsClone() async {
         let harness = Harness(source: "es", target: "en", probe: cachedAll)
-        let defaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        let defaults = ScratchDefaults.make("ModelPreloader")
         let models = ModelServices(choices: PairModelChoices(defaults: defaults),
                                    cloud: CloudPolicy(defaults: defaults, edgeConsentGiven: { false },
                                                       grantEdgeConsent: {}),

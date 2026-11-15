@@ -27,12 +27,12 @@ struct SessionHarness {
             echoGateClock: TestClock(), noticeClock: TestClock(),
             isTranslationPairInstalled: { _, _ in packsInstalled }
         )
-        let audioManager = AudioManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!,
+        let audioManager = AudioManager(defaults: ScratchDefaults.make("CallSessionModel"),
                                         configure: { _, _ in })
         viewModel = AudioViewModel(
             coordinator: coordinator, audioManager: audioManager, languagePairManager: mocks.languagePairManager,
-            setupManager: SetupManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!),
-            conversationSettings: ConversationSettings(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+            setupManager: SetupManager(defaults: ScratchDefaults.make("CallSessionModel")),
+            conversationSettings: ConversationSettings(defaults: ScratchDefaults.make("CallSessionModel"))
         )
         let windowOpens = windowOpens
         session = CallSessionModel(coordinator: coordinator, viewModel: viewModel, clock: clock,
@@ -231,7 +231,7 @@ struct CallSessionModelTests {
     @Test("a fresh install reads Show the status panel and Show latency as on: registered at launch (REQ-UI-40)")
     func settingsDefaultOn() {
         // The registration domain is process-wide: the test host's AppContainer registered it at launch.
-        let defaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!   // nothing stored
+        let defaults = ScratchDefaults.make("CallSessionModel")   // nothing stored
         #expect(defaults.bool(forKey: UISettingsKeys.showStatusPanel))
         #expect(defaults.bool(forKey: UISettingsKeys.showLatency))
         defaults.set(false, forKey: UISettingsKeys.showStatusPanel)

@@ -11,7 +11,7 @@ extension IntegrationTests {
         }
 
         private func isolatedDefaults() -> UserDefaults {
-            UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+            ScratchDefaults.make("MicCapture")
         }
 
         @Test("the selected input device is applied to the engine and its audio arrives (A5)")

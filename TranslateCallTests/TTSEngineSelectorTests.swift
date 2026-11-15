@@ -17,7 +17,7 @@ struct TTSEngineSelectorTests {
 
     func makeSelector(systemVoice: @escaping (Locale) -> Bool = { _ in true },
                       probe: ModelCacheProbe = .none, choice: PairModelChoice = PairModelChoice()) -> TTSEngineSelector {
-        let selector = TTSEngineSelector(defaults: UserDefaults(suiteName: "TTSEngineSelectorTests.\(UUID())")!)
+        let selector = TTSEngineSelector(defaults: ScratchDefaults.make("TTSEngineSelector"))
         selector.catalog = .builtIn
         selector.cacheProbe = probe
         selector.pairChoice = { choice }

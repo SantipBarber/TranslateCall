@@ -49,16 +49,14 @@ struct EdgeTTSConsentManagerTests {
 
     @Test("Initial consent is false in fresh defaults")
     func initialConsentFalse() {
-        let suite = "test.edgeTTSConsent.initial.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = ScratchDefaults.make("EdgeTTSConsent")
         // consentGiven reads from .standard, so we verify via the defaults key directly
         #expect(!defaults.bool(forKey: "tlk.edgeTTS.consentGiven"))
     }
 
     @Test("Grant and revoke consent round-trips correctly")
     func grantAndRevokeConsent() {
-        let suite = "test.edgeTTSConsent.roundtrip.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = ScratchDefaults.make("EdgeTTSConsent")
 
         EdgeTTSConsentManager.grantConsent(defaults: defaults)
         #expect(defaults.bool(forKey: "tlk.edgeTTS.consentGiven") == true)
@@ -127,7 +125,7 @@ struct TTSEngineSelectorEdgeTTSTests {
     /// Every language except Ukrainian has a system voice; consent and the cloud switch are injected,
     /// so no test touches `UserDefaults.standard`.
     private func makeSelector(allowed: Bool, consent: Bool) -> TTSEngineSelector {
-        let selector = TTSEngineSelector(defaults: UserDefaults(suiteName: "EdgeTTSTests.\(UUID())")!)
+        let selector = TTSEngineSelector(defaults: ScratchDefaults.make("EdgeTTS"))
         selector.catalog = ModelCatalog(version: 2, stt: [:], ttsOutgoing: ["default": ["avSpeech"]],
                                         ttsIncoming: ["default": ["avSpeech"]])
         selector.cacheProbe = .none

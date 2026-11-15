@@ -10,7 +10,7 @@ private struct SetupHarness {
     let monitor: CallAppMonitor
     let setupManager: SetupManager
     let languages: LanguagePairManager
-    let tts = TTSEngineSelector(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+    let tts = TTSEngineSelector(defaults: ScratchDefaults.make("MainSetupModel"))
     let models: ModelServices
     let model: MainSetupModel
     /// Holds every model download until opened.
@@ -20,8 +20,8 @@ private struct SetupHarness {
          permissions: @escaping () -> PermissionState = { .allGranted }) {
         workspace.installed = ["us.zoom.xos": "zoom.us"]
         monitor = CallAppMonitor(workspace: workspace)
-        setupManager = SetupManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
-        let defaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        setupManager = SetupManager(defaults: ScratchDefaults.make("MainSetupModel"))
+        let defaults = ScratchDefaults.make("MainSetupModel")
         defaults.set("de", forKey: "tlk.source.language")
         defaults.set("en", forKey: "tlk.target.language")
         languages = LanguagePairManager(defaults: defaults, languageLoader: { [] })
@@ -39,16 +39,16 @@ private struct SetupHarness {
         )
         let viewModel = AudioViewModel(
             coordinator: coordinator,
-            audioManager: AudioManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!,
+            audioManager: AudioManager(defaults: ScratchDefaults.make("MainSetupModel"),
                                        configure: { _, _ in }),
             languagePairManager: mocks.languagePairManager, setupManager: setupManager,
-            conversationSettings: ConversationSettings(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+            conversationSettings: ConversationSettings(defaults: ScratchDefaults.make("MainSetupModel"))
         )
         let session = CallSessionModel(coordinator: coordinator, viewModel: viewModel)
         tts.cacheProbe = .none
         tts.edgeConsentGiven = { true }
         tts.catalog = ModelCatalog(version: 2, stt: [:], ttsOutgoing: [:], ttsIncoming: [:])   // Edge available
-        let modelDefaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        let modelDefaults = ScratchDefaults.make("MainSetupModel")
         models = ModelServices(choices: PairModelChoices(defaults: modelDefaults),
                                cloud: CloudPolicy(defaults: modelDefaults, edgeConsentGiven: { true },
                                                   grantEdgeConsent: {}),

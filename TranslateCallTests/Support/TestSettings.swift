@@ -4,6 +4,6 @@ import Foundation
 extension ConversationSettings {
     /// Settings on a throwaway `UserDefaults` suite: unit tests never read the developer's real domain.
     static func forTesting() -> ConversationSettings {
-        ConversationSettings(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+        ConversationSettings(defaults: ScratchDefaults.make("ConversationSettings"))
     }
 }

@@ -4,10 +4,7 @@ import Testing
 
 @MainActor
 private func freshDefaults() -> UserDefaults {
-    let name = "CloudPolicyTests.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: name)!
-    defaults.removePersistentDomain(forName: name)
-    return defaults
+    ScratchDefaults.make("CloudPolicy")
 }
 
 @Suite("Cloud policy (M9 UI settings REQ-ST-15, 32)") @MainActor

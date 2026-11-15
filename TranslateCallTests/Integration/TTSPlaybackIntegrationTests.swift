@@ -19,7 +19,7 @@ extension IntegrationTests {
         func avSpeechThroughBlackHole() async throws {
             try await requireMicrophoneAuthorization()
             try requirePrerequisite(AVSpeechUtteranceSynthesizer.hasVoice(for: english), "an English system voice")
-            let manager = AudioManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+            let manager = AudioManager(defaults: ScratchDefaults.make("TTSPlayback"))
             let blackHole = try requireBlackHole(in: manager.inputDevices)
             try manager.selectInput(blackHole)
             let log = BufferLog(try await manager.startCapture())

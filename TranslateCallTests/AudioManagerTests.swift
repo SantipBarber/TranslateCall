@@ -200,10 +200,7 @@ struct AudioManagerDevicePersistenceTests {
     private static let outputKey = "tlk.output.deviceUID"
 
     private func makeDefaults() -> UserDefaults {
-        let name = "test-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: name)!
-        suite.removePersistentDomain(forName: name)
-        return suite
+        ScratchDefaults.make("AudioManager")
     }
 
     @Test("No saved UID: selectedInput defaults to first available device")
@@ -295,7 +292,7 @@ struct AudioManagerSwitchTests {
     }
 
     private func makeManager(_ spy: ConfigureSpy) -> AudioManager {
-        let defaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        let defaults = ScratchDefaults.make("AudioManager")
         return AudioManager(defaults: defaults, configure: { try spy.configure($0, $1) })
     }
 
@@ -323,8 +320,7 @@ struct AudioManagerSwitchTests {
     @Test("mid-session switch reconfigures once on the same open stream and persists the choice")
     func switchSuccessKeepsStreamAndPersists() async throws {
         let spy = ConfigureSpy()
-        let suite = "test-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let defaults = ScratchDefaults.make("AudioManager")
         let manager = AudioManager(defaults: defaults, configure: { try spy.configure($0, $1) })
         manager.injectInputDevicesForTesting([micA, micB])
         try manager.selectInput(micA)
@@ -365,8 +361,7 @@ struct AudioManagerSwitchTests {
     @Test("starting on a fallback device shows it as selected without persisting it")
     func startOnFallbackUpdatesSelection() async throws {
         let spy = ConfigureSpy()
-        let suite = "test-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let defaults = ScratchDefaults.make("AudioManager")
         let manager = AudioManager(defaults: defaults, configure: { try spy.configure($0, $1) })
         manager.injectInputDevicesForTesting([micA, micB])
         try manager.selectInput(micA)
