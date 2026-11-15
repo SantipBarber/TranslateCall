@@ -309,7 +309,7 @@ final class BenchSession {
         tracer.closeOpen(reason: "session-stop")
         otherTracer.closeOpen(reason: "session-stop")
         host.close()
-        UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        ScratchDefaults.remove(suiteName)
     }
 }
 
@@ -324,7 +324,7 @@ enum BenchPipelineFactory {
                      vadProvider: VADProvider = VADProvider(preferred: { .silero }),
                      output makeOutput: (BenchAudioSource, BenchSystemAudioCapture) -> BenchOutput = { _, _ in BenchOutput() })
         async throws -> BenchSession {
-        let suiteName = "bench-\(UUID().uuidString)"
+        let suiteName = ScratchDefaults.suiteName("Bench")
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             throw BenchSetupError(description: "UserDefaults suite \(suiteName)")
         }
@@ -342,7 +342,7 @@ enum BenchPipelineFactory {
             try await configureEngines(stt: stt, tts: tts, line: line, options: options)
         } catch {
             host.close()
-            defaults.removePersistentDomain(forName: suiteName)
+            ScratchDefaults.remove(suiteName)
             throw error
         }
         let settings = ConversationSettings(defaults: defaults)

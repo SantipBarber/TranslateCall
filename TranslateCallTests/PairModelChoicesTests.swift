@@ -4,10 +4,7 @@ import Testing
 
 @MainActor
 private func freshDefaults() -> UserDefaults {
-    let name = "PairModelChoicesTests.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: name)!
-    defaults.removePersistentDomain(forName: name)
-    return defaults
+    ScratchDefaults.make("PairModelChoices")
 }
 
 @Suite("Per-pair model choices (M9 UI settings REQ-ST-01)") @MainActor

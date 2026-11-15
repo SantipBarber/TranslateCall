@@ -49,14 +49,13 @@ struct TranslationEngineSelectorTests {
         let selector = TranslationEngineSelector(
             outgoingBridge: TranslationBridgeModel(),
             incomingBridge: TranslationBridgeModel(),
-            defaults: UserDefaults(suiteName: "test.selector.default")!
+            defaults: ScratchDefaults.make("TranslationEngineSelector")
         )
         #expect(selector.preferredEngine == .appleTranslation)
     }
 
     @Test func setPreferredEnginePersists() {
-        let suite = "test.selector.persist.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = ScratchDefaults.make("TranslationEngineSelector")
         let outBridge = TranslationBridgeModel()
         let inBridge = TranslationBridgeModel()
 
@@ -75,7 +74,7 @@ struct TranslationEngineSelectorTests {
         let selector = TranslationEngineSelector(
             outgoingBridge: TranslationBridgeModel(),
             incomingBridge: TranslationBridgeModel(),
-            defaults: UserDefaults(suiteName: "test.selector.outgoing")!
+            defaults: ScratchDefaults.make("TranslationEngineSelector")
         )
         let service = selector.makeOutgoingService()
         #expect(service.engineName == "Apple Translation")
@@ -85,7 +84,7 @@ struct TranslationEngineSelectorTests {
         let selector = TranslationEngineSelector(
             outgoingBridge: TranslationBridgeModel(),
             incomingBridge: TranslationBridgeModel(),
-            defaults: UserDefaults(suiteName: "test.selector.incoming")!
+            defaults: ScratchDefaults.make("TranslationEngineSelector")
         )
         let outgoing = selector.makeOutgoingService()
         let incoming = selector.makeIncomingService()

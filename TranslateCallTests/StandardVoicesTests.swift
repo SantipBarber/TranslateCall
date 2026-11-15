@@ -23,7 +23,7 @@ struct StandardVoicesTests {
 
     @Test("the pick is stored per language; empty means Automatic")
     func preferenceRoundTrip() {
-        let defaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        let defaults = ScratchDefaults.make("StandardVoices")
         let german = Locale(identifier: "de-DE")
         #expect(SystemVoicePreference.identifier(for: german, defaults: defaults) == nil)
         SystemVoicePreference.set("de.anna", for: "de", defaults: defaults)

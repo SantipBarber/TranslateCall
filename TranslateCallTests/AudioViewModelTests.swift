@@ -32,11 +32,11 @@ private struct ViewModelHarness {
             incomingTTSFactory: { _, _ in mocks.mockIncomingTTS },
             languagePairManager: mocks.languagePairManager
         )
-        audioManager = AudioManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!,
+        audioManager = AudioManager(defaults: ScratchDefaults.make("AudioViewModel"),
                                     configure: { _, _ in })
         audioManager.injectInputDevicesForTesting([Self.mic])
-        setupDefaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
-        settingsDefaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        setupDefaults = ScratchDefaults.make("AudioViewModel")
+        settingsDefaults = ScratchDefaults.make("AudioViewModel")
         seedSettings(settingsDefaults)
         viewModel = AudioViewModel(
             coordinator: coordinator,
