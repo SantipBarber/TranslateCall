@@ -251,10 +251,10 @@ Per the global "Delegar en pi" rules: each task goes to pi as a self-contained r
 ### Task 11: Docs and close-out (REQ-FR-61)
 
 **Files:**
-- Modify: `CHANGELOG.md` (`[Unreleased]` → Added: setup assistant window with real route checks and rehearsal; Changed: BlackHole 2ch matched exactly; Removed: old setup sheet), `specs/m9-product/backlog.md` (add `UI-S1 | Spike: detect whether the call app has BlackHole 2ch open as input (CoreAudio process objects, macOS 14+; browsers likely show helpers) | — | —`), `specs/m9-product/ui-first-run/requirements.md` and `design.md` (Status → APPROVED 2026-11-17), `specs/m9-product/ui-redesign/roadmap.md` row 3 (`ui-first-run/` link).
+- Modify: `CHANGELOG.md` (`[Unreleased]` → Added: setup assistant window with real route checks and rehearsal; Changed: BlackHole 2ch matched exactly; Removed: old setup sheet), `specs/m9-product/backlog.md` (add `UI-F1 | Spike: detect whether the call app has BlackHole 2ch open as input (CoreAudio process objects, macOS 14+; browsers likely show helpers) | — | —`), `specs/m9-product/ui-first-run/requirements.md` and `design.md` (Status → APPROVED 2026-11-17), `specs/m9-product/ui-redesign/roadmap.md` row 3 (`ui-first-run/` link).
 - [ ] **Step 1: Edit** the files.
 - [ ] **Step 2: Run** `just lint` → PASS.
-- [ ] **Step 3: Commit** `docs: ui-first-run changelog, backlog UI-S1, spec approved`.
+- [ ] **Step 3: Commit** `docs: ui-first-run changelog, backlog UI-F1, spec approved`.
 
 ## Manual checklist (the user runs it before merge)
 

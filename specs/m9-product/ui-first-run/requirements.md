@@ -19,7 +19,7 @@ This feature replaces it with the prototype's assistant: a window with a sidebar
 | F-2 | **Approach 2.** The checks live in a small dedicated service. The rehearsal runs the real `AudioCoordinator` session, outgoing only (no capture target → incoming `.disabled`), so it exercises exactly the code a call uses. Rejected: a one-shot STT→translate→TTS chain only for the wizard (does not test the call path); everything through the real session (the basic check would need the language pack). |
 | F-3 | **The rehearsal is invisible to the rest of the app.** No status panel, no main-window dismissal, no "translating" menu bar state, no transcript entry left behind, no error modal in the main window; the wizard shows its own result and errors. |
 | F-4 | **The user hears the result.** After a successful rehearsal, "Play" plays what the call app received on the user's output device. |
-| F-5 | **Step 3 is not verified.** "I've done it" is trusted. Detecting that the call app has BlackHole open as input (CoreAudio process objects, macOS 14+) goes to the backlog as a spike (UI-S1). |
+| F-5 | **Step 3 is not verified.** "I've done it" is trusted. Detecting that the call app has BlackHole open as input (CoreAudio process objects, macOS 14+) goes to the backlog as a spike (UI-F1). |
 | F-7 | *(Claude's call, builder check)* **Rehearsal unit and timers:** the first sentence fully delivered (all clause-split parts); timers start once capture runs; "Preparing…" capped at 90 s (REQ-FR-53). |
 | F-8 | *(Claude's call, builder check)* **During a real call** step 4 is unavailable; steps 1–3 work (REQ-FR-57b). |
 | F-9 | *(Claude's call, builder check)* **A new `SessionPhase.rehearsing`**, starting stretch included; Start disabled with "Setup test in progress" (REQ-FR-56). |
@@ -114,7 +114,7 @@ This feature replaces it with the prototype's assistant: a window with a sidebar
 
 **REQ-FR-60**: `SetupWizardView`, its four step views and `RouteTestService` SHALL be removed. `SetupManager.loadCaptureApps` / `refreshCaptureApps` / `requestScreenCapturePermission` and the `SCRunningApplication` state are removed if no other caller remains.
 
-**REQ-FR-61**: The backlog SHALL gain UI-S1 (spike: detect whether the call app has BlackHole 2ch open as input).
+**REQ-FR-61**: The backlog SHALL gain UI-F1 (spike: detect whether the call app has BlackHole 2ch open as input).
 
 ## Non-functional
 
