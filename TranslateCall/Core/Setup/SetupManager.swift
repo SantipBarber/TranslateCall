@@ -14,6 +14,8 @@ final class SetupManager: ObservableObject {
 
     private static let setupCompletedKey  = "tlk.setupCompleted"
     private static let captureAppBundleKey = "tlk.captureApp.bundleID"
+    private static let stepKey = "tlk.setup.step"
+    private static let callAppMicConfirmedKey = "tlk.setup.callAppMicConfirmed"
 
     // MARK: - Persisted state
 
@@ -22,6 +24,22 @@ final class SetupManager: ObservableObject {
     /// The persisted call app (`tlk.captureApp.bundleID`); nil = "None — translate only my voice".
     /// Set by both setters; works for an app that is not running (M9 UI core REQ-UI-80b).
     @Published private(set) var selectedCaptureBundleID: String?
+
+    /// The assistant's current step, persisted so a relaunch for a permission resumes there
+    /// (REQ-FR-03). Unknown or absent values read as `.permissions`.
+    @Published var currentStep: SetupStep {
+        didSet {
+            // `.permissions` is the fallback for an absent key, so it is stored as "absent".
+            if currentStep == .permissions {
+                defaults.removeObject(forKey: Self.stepKey)
+            } else {
+                defaults.set(currentStep.rawValue, forKey: Self.stepKey)
+            }
+        }
+    }
+
+    /// "I've done it" was pressed on step 3; the step is trusted, not verified (REQ-FR-32, F-5).
+    @Published private(set) var callAppMicConfirmed: Bool
 
     // MARK: - Runtime state
 
@@ -49,6 +67,16 @@ final class SetupManager: ObservableObject {
         selectedCaptureBundleID = saved.isEmpty ? nil : saved
         isBlackHolePresent = BlackHoleDevice.find() != nil
         hasOtherBlackHole = BlackHoleDevice.hasOtherBlackHole()
+        currentStep = SetupStep(rawValue: defaults.integer(forKey: Self.stepKey)) ?? .permissions
+        callAppMicConfirmed = defaults.bool(forKey: Self.callAppMicConfirmedKey)
+    }
+
+    // MARK: - Call app microphone step
+
+    /// Marks step 3 as done and persists it (REQ-FR-32/33).
+    func confirmCallAppMic() {
+        callAppMicConfirmed = true
+        defaults.set(true, forKey: Self.callAppMicConfirmedKey)
     }
 
     // MARK: - BlackHole check
@@ -148,6 +176,8 @@ final class SetupManager: ObservableObject {
     func completeSetup() {
         isSetupCompleted = true
         defaults.set(true, forKey: Self.setupCompletedKey)
+        // REQ-FR-03: completing setup clears the stored step; the next run starts at step 1.
+        currentStep = .permissions
     }
 
     func resetSetup() {
