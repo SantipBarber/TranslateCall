@@ -35,7 +35,7 @@ protocol PhrasePlayer {
     func play(on device: AudioDeviceID) async throws
 }
 
-/// System-voice implementation of the route-test phrase (moved from `RouteTestService.run`).
+/// System-voice implementation of the route-test phrase (the former wizard route test).
 @MainActor
 final class SystemVoicePhrasePlayer: PhrasePlayer {
     private let phrase = "Testing audio routing. TranslateCall is ready."

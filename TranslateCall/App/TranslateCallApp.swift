@@ -27,6 +27,7 @@ struct TranslateCallApp: App {
                 // Only now: a host on screen before this point stops SwiftUI opening this window (A26).
                 container.translationHost.show()
                 MainWindowOpener.shared.openWindow = { [openWindow] in openWindow(id: MainWindowOpener.windowID) }
+                SetupWindowOpener.shared.openWindow = { [openWindow] in openWindow(id: SetupWindowOpener.windowID) }
                 SettingsOpener.shared.openSettings = { [openSettings] in openSettings() }
                 guard menuBarController == nil else { return }
                 menuBarController = MenuBarController(
@@ -48,6 +49,21 @@ struct TranslateCallApp: App {
                 CallCommandMenu(session: container.uiServices.callSession)
             }
         }
+        Window("Set up TranslateCall", id: SetupWindowOpener.windowID) {
+            SetupAssistantView()
+                .environmentObject(container.audioViewModel)
+                .environmentObject(container.languagePairManager)
+                .environmentObject(container.setupManager)
+                .environmentObject(container.voiceProfileManager)
+                .environmentObject(container.audioViewModel.ttsEngineSelector)
+                .environmentObject(container.uiServices.callSession)
+                .environmentObject(container.uiServices.mainSetupModel)
+                .environmentObject(container.uiServices.models.choices)
+                .environmentObject(container.uiServices.models.cloud)
+                .environmentObject(container.uiServices.models.downloads)
+        }
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
         Settings {
             SettingsView()
                 .environmentObject(container.audioViewModel)

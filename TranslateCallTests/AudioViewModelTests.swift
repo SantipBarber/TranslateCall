@@ -155,7 +155,7 @@ struct AudioViewModelTests {
         await harness.coordinator.start(captureTarget: .app(bundleID: "com.test.old"))
         #expect(harness.coordinator.incomingStatus == .stopped(.targetNotFound(bundleID: "com.test.old")))
 
-        harness.viewModel.setupManager.selectCaptureApp(nil)   // user picks "None"
+        harness.viewModel.setupManager.selectCaptureApp(bundleID: nil)   // user picks "None"
 
         #expect(await waitUntil { harness.coordinator.incomingStatus == .disabled })
     }

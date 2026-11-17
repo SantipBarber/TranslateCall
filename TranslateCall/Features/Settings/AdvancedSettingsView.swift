@@ -8,9 +8,7 @@ struct AdvancedSettingsView: View {
     @EnvironmentObject private var cloud: CloudPolicy
     @EnvironmentObject private var downloads: ModelDownloads
     @EnvironmentObject private var tts: TTSEngineSelector
-    @EnvironmentObject private var setupManager: SetupManager
     @State private var modelsSheet: PairModelsModel?
-    @State private var showSetup = false
     @State private var exportError: String?
     @State private var vad = VADPreference.engine()
 
@@ -18,12 +16,10 @@ struct AdvancedSettingsView: View {
         AdvancedSettingsContent(
             rows: rows, cloudAllowed: $cloud.allowed,
             vad: Binding(get: { vad }, set: { vad = $0; VADPreference.set($0) }),
-            exportError: exportError, onOpen: open, onExport: exportLogs, onRunSetup: { showSetup = true })
+            exportError: exportError, onOpen: open, onExport: exportLogs,
+            onRunSetup: { SetupWindowOpener.shared.open() })
             .sheet(item: $modelsSheet) { model in
                 PairModelsSheet(model: model, onClose: { modelsSheet = nil })
-            }
-            .sheet(isPresented: $showSetup) {
-                SetupWizardView(setupManager: setupManager, isPresented: $showSetup)
             }
     }
 
