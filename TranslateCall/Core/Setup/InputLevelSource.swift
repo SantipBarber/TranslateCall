@@ -12,7 +12,7 @@ protocol LevelSource: AnyObject {
     func start() throws -> AsyncStream<LevelSample>
     /// Removes the tap, stops the engine and finishes the stream. Idempotent.
     func stop()
-    /// The audio buffers recorded so far (only when `records` was true).
+    /// The audio buffers recorded so far (only when `records` was true); kept after `stop()` until the next `start()`.
     var recording: [AVAudioPCMBuffer] { get }
 }
 
@@ -28,9 +28,11 @@ final class InputLevelSource: LevelSource {
     private var tap: LevelTap?
     private var continuation: AsyncStream<LevelSample>.Continuation?
     private var isStarted = false
+    /// What the last run recorded, kept after `stop()` so a passed rehearsal can still be played (REQ-FR-55).
+    private var lastRecording: [AVAudioPCMBuffer] = []
 
     var recording: [AVAudioPCMBuffer] {
-        tap?.takeRecording() ?? []
+        tap?.takeRecording() ?? lastRecording
     }
 
     init(deviceID: AudioDeviceID, records: Bool, maxRecording: Duration = .seconds(60)) {
@@ -53,6 +55,7 @@ final class InputLevelSource: LevelSource {
         }
         self.tap = tap
         self.continuation = continuation
+        lastRecording = []
         isStarted = true
         return stream
     }
@@ -64,6 +67,7 @@ final class InputLevelSource: LevelSource {
         engine.reset()
         continuation?.finish()
         continuation = nil
+        lastRecording = tap?.takeRecording() ?? []
         tap = nil
         isStarted = false
     }
