@@ -134,4 +134,58 @@ struct AudioCoordinatorRehearsalTests {
         #expect(!coordinator.isRehearsal)
         #expect(coordinator.transcript.isEmpty)
     }
+
+    // MARK: RehearsalHost (Task 8)
+
+    @Test("the host snapshot counts only the rehearsal's first outgoing entry")
+    func hostSnapshotFirstOutgoing() async {
+        let mocks = RehearsalCoordinatorMocks()
+        let coordinator = makeRehearsalCoordinator(mocks)
+        _ = coordinator.appendTranscript(.outgoing, "previous call")
+        #expect(coordinator.snapshot.firstOutgoing == nil)
+
+        await coordinator.startRehearsal(blackHole: 99)
+        #expect(coordinator.isRehearsal)
+        #expect(coordinator.snapshot.isCapturing)
+        #expect(coordinator.snapshot.isActive)
+        #expect(coordinator.snapshot.firstOutgoing == nil)
+        _ = coordinator.appendTranscript(.incoming, "them")
+        _ = coordinator.appendTranscript(.outgoing, "hello")
+        _ = coordinator.appendTranscript(.outgoing, "second sentence")
+        #expect(coordinator.snapshot.firstOutgoing?.original == "hello")
+
+        await coordinator.stopRehearsal()
+        #expect(!coordinator.isRehearsal)
+        #expect(!coordinator.isOutgoingActive)
+        #expect(coordinator.snapshot.firstOutgoing == nil)
+    }
+
+    @Test("stopRehearsal leaves a normal session running")
+    func stopRehearsalIgnoresCalls() async {
+        let mocks = RehearsalCoordinatorMocks()
+        let coordinator = makeRehearsalCoordinator(mocks)
+        await coordinator.start()
+
+        await coordinator.stopRehearsal()
+
+        #expect(coordinator.isOutgoingActive)
+        await coordinator.stop()
+    }
+
+    @Test("snapshots are published after the change, with errors routed to the rehearsal")
+    func snapshotsAfterChange() async {
+        let mocks = RehearsalCoordinatorMocks()
+        let coordinator = makeRehearsalCoordinator(mocks)
+        await coordinator.startRehearsal(blackHole: 99)
+        var received: [RehearsalSnapshot] = []
+        let sink = coordinator.snapshots.sink { received.append($0) }
+
+        coordinator.isOutgoingSpeaking = true
+        #expect(await waitUntil(timeout: settle) { received.last?.isSpeaking == true })
+        coordinator.errorAlert = AlertItem(title: "t", message: "boom", action: nil)
+        #expect(await waitUntil(timeout: settle) { received.last?.error == "boom" })
+
+        sink.cancel()
+        await coordinator.stopRehearsal()
+    }
 }
