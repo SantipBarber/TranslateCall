@@ -44,6 +44,7 @@ actor MockVADService: VADService {
     /// The next `activate` suspends until `releaseActivation()` (e.g. a slow model load).
     func holdNextActivation() { holdActivation = true }
     func releaseActivation() { gate?.resume(); gate = nil }
+    func setThrowOnActivate(_ error: Error?) { throwOnActivate = error }
 
     func activate(stream: AsyncStream<AVAudioPCMBuffer>) async throws {
         if holdActivation {

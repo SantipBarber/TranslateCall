@@ -12,7 +12,8 @@ struct CallAppMicStepView: View {
     let onOpen: (CallAppRow) -> Void
 
     private var selectedRow: CallAppRow? { monitor.rows.first { $0.bundleID == selectedBundleID } }
-    private var isNone: Bool { selectedBundleID == nil }
+    /// "None" only once chosen: a step never visited has no selection either (REQ-FR-33).
+    private var isNone: Bool { hasChoice && selectedBundleID == nil }
 
     private var appName: String {
         if let selectedRow { return selectedRow.appName }
@@ -103,7 +104,8 @@ struct CallAppMicStepView: View {
 
     private var pickerTitle: String {
         if let selectedRow { return selectedRow.title }
-        return isNone ? String(localized: "None — translate only my voice") : appName
+        if isNone { return String(localized: "None — translate only my voice") }
+        return selectedBundleID == nil ? String(localized: "Choose…") : appName
     }
 
     // MARK: Rows

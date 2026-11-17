@@ -325,4 +325,44 @@ struct SetupChecksTests {
         await failing.checks.runRouteCheck() // no BlackHole → immediate failure
         #expect(failing.checks.testStatus == .attention)
     }
+
+    @Test("cancelAll keeps the verdicts; a check cancelled mid-run goes back to its previous one")
+    func cancelKeepsVerdicts() async {
+        let bundle = makeWorkingChecks()
+        bundle.checks.startMicCheck()
+        bundle.mic.yield(-30, milliseconds: 400)
+        #expect(await waitUntil(timeout: settle) { bundle.checks.micState == .passed })
+        var run = RouteRun(bundle.checks)
+        for _ in 0..<3 { bundle.blackHole.yield(-100, milliseconds: 100) }
+        bundle.blackHole.yield(-60, milliseconds: 250)
+        await run.finish(bundle.checks)
+        #expect(bundle.checks.routeState == .passed)
+
+        // A new mic run and a new route run, both cancelled mid-run.
+        bundle.checks.stopMicCheck()
+        bundle.checks.startMicCheck()
+        #expect(bundle.checks.micState == .running)
+        run = RouteRun(bundle.checks)
+        for _ in 0..<3 { bundle.blackHole.yield(-100, milliseconds: 100) }
+        #expect(await waitUntil(timeout: settle) { bundle.clock.sleeperCount == 1 })
+        #expect(bundle.checks.routeState == .running)
+        bundle.checks.cancelAll()
+
+        #expect(bundle.checks.micState == .passed)
+        #expect(bundle.checks.routeState == .passed)
+        await run.finish(bundle.checks)
+        #expect(bundle.checks.routeState == .passed)   // the cancelled run wrote nothing
+        #expect(bundle.checks.testStatus == .done)
+        #expect(bundle.blackHole.stopCount == 2)
+    }
+
+    @Test("a failed verdict also survives cancelAll")
+    func cancelKeepsFailure() async {
+        let bundle = makeWorkingChecks(blackHoleDevice: nil)
+        await bundle.checks.runRouteCheck()
+        #expect(bundle.checks.routeState == .failed(.noBlackHole))
+        bundle.checks.cancelAll()
+        #expect(bundle.checks.routeState == .failed(.noBlackHole))
+        #expect(bundle.checks.testStatus == .attention)
+    }
 }

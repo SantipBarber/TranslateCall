@@ -90,6 +90,11 @@ final class SetupManager: ObservableObject {
     /// True once the user (or the assistant) has picked a call app or "None" (the key exists).
     var hasCallAppChoice: Bool { defaults.object(forKey: Self.captureAppBundleKey) != nil }
 
+    /// Step 3 is done once confirmed, or with "None" chosen: nothing to set up then (REQ-FR-33).
+    var isCallAppMicDone: Bool {
+        callAppMicConfirmed || (hasCallAppChoice && selectedCaptureBundleID == nil)
+    }
+
     /// Incoming capture target from the persisted selection (F8.5.1 REQ-C-22). Independent of
     /// whether the app is running now: a missing app becomes `targetNotFound` + Retry at start.
     var captureTarget: CaptureTarget? {

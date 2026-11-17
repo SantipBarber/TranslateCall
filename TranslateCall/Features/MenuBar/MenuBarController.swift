@@ -76,10 +76,10 @@ final class MenuBarController: NSObject {
         let menu = NSMenu()
         menu.autoenablesItems = false   // isEnabled below is authoritative
 
-        let toggleTitle = viewModel.isCapturing ? "Stop Translation" : "Start Translation"
+        // The mic is live during a rehearsal too: the title follows the session, not the mic.
+        let toggleTitle = session.phase == .running ? "Stop Translation" : "Start Translation"
         let toggleItem = NSMenuItem(title: toggleTitle, action: #selector(toggleCapture), keyEquivalent: "")
-        // start() in flight or the call app opening (no cancel path): no Stop/Start until it settles.
-        toggleItem.isEnabled = !viewModel.isStarting && session.phase != .launching
+        toggleItem.isEnabled = MenuBarStartPolicy.canToggle(phase: session.phase, isStarting: viewModel.isStarting)
         menu.addItem(toggleItem)
         let running = session.phase == .running
         let pauseItem = NSMenuItem(title: session.isPaused ? "Resume" : "Pause",
@@ -108,7 +108,7 @@ final class MenuBarController: NSObject {
     }
 
     @objc private func toggleCapture() {
-        guard !viewModel.isStarting, session.phase != .launching else { return }
+        guard MenuBarStartPolicy.canToggle(phase: session.phase, isStarting: viewModel.isStarting) else { return }
         if session.phase == .running {
             Task { await session.stop() }
         } else {

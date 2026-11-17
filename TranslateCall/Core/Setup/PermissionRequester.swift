@@ -28,8 +28,27 @@ protocol PermissionRequesting {
     func relaunch()
 }
 
+/// A one-shot "reopen the assistant" mark for the relaunch after a permission: the next launch opens
+/// the assistant at its stored step even when setup was completed before ("Run setup again…").
+nonisolated enum SetupReopenFlag {
+    static let key = "tlk.setup.reopen"
+
+    static func set(in defaults: UserDefaults) {
+        defaults.set(true, forKey: key)
+    }
+
+    /// True once after `set`; clears the mark.
+    static func consume(in defaults: UserDefaults) -> Bool {
+        let isSet = defaults.bool(forKey: key)
+        if isSet { defaults.removeObject(forKey: key) }
+        return isSet
+    }
+}
+
 @MainActor
 struct PermissionRequester: PermissionRequesting {
+    var defaults: UserDefaults = .standard
+
     func requestMicrophone() async -> Bool {
         await AVCaptureDevice.requestAccess(for: .audio)
     }
@@ -43,6 +62,7 @@ struct PermissionRequester: PermissionRequesting {
     }
 
     func relaunch() {
+        SetupReopenFlag.set(in: defaults)
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.createsNewApplicationInstance = true
         NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, _ in

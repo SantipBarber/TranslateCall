@@ -103,7 +103,7 @@ struct SetupAssistantView: View {
         Dictionary(uniqueKeysWithValues: SetupStep.allCases.map { step in
             (step, step.status(permissions: permissions, blackHolePresent: setupManager.isBlackHolePresent,
                                hasOtherBlackHole: setupManager.hasOtherBlackHole,
-                               callAppMicConfirmed: setupManager.callAppMicConfirmed, testResult: testStatus))
+                               callAppMicDone: setupManager.isCallAppMicDone, testResult: testStatus))
         })
     }
 

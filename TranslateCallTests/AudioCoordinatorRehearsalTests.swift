@@ -43,6 +43,8 @@ private func makeRehearsalCoordinator(
     )
 }
 
+private enum RehearsalStartError: Error { case vadFailed }
+
 // MARK: - Tests
 
 @Suite("AudioCoordinator rehearsal (REQ-FR-56)", .serialized) @MainActor
@@ -133,6 +135,28 @@ struct AudioCoordinatorRehearsalTests {
 
         #expect(!coordinator.isRehearsal)
         #expect(coordinator.transcript.isEmpty)
+    }
+
+    @Test("stop() mid rehearsal start: isRehearsal holds until start() returns, its errors stay in the rehearsal")
+    func stopDuringSlowRehearsalStart() async {
+        let mocks = RehearsalCoordinatorMocks()
+        let coordinator = makeRehearsalCoordinator(mocks)
+        await mocks.mockVADFactory.holdNextActivation()
+        await mocks.mockVADFactory.setThrowOnActivate(RehearsalStartError.vadFailed)
+        let starting = Task { await coordinator.start(rehearsal: true) }
+        #expect(await waitUntil(timeout: settle) { await mocks.mockVADFactory.isWaitingAtGate })
+
+        await coordinator.stop()
+        #expect(coordinator.isRehearsal)   // the superseded start still owns the rehearsal
+        #expect(coordinator.isStarting)
+
+        await mocks.mockVADFactory.releaseActivation()   // the superseded start now fails
+        await starting.value
+
+        #expect(!coordinator.isRehearsal)
+        #expect(!coordinator.isStarting)
+        #expect(coordinator.lastRehearsalError != nil)
+        #expect(coordinator.errorAlert == nil)   // never reaches AudioViewModel
     }
 
     // MARK: RehearsalHost (Task 8)

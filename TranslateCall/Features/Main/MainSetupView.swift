@@ -127,7 +127,9 @@ struct MainSetupView: View {
         }
         .task {
             setupManager.checkBlackHole()
-            if !setupManager.isSetupCompleted { SetupWindowOpener.shared.open() }
+            // Consumed first, so the mark never outlives this launch (FR-03 relaunch after "Run setup again…").
+            let reopen = SetupReopenFlag.consume(in: .standard)
+            if reopen || !setupManager.isSetupCompleted { SetupWindowOpener.shared.open() }
             await model.refresh()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in

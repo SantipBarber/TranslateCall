@@ -17,9 +17,10 @@ nonisolated enum SetupStep: Int, CaseIterable, Sendable {
     }
 
     /// The step's state from the live setup inputs (REQ-FR-01): done, needs attention, or not done.
-    /// `testResult` is computed elsewhere (step 4's checks), so it passes straight through.
+    /// `callAppMicDone` (confirmed, or "None" chosen) and `testResult` (step 4's checks) are computed
+    /// elsewhere, so they pass straight through.
     func status(permissions: PermissionState, blackHolePresent: Bool, hasOtherBlackHole: Bool,
-                callAppMicConfirmed: Bool, testResult: SetupStepStatus) -> SetupStepStatus {
+                callAppMicDone: Bool, testResult: SetupStepStatus) -> SetupStepStatus {
         switch self {
         case .permissions:
             return permissions == .allGranted ? .done : .todo
@@ -27,7 +28,7 @@ nonisolated enum SetupStep: Int, CaseIterable, Sendable {
             if blackHolePresent { return .done }
             return hasOtherBlackHole ? .attention : .todo
         case .callAppMic:
-            return callAppMicConfirmed ? .done : .todo
+            return callAppMicDone ? .done : .todo
         case .test:
             return testResult
         }

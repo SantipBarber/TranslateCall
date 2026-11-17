@@ -33,4 +33,14 @@ struct PermissionRequesterTests {
         requester.openPrivacyPane(.microphone)
         #expect(fake.panes == [.microphone])
     }
+
+    @Test("the reopen-setup mark is one-shot")
+    func reopenFlagIsOneShot() {
+        let defaults = ScratchDefaults.make("SetupReopenFlag")
+        #expect(!SetupReopenFlag.consume(in: defaults))
+        SetupReopenFlag.set(in: defaults)
+        #expect(defaults.bool(forKey: "tlk.setup.reopen"))
+        #expect(SetupReopenFlag.consume(in: defaults))
+        #expect(!SetupReopenFlag.consume(in: defaults))
+    }
 }

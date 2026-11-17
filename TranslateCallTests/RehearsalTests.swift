@@ -1,3 +1,4 @@
+import AVFoundation
 import Combine
 import CoreAudio
 import Foundation
@@ -26,6 +27,15 @@ final class FakeRehearsalHost: RehearsalHost {
     }
 
     func stopRehearsal() async { stopCount += 1 }
+}
+
+/// Counts `play` and `stop`.
+@MainActor
+final class FakeRecordingPlayer: RecordingPlaying {
+    private(set) var playCount = 0
+    private(set) var stopCount = 0
+    func play(_ buffers: [AVAudioPCMBuffer]) throws { playCount += 1 }
+    func stop() { stopCount += 1 }
 }
 
 @MainActor
@@ -110,7 +120,7 @@ struct RehearsalBundle {
 }
 
 @MainActor
-func makeRehearsal(blackHole: AudioDeviceID? = 42) -> RehearsalBundle {
+func makeRehearsal(blackHole: AudioDeviceID? = 42, player: (any RecordingPlaying)? = nil) -> RehearsalBundle {
     let host = FakeRehearsalHost()
     let listener = FakeLevelSource()
     let clock = TestClock()
@@ -118,7 +128,7 @@ func makeRehearsal(blackHole: AudioDeviceID? = 42) -> RehearsalBundle {
     let rehearsal = Rehearsal(
         host: host,
         listener: { _ in listener },
-        player: nil,
+        player: player,
         clock: clock,
         needsConsent: { consent.needed },
         grantConsent: { consent.grant() },
@@ -382,6 +392,29 @@ struct RehearsalTests {
         await bundle.boundedCancel()   // a second cancel is a no-op
         #expect(bundle.host.stopCount == 1)
         #expect(bundle.listener.stopCount == 1)
+    }
+
+    @Test("cancel keeps the last result; a cancelled new run goes back to it; playback stops")
+    func cancelKeepsResult() async {
+        let player = FakeRecordingPlayer()
+        let bundle = makeRehearsal(player: player)
+        await bundle.begin()
+        bundle.clock.advance(by: .seconds(90))
+        await bundle.finish()
+        #expect(bundle.rehearsal.state == .failed(.preparingTooLong))
+        #expect(player.stopCount == 1)   // a run stops the previous playback first
+
+        await bundle.boundedCancel()   // leaving the step
+        #expect(bundle.rehearsal.state == .failed(.preparingTooLong))
+        #expect(player.stopCount == 2)
+
+        bundle.rehearsal.rehearse()
+        #expect(await waitUntil(timeout: settle) { bundle.host.startCount == 2 && bundle.clock.sleeperCount == 1 })
+        #expect(player.stopCount == 3)
+        await bundle.boundedCancel()
+        #expect(bundle.rehearsal.state == .failed(.preparingTooLong))
+        #expect(bundle.host.stopCount == 2)
+        #expect(player.stopCount == 4)
     }
 
     @Test("the session and listener are released on every failure, even before capture")

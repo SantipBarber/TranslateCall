@@ -249,7 +249,7 @@ final class AudioCoordinator: ObservableObject {
         isRehearsal = rehearsal
         lastRehearsalError = nil
         isStarting = true
-        defer { isStarting = false }
+        defer { isStarting = false; if !isOutgoingActive { finishRehearsalIfNeeded() } }   // stop() mid-start
         sessionGeneration &+= 1
         let generation = sessionGeneration
         // The hidden bridges cannot show the download sheet: no session without the packs (REQ-TR-06).
@@ -330,7 +330,7 @@ final class AudioCoordinator: ObservableObject {
         endSessionUIState()
         ttsNoticeTask?.cancel()
         ttsNotice = nil
-        finishRehearsalIfNeeded()
+        if !isStarting { finishRehearsalIfNeeded() }   // a superseded start() ends the rehearsal itself
 
         logger.info("AudioCoordinator stopped")
     }

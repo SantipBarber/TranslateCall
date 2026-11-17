@@ -37,6 +37,17 @@ nonisolated enum TestStepPresentation {
         }
     }
 
+    /// The mic check comes back once a rehearsal run or its consent question ended (REQ-FR-40);
+    /// `.needsConsent` counts too: accepting can fail at once, without ever running.
+    static func restartsMicCheck(from old: RehearsalState, to new: RehearsalState) -> Bool {
+        (old.isRunning || old == .needsConsent) && !new.isRunning && new != .needsConsent
+    }
+
+    /// The mic check comes back once a call ended while step 4 stays open (REQ-FR-57b).
+    static func restartsMicCheck(from old: SessionPhase, to new: SessionPhase) -> Bool {
+        new == .idle && [.launching, .starting, .running].contains(old)
+    }
+
     static let consentMessage = String(localized: """
         No voice is available for this language on your device. Enable Cloud TTS? \
         Text will be sent to Microsoft for speech synthesis.

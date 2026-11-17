@@ -59,22 +59,37 @@ final class SystemVoicePhrasePlayer: PhrasePlayer {
 
 // MARK: - RecordingPlayer
 
+/// Plays a passed rehearsal's recording (REQ-FR-55); a protocol so the driver runs with a fake.
+@MainActor
+protocol RecordingPlaying: AnyObject {
+    func play(_ buffers: [AVAudioPCMBuffer]) throws
+    func stop()
+}
+
 /// Plays in-memory recorded buffers back on the default output device (REQ-FR-55).
 @MainActor
-final class RecordingPlayer {
+final class RecordingPlayer: RecordingPlaying {
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
-    private var isConfigured = false
+    /// The format the player node is connected with; nil until the first play.
+    private var connectedFormat: AVAudioFormat?
 
     func play(_ buffers: [AVAudioPCMBuffer]) throws {
         guard let first = buffers.first else { return }
-        if !isConfigured {
-            engine.attach(player)
-            engine.connect(player, to: engine.mainMixerNode, format: first.format)
-            isConfigured = true
+        let format = first.format
+        if connectedFormat != format {
+            // A buffer in another format than the connection crashes the node: reconnect.
+            stop()
+            if connectedFormat == nil {
+                engine.attach(player)
+            } else {
+                engine.disconnectNodeOutput(player)
+            }
+            engine.connect(player, to: engine.mainMixerNode, format: format)
+            connectedFormat = format
         }
         engine.prepare()
-        for buffer in buffers {
+        for buffer in buffers where buffer.format == format {
             player.scheduleBuffer(buffer, at: nil)
         }
         if !engine.isRunning {

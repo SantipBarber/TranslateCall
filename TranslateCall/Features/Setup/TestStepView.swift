@@ -41,6 +41,9 @@ struct TestStepContent: View {
                  accessibility: String(localized: "Microphone: \(TestStepPresentation.micLine(micState))"))
     }
 
+    /// The rehearsal runs or asks for consent: both use BlackHole, so the route test waits.
+    private var rehearsalBusy: Bool { rehearsal.isRunning || rehearsal == .needsConsent }
+
     private var routeRow: some View {
         let title = String(localized: "Translated voice reaches BlackHole")
         let line = TestStepPresentation.routeLine(routeState)
@@ -49,9 +52,9 @@ struct TestStepContent: View {
                         text: routeState == .idle ? nil : line,
                         accessibility: "\(title): \(routeState == .idle ? String(localized: "not tested") : line)") {
             if routeState == .idle {
-                Button(line, action: onRunRoute).controlSize(.small).disabled(rehearsal.isRunning)
+                Button(line, action: onRunRoute).controlSize(.small).disabled(rehearsalBusy)
             } else if case .failed = routeState {
-                Button("Try again", action: onRunRoute).controlSize(.small).disabled(rehearsal.isRunning)
+                Button("Try again", action: onRunRoute).controlSize(.small).disabled(rehearsalBusy)
             }
         }
     }
@@ -117,41 +120,42 @@ struct TestStepView: View {
     @State private var permissions = PermissionState.current()
     @State private var levels: [Float] = []
     @State private var showConsent = false
-    /// Set once the step is left or a call starts: nothing may restart the mic check then.
-    @State private var stopped = false
+    /// False once the step is left: nothing may restart the mic check then.
+    @State private var isVisible = false
 
     var body: some View {
         TestStepContent(myLanguage: languagePairManager.displayName(for: languagePairManager.sourceLanguage),
                         appName: model.selectedRow?.appName ?? String(localized: "your call app"),
                         rehearsal: rehearsal.state, micState: checks.micState, routeState: checks.routeState,
                         levels: levels, onRehearse: rehearse, onPlay: rehearsal.playResult,
-                        onRunRoute: { Task { await checks.runRouteCheck() } })
+                        onRunRoute: runRoute)
             .onAppear {
-                stopped = false
+                isVisible = true
                 rehearsal.refresh(availability: availability)
                 checks.startMicCheck()
             }
-            .onDisappear(perform: stop)
+            .onDisappear {
+                isVisible = false
+                stop()
+            }
             .onChange(of: availability) { _, new in rehearsal.refresh(availability: new) }
-            .onChange(of: callSession.phase) { _, phase in
+            .onChange(of: callSession.phase) { old, phase in
                 if [.launching, .starting, .running].contains(phase) { stop() }
+                if isVisible, TestStepPresentation.restartsMicCheck(from: old, to: phase) { checks.startMicCheck() }
             }
             .onChange(of: checks.micLevel) { _, level in
                 levels = Array((levels + [level]).suffix(LevelMeterView.barCount))
             }
             .onChange(of: rehearsal.state) { old, new in
                 if new == .needsConsent { showConsent = true }
-                if old.isRunning, !new.isRunning, !stopped { checks.startMicCheck() }
+                if isVisible, TestStepPresentation.restartsMicCheck(from: old, to: new) { checks.startMicCheck() }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 permissions = PermissionState.current()
             }
             .alert("Enable Cloud TTS?", isPresented: $showConsent) {
                 Button("Enable") { rehearsal.consent(accepted: true) }
-                Button("Cancel", role: .cancel) {
-                    rehearsal.consent(accepted: false)
-                    checks.startMicCheck()
-                }
+                Button("Cancel", role: .cancel) { rehearsal.consent(accepted: false) }
             } message: {
                 Text(TestStepPresentation.consentMessage)
             }
@@ -168,15 +172,21 @@ struct TestStepView: View {
                                       microphone: permissions.microphone)
     }
 
-    /// The mic check stops first: the rehearsal opens the microphone itself.
+    /// The mic check stops first: the rehearsal opens the microphone itself. Never while the route
+    /// test runs: both use BlackHole.
     private func rehearse() {
+        guard checks.routeState != .running else { return }
         checks.stopMicCheck()
         rehearsal.rehearse()
         if !rehearsal.state.isRunning, rehearsal.state != .needsConsent { checks.startMicCheck() }
     }
 
+    private func runRoute() {
+        guard !rehearsal.state.isRunning, rehearsal.state != .needsConsent else { return }
+        Task { await checks.runRouteCheck() }
+    }
+
     private func stop() {
-        stopped = true
         let (checks, rehearsal) = (checks, rehearsal)
         checks.cancelAll()
         Task { await rehearsal.cancel() }

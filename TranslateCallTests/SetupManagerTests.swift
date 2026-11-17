@@ -182,4 +182,17 @@ struct SetupManagerBundleSelectionTests {
         #expect(manager.currentStep == .permissions)
         #expect(!manager.callAppMicConfirmed)
     }
+
+    @Test("step 3 is done with None chosen, not before any choice (REQ-FR-33)")
+    func callAppMicDoneWithNone() {
+        let manager = SetupManager(defaults: makeDefaults())
+        #expect(!manager.isCallAppMicDone)   // nothing chosen yet: no selection is not "None"
+        manager.selectCaptureApp(bundleID: "us.zoom.xos")
+        #expect(!manager.isCallAppMicDone)   // an app still needs "I've done it"
+        manager.selectCaptureApp(bundleID: nil)
+        #expect(manager.isCallAppMicDone)
+        manager.selectCaptureApp(bundleID: "us.zoom.xos")
+        manager.confirmCallAppMic()
+        #expect(manager.isCallAppMicDone)
+    }
 }

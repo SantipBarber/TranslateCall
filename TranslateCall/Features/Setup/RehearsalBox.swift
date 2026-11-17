@@ -110,7 +110,7 @@ struct RehearsalBox: View {
         case .passed:
             HStack {
                 Button("Play", systemImage: "play.fill", action: onPlay)
-                Button("Try again", action: onRehearse)
+                Button("Try again", action: onRehearse).disabled(routeBusy)
             }
         case .failed:
             Button("Try again", action: onRehearse).disabled(routeBusy)

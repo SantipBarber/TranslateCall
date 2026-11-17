@@ -58,6 +58,9 @@ final class SetupChecks: ObservableObject {
     private var micGeneration = 0
     private var routeRun: Task<Void, Never>?
     private var routeGeneration = 0
+    /// Each check's verdict before its current run: a cancelled run goes back to it.
+    private var micVerdict: CheckState = .idle
+    private var routeVerdict: CheckState = .idle
 
     /// Thresholds from the spec (REQ-FR-40/41): mic −40 dBFS for 300 ms; route baseline 300 ms,
     /// then −70 dBFS sustained 200 ms within 3 s of playback start.
@@ -115,6 +118,7 @@ final class SetupChecks: ObservableObject {
             return
         }
         micListener = listener
+        if micState != .running { micVerdict = micState }
         micState = .running
         micGeneration += 1
         let generation = micGeneration
@@ -148,11 +152,7 @@ final class SetupChecks: ObservableObject {
     /// Plays the fixed phrase into BlackHole 2ch while a listener verifies it: 300 ms quiet
     /// baseline, then pass at −70 dBFS sustained 200 ms within 3 s of playback start.
     func runRouteCheck() async {
-        if let previous = routeRun {
-            previous.cancel()
-            await previous.value
-            routeRun = nil
-        }
+        if let previous = cancelRouteRun() { await previous.value }
         if readCallRunning() { routeState = .failed(.callRunning); return }
         guard readPermissions().microphone == .granted else {
             routeState = .failed(.microphoneOff)
@@ -167,21 +167,30 @@ final class SetupChecks: ObservableObject {
         let generation = routeGeneration
         let run = Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.performRouteCheck(deviceID: deviceID)
+            await self.performRouteCheck(deviceID: deviceID, generation: generation)
         }
         routeRun = run
         await run.value
         if routeGeneration == generation { routeRun = nil }
     }
 
-    /// Cancels every running check, releases the devices and resets both states (REQ-FR-57).
+    /// Cancels every running check and releases the devices (REQ-FR-57). The verdicts stay, so the
+    /// sidebar keeps step 4's state; a check cancelled mid-run goes back to its previous verdict.
     func cancelAll() {
-        routeGeneration += 1
-        routeRun?.cancel()
-        routeRun = nil
+        _ = cancelRouteRun()
         stopMicCheck()
-        micState = .idle
-        routeState = .idle
+        if micState == .running { micState = micVerdict }
+    }
+
+    /// Cancels the route run; from here on it writes nothing (generation), so its state goes back
+    /// to the previous verdict now. Returns the run to wait for.
+    private func cancelRouteRun() -> Task<Void, Never>? {
+        routeGeneration += 1
+        let run = routeRun
+        run?.cancel()
+        routeRun = nil
+        if routeState == .running { routeState = routeVerdict }
+        return run
     }
 
     /// Starts the 3 s deadline and the phrase; both report into `sink`.
@@ -202,7 +211,7 @@ final class SetupChecks: ObservableObject {
 
     /// One event loop over the listener's samples, the 3 s deadline and the phrase player's
     /// failure, so the verdict needs no task-group racing. All tasks run on the MainActor.
-    private func performRouteCheck(deviceID: AudioDeviceID) async {
+    private func performRouteCheck(deviceID: AudioDeviceID, generation: Int) async {
         let listener: any LevelSource
         let stream: AsyncStream<LevelSample>
         do {
@@ -212,6 +221,7 @@ final class SetupChecks: ObservableObject {
             routeState = .failed(.other(Self.message(for: error)))
             return
         }
+        if routeState != .running { routeVerdict = routeState }
         routeState = .running
 
         let (events, sink) = AsyncStream.makeStream(of: RouteEvent.self)
@@ -243,8 +253,9 @@ final class SetupChecks: ObservableObject {
             }
             if verdict != nil { break loop }
         }
-        // No verdict: cancelled (reset to idle) or the listener's stream ended on its own.
-        routeState = verdict ?? (Task.isCancelled ? .idle : .failed(.notReceived))
+        // A cancelled run writes nothing: `cancelRouteRun` already restored the previous verdict.
+        guard generation == routeGeneration, !Task.isCancelled else { return }
+        routeState = verdict ?? .failed(.notReceived)   // the listener's stream ended on its own
     }
 
     nonisolated private static func message(for error: Error) -> String {
