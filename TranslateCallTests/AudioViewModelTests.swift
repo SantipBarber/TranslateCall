@@ -179,6 +179,30 @@ struct AudioViewModelTests {
         #expect(harness.viewModel.isSessionActive)
         harness.audioManager.stopCapture()
     }
+
+    @Test("a rehearsal error is not forwarded to the main window's alert")
+    func rehearsalErrorNotForwarded() async {
+        let harness = ViewModelHarness()
+        await harness.coordinator.start(rehearsal: true)
+        #expect(harness.coordinator.isRehearsal)
+
+        harness.coordinator.errorAlert = AlertItem(title: "t", message: "m", action: nil)
+
+        #expect(harness.coordinator.lastRehearsalError?.message == "m")
+        await mainQueueHop()
+        #expect(harness.viewModel.errorAlert == nil)
+    }
+
+    @Test("toggleCapture during a rehearsal leaves the session running")
+    func toggleIgnoredDuringRehearsal() async {
+        let harness = ViewModelHarness()
+        await harness.coordinator.start(rehearsal: true)
+        #expect(harness.coordinator.isOutgoingActive)
+
+        await harness.viewModel.toggleCapture()
+
+        #expect(harness.coordinator.isOutgoingActive)
+    }
 }
 
 @Suite("AudioViewModel call-app selection (M9 UI core REQ-UI-80b)", .serialized) @MainActor
