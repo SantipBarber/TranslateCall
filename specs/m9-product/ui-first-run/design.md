@@ -1,6 +1,6 @@
 # M9 UI first-run setup assistant — Design
 
-> Status: DRAFT (2026-11-16). Implements `requirements.md` (REQ-FR-xx). Visual reference: `design/translatecall.pen` frames «Setup — 1…4», read only through the pencil MCP (`execute` with the file's uri; the user's active canvas may be another project — don't touch it). The prototype uses Inter and Lucide as stand-ins; build with the system font and SF Symbols.
+> Status: APPROVED (2026-11-17). Implements `requirements.md` (REQ-FR-xx). Visual reference: `design/translatecall.pen` frames «Setup — 1…4», read only through the pencil MCP (`execute` with the file's uri; the user's active canvas may be another project — don't touch it). The prototype uses Inter and Lucide as stand-ins; build with the system font and SF Symbols.
 
 ## 1. Approaches considered
 

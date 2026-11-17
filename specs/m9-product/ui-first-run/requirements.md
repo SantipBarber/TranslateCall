@@ -1,6 +1,6 @@
 # M9 UI first-run setup assistant — Requirements
 
-> Status: DRAFT (2026-11-16) — brainstorm decisions F-1…F-6 and the second-opinion review folded in; waiting for the builder check and the user's approval.
+> Status: APPROVED (2026-11-17) — brainstorm decisions F-1…F-9, the second-opinion review and the builder check folded in.
 > Inputs: `specs/m9-product/ui-redesign/roadmap.md` (feature 3), `specs/m9-product/ui-redesign/design-brief.md` (sections 5 and "What the app picker drives"), `specs/m9-product/ui-core/` and `ui-settings/` (features 1–2, merged), `design/translatecall.pen` frames «Setup — 1…4» (pencil MCP only).
 
 ## Overview
