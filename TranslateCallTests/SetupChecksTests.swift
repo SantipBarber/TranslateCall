@@ -45,6 +45,10 @@ final class FakePhrasePlayer: PhrasePlayer {
     }
 }
 
+/// Generous bound for MainActor hops: the full unit tier runs many MainActor suites in parallel,
+/// so a 2 s default flaked under load. A passing wait returns at once; only a failure waits this long.
+let settle: Duration = .seconds(10)
+
 // MARK: - Bundle
 
 @MainActor
@@ -92,7 +96,7 @@ final class RouteRun {
     }
 
     func finish(_ checks: SetupChecks, sourceLocation: SourceLocation = #_sourceLocation) async {
-        if await waitUntil({ self.isDone }) { return }
+        if await waitUntil(timeout: settle, { self.isDone }) { return }
         Issue.record("route check did not finish", sourceLocation: sourceLocation)
         checks.cancelAll()
         task?.cancel()
@@ -113,7 +117,7 @@ struct SetupChecksTests {
         for _ in 0..<2 { bundle.blackHole.yield(-100, milliseconds: 100) }
         #expect(!(await waitUntil(timeout: .milliseconds(100)) { bundle.player.playCount > 0 }))
         bundle.blackHole.yield(-100, milliseconds: 100)
-        #expect(await waitUntil { bundle.player.playCount == 1 })
+        #expect(await waitUntil(timeout: settle) { bundle.player.playCount == 1 })
 
         // The phrase reaches the listener: −60 dBFS sustained for 200 ms.
         bundle.blackHole.yield(-60, milliseconds: 150)
@@ -143,7 +147,7 @@ struct SetupChecksTests {
         let bundle = makeWorkingChecks()
         let run = RouteRun(bundle.checks)
         for _ in 0..<3 { bundle.blackHole.yield(-100, milliseconds: 100) }
-        #expect(await waitUntil { bundle.player.playCount == 1 && bundle.clock.sleeperCount == 1 })
+        #expect(await waitUntil(timeout: settle) { bundle.player.playCount == 1 && bundle.clock.sleeperCount == 1 })
         #expect(bundle.clock.pendingDeadlines == [.seconds(3)])
 
         bundle.clock.advance(by: .seconds(3))
@@ -245,7 +249,7 @@ struct SetupChecksTests {
         let cancelled = makeWorkingChecks()
         run = RouteRun(cancelled.checks)
         for _ in 0..<3 { cancelled.blackHole.yield(-100, milliseconds: 100) }
-        #expect(await waitUntil { cancelled.clock.sleeperCount == 1 })
+        #expect(await waitUntil(timeout: settle) { cancelled.clock.sleeperCount == 1 })
         cancelled.checks.cancelAll()
         await run.finish(cancelled.checks)
         #expect(cancelled.checks.routeState == .idle)
@@ -272,11 +276,11 @@ struct SetupChecksTests {
         #expect(bundle.checks.micState == .running)
 
         bundle.mic.yield(-39, milliseconds: 200)
-        #expect(await waitUntil { bundle.checks.micLevel == -39 })
+        #expect(await waitUntil(timeout: settle) { bundle.checks.micLevel == -39 })
         #expect(bundle.checks.micState == .running) // 200 ms is not yet 300 ms
 
         bundle.mic.yield(-39, milliseconds: 200)
-        #expect(await waitUntil { bundle.checks.micState == .passed })
+        #expect(await waitUntil(timeout: settle) { bundle.checks.micState == .passed })
         #expect(bundle.checks.micLevel == -39)
         bundle.checks.stopMicCheck()
     }
@@ -288,13 +292,13 @@ struct SetupChecksTests {
 
         for _ in 0..<5 { bundle.mic.yield(-60, milliseconds: 100) }
         bundle.mic.yield(-61, milliseconds: 100)
-        #expect(await waitUntil { bundle.checks.micLevel == -61 })
+        #expect(await waitUntil(timeout: settle) { bundle.checks.micLevel == -61 })
         #expect(bundle.checks.micState == .running)
         bundle.checks.stopMicCheck()
 
         bundle.checks.startMicCheck()
         bundle.mic.yield(-30, milliseconds: 400)
-        #expect(await waitUntil { bundle.checks.micState == .passed })
+        #expect(await waitUntil(timeout: settle) { bundle.checks.micState == .passed })
         bundle.checks.stopMicCheck()
     }
 
@@ -306,7 +310,7 @@ struct SetupChecksTests {
         bundle.checks.startMicCheck()
         #expect(bundle.checks.testStatus == .todo)
         bundle.mic.yield(-39, milliseconds: 300)
-        #expect(await waitUntil { bundle.checks.micState == .passed })
+        #expect(await waitUntil(timeout: settle) { bundle.checks.micState == .passed })
         #expect(bundle.checks.testStatus == .done)
         bundle.checks.stopMicCheck()
 
