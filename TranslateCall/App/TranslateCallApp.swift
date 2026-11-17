@@ -51,6 +51,8 @@ struct TranslateCallApp: App {
         }
         Window("Set up TranslateCall", id: SetupWindowOpener.windowID) {
             SetupAssistantView()
+                .environmentObject(container.uiServices.setupServices.checks)
+                .environmentObject(container.uiServices.setupServices.rehearsal)
                 .environmentObject(container.audioViewModel)
                 .environmentObject(container.languagePairManager)
                 .environmentObject(container.setupManager)

@@ -104,6 +104,8 @@ struct UIServices {
     let mainSetupModel: MainSetupModel
     /// The one status panel and its presenter, shown with the session (P25).
     let statusPanel: StatusPanelController
+    /// The setup assistant's step-4 checks and rehearsal (M9 UI first-run).
+    let setupServices: SetupServices
 
     /// The preloader never runs in the test host (REQ-UI-21a); outside it, it re-runs on the model
     /// triggers and when a session ends (REQ-ST-61, P11).
@@ -136,5 +138,7 @@ struct UIServices {
                 .environmentObject(session).environmentObject(setup).environmentObject(panel))
         }
         statusPanel.bind(to: callSession)
+        setupServices = SetupServices(coordinator: coordinator, viewModel: viewModel,
+                                      callSession: callSession, tts: tts)
     }
 }

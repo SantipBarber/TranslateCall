@@ -54,12 +54,13 @@ struct SetupAssistantLayout<Content: View>: View {
 }
 
 /// The assistant window (REQ-FR-01…05, 13). Step 4 is `TestStepView`; its sidebar state comes from
-/// `testStatus` (Task 10 passes `SetupChecks.testStatus`).
+/// the checks, and also counts as done once the rehearsal passed.
 struct SetupAssistantView: View {
     @EnvironmentObject private var setupManager: SetupManager
     @EnvironmentObject private var model: MainSetupModel
     @Environment(\.dismissWindow) private var dismissWindow
-    var testStatus: SetupStepStatus = .todo
+    @EnvironmentObject private var checks: SetupChecks
+    @EnvironmentObject private var rehearsal: Rehearsal
     var requester: any PermissionRequesting = PermissionRequester()
     @State private var permissions = PermissionState.current()
     @State private var screenRecordingRequested = false
@@ -70,6 +71,7 @@ struct SetupAssistantView: View {
             onBack: back, onPrimary: primary, content: { stepContent }
         )
         .onAppear(perform: refresh)
+        .onDisappear(perform: stopTest)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refresh()
         }
@@ -93,7 +95,7 @@ struct SetupAssistantView: View {
                                onSelect: model.selectOther(bundleID:),
                                onOpen: { row in Task { await model.open(row) } })
         case .test:
-            TestStepView()
+            TestStepView(checks: checks, rehearsal: rehearsal)
         }
     }
 
@@ -103,6 +105,18 @@ struct SetupAssistantView: View {
                                hasOtherBlackHole: setupManager.hasOtherBlackHole,
                                callAppMicConfirmed: setupManager.callAppMicConfirmed, testResult: testStatus))
         })
+    }
+
+    private var testStatus: SetupStepStatus {
+        if case .passed = rehearsal.state { return .done }
+        return checks.testStatus
+    }
+
+    /// Closing the window or finishing stops the mic, the listeners and any rehearsal (REQ-FR-57).
+    private func stopTest() {
+        checks.cancelAll()
+        let rehearsal = rehearsal
+        Task { await rehearsal.cancel() }
     }
 
     private func refresh() {
@@ -121,6 +135,7 @@ struct SetupAssistantView: View {
             move(by: 1)
         case .test:
             setupManager.completeSetup()
+            stopTest()
             dismissWindow(id: SetupWindowOpener.windowID)
         default:
             move(by: 1)
