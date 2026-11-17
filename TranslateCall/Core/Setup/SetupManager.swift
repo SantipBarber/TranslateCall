@@ -26,6 +26,7 @@ final class SetupManager: ObservableObject {
     // MARK: - Runtime state
 
     @Published private(set) var isBlackHolePresent: Bool
+    @Published private(set) var hasOtherBlackHole: Bool
     @Published private(set) var availableCaptureApps: [SCRunningApplication] = []
     @Published private(set) var isLoadingCaptureApps: Bool = false
     @Published private(set) var detectedVideoCallApp: VideoCallApp = .generic
@@ -46,14 +47,16 @@ final class SetupManager: ObservableObject {
         isSetupCompleted = defaults.bool(forKey: Self.setupCompletedKey)
         let saved = defaults.string(forKey: Self.captureAppBundleKey) ?? ""
         selectedCaptureBundleID = saved.isEmpty ? nil : saved
-        isBlackHolePresent = AudioDevice.deviceID(forNameContaining: "BlackHole") != nil
+        isBlackHolePresent = BlackHoleDevice.find() != nil
+        hasOtherBlackHole = BlackHoleDevice.hasOtherBlackHole()
     }
 
     // MARK: - BlackHole check
 
     /// Re-evaluates BlackHole presence synchronously (call on window focus).
     func checkBlackHole() {
-        isBlackHolePresent = AudioDevice.deviceID(forNameContaining: "BlackHole") != nil
+        isBlackHolePresent = BlackHoleDevice.find() != nil
+        hasOtherBlackHole = BlackHoleDevice.hasOtherBlackHole()
     }
 
     // MARK: - Capture app loading
