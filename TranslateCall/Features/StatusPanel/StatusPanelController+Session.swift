@@ -20,7 +20,7 @@ extension StatusPanelController {
                 switch phase {
                 case .running: if show { self?.show() } else { self?.hide() }
                 case .idle: self?.hide()
-                case .launching, .starting: break
+                case .launching, .starting, .rehearsing: break
                 }
             }
     }

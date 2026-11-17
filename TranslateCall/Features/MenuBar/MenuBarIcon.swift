@@ -7,7 +7,7 @@ nonisolated enum MenuBarDot: Equatable, Sendable {
 
     static func derive(phase: SessionPhase, title: PanelTitle) -> MenuBarDot {
         switch phase {
-        case .idle, .launching, .starting: return .none
+        case .idle, .launching, .starting, .rehearsing: return .none
         case .running: return title == .translating ? .green : .orange
         }
     }

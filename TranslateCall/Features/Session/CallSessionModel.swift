@@ -75,7 +75,7 @@ final class CallSessionModel: ObservableObject {
     }
 
     func stop() async {
-        guard coordinator.isOutgoingActive || coordinator.isStarting else { return }
+        guard !coordinator.isRehearsal, coordinator.isOutgoingActive || coordinator.isStarting else { return }
         await coordinator.stop()
     }
 
@@ -86,7 +86,8 @@ final class CallSessionModel: ObservableObject {
     /// After at most `timeout` the session starts anyway; incoming then shows "Can't hear".
     /// While the app launches, `phase` is `.launching` and another Start is ignored (P24).
     func start(launching app: CallAppRow?, monitor: CallAppMonitor, timeout: Duration = .seconds(15)) async {
-        guard !isLaunching, !coordinator.isOutgoingActive, !coordinator.isStarting else { return }
+        guard !isLaunching, !coordinator.isRehearsal,
+              !coordinator.isOutgoingActive, !coordinator.isStarting else { return }
         if let app, !app.isRunning, app.appURL != nil {
             isLaunching = true
             recompute()
@@ -125,7 +126,7 @@ final class CallSessionModel: ObservableObject {
     private func recompute() {
         let coordinator = coordinator
         set(\.phase, Self.phase(launching: isLaunching, starting: coordinator.isStarting,
-                                active: coordinator.isOutgoingActive))
+                                active: coordinator.isOutgoingActive, rehearsing: coordinator.isRehearsal))
         set(\.isPaused, coordinator.isPaused)
         set(\.incomingStatus, coordinator.incomingStatus)
         set(\.outgoing, .outgoing(paused: coordinator.isPaused, micPaused: coordinator.isMicPaused,
@@ -137,7 +138,8 @@ final class CallSessionModel: ObservableObject {
                                   speech: coordinator.isIncomingSpeechActive))
         set(\.title, .derive(isStarting: coordinator.isStarting, isPaused: coordinator.isPaused, incoming: incoming))
         set(\.isTranslating, coordinator.isOutgoingTranslating || coordinator.isIncomingTranslating)
-        set(\.transcript, coordinator.transcript)
+        // The rehearsal appends to the coordinator's transcript; the user's transcript stays frozen.
+        if !coordinator.isRehearsal { set(\.transcript, coordinator.transcript) }
         set(\.sessionStartedAt, coordinator.sessionStartedAt)
         if coordinator.ttsNotice != lastTTSNotice {   // only a new TTS line is newer than the panel notice
             lastTTSNotice = coordinator.ttsNotice
@@ -153,7 +155,8 @@ final class CallSessionModel: ObservableObject {
         if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
     }
 
-    nonisolated static func phase(launching: Bool, starting: Bool, active: Bool) -> SessionPhase {
+    nonisolated static func phase(launching: Bool, starting: Bool, active: Bool, rehearsing: Bool) -> SessionPhase {
+        if rehearsing { return .rehearsing }
         if launching { return .launching }
         if starting { return .starting }
         return active ? .running : .idle
@@ -182,7 +185,7 @@ final class CallSessionModel: ObservableObject {
             guard windowOpenedForAlert != alert.id else { return }
             windowOpenedForAlert = alert.id
             openMainWindow()
-        case .launching, .starting:
+        case .launching, .starting, .rehearsing:
             break
         }
     }

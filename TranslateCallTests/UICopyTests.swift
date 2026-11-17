@@ -73,4 +73,10 @@ struct MenuBarDotTests {
         #expect(MenuBarDot.derive(phase: .launching, title: .translating) == MenuBarDot.none)
         #expect(MenuBarDot.derive(phase: .starting, title: .starting) == MenuBarDot.none)
     }
+
+    @Test("rehearsing → no dot (REQ-FR-56)")
+    func menuBarDotNoneWhileRehearsing() {
+        #expect(MenuBarDot.derive(phase: .rehearsing, title: .translating) == MenuBarDot.none)
+        #expect(MenuBarDot.derive(phase: .rehearsing, title: .starting) == MenuBarDot.none)
+    }
 }

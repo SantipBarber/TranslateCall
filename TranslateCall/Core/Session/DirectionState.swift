@@ -45,6 +45,9 @@ nonisolated enum DirectionState: Equatable, Sendable {
 /// is waiting for the call app to run (REQ-UI-34), before the coordinator starts (P24).
 nonisolated enum SessionPhase: Sendable, Equatable {
     case idle, launching, starting, running
+    /// A setup rehearsal runs through the real outgoing session; the rest of the app stays quiet
+    /// (M9 UI first-run REQ-FR-56).
+    case rehearsing
 }
 
 // MARK: - Panel title

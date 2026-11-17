@@ -118,7 +118,9 @@ struct UIServices {
                                         isSessionActive: inSession)
         modelPreloader.trackDownloads(models.downloads.didFinish.eraseToAnyPublisher())
         if !AppContainer.isTestHost {
-            let sessionEnded = coordinator.$isOutgoingActive.removeDuplicates().filter { !$0 }
+            // A rehearsal's end does not count: the session it stopped was never a call.
+            let sessionEnded = coordinator.$isOutgoingActive.removeDuplicates()
+                .filter { !$0 && !coordinator.isRehearsal }
                 .map { _ in () }.eraseToAnyPublisher()
             modelPreloader.start(triggers: models.preloadTriggers(tts: tts) + [sessionEnded])
         }
