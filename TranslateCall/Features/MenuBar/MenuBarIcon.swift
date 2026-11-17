@@ -7,7 +7,7 @@ nonisolated enum MenuBarDot: Equatable, Sendable {
 
     static func derive(phase: SessionPhase, title: PanelTitle) -> MenuBarDot {
         switch phase {
-        case .idle, .launching, .starting: return .none
+        case .idle, .launching, .starting, .rehearsing: return .none
         case .running: return title == .translating ? .green : .orange
         }
     }
@@ -22,5 +22,16 @@ nonisolated enum MenuBarDot: Equatable, Sendable {
 nonisolated enum MenuBarStartPolicy {
     static func needsMainWindow(readiness: Readiness, needsEdgeConsent: Bool) -> Bool {
         !readiness.primaryEnabled || !readiness.cards.isEmpty || needsEdgeConsent
+    }
+
+    /// Start and Stop are both off while the call app opens or the session starts (there is no cancel
+    /// path, T13 carry-over) and while a setup rehearsal owns the session (M9 UI first-run REQ-FR-56).
+    static func isBusy(phase: SessionPhase) -> Bool {
+        phase == .launching || phase == .starting || phase == .rehearsing
+    }
+
+    /// The context menu's Start/Stop item: `isStarting` also covers the gap before `phase` catches up.
+    static func canToggle(phase: SessionPhase, isStarting: Bool) -> Bool {
+        !isStarting && !isBusy(phase: phase)
     }
 }

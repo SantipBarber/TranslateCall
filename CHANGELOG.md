@@ -6,6 +6,17 @@ From 0.9.0 on, each release is also a git tag (`v0.9.0`). Add an entry with ever
 
 ## [Unreleased]
 
+### Added
+- Setup assistant window (replaces the setup sheet): a sidebar with four steps (Permissions, Audio driver, Call app microphone, Test) that resumes on the same step after macOS asks to reopen the app (M9 UI first-run, `specs/m9-product/ui-first-run/`).
+- Test step that really checks the route: a microphone level meter, and a test phrase that is verified at BlackHole 2ch's input (it fails if nothing arrives or another app is already playing into BlackHole).
+- Translation rehearsal in the Test step when the language pair is ready: one sentence goes through the real outgoing session; it shows what you said and what the call app receives, and "Play" plays what reached BlackHole. The rehearsal is invisible to the rest of the app (no status panel, transcript kept, Start disabled meanwhile).
+
+### Changed
+- BlackHole is matched exactly as "BlackHole 2ch" (name or UID); a BlackHole 16ch or aggregate device no longer counts as the audio driver.
+
+### Removed
+- The old four-step setup sheet and its route test that only played a phrase without checking it arrived.
+
 ## [0.10.0] — 2026-11-15 — M9 Product: clause split (QS-5)
 
 ### Known issues and open decisions

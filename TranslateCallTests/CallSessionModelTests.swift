@@ -266,5 +266,59 @@ struct CallSessionModelTests {
         #expect(changes.value == 0)
         subscription.cancel()
     }
+
+    // MARK: Rehearsing phase (M9 UI first-run REQ-FR-56)
+
+    @Test("the rehearsing phase wins over launching, starting and running (REQ-FR-56)")
+    func phaseRehearsingWins() {
+        #expect(CallSessionModel.phase(launching: false, starting: true, active: false, rehearsing: true)
+                == .rehearsing)
+        #expect(CallSessionModel.phase(launching: false, starting: true, active: true, rehearsing: true)
+                == .rehearsing)
+    }
+
+    @Test("Review focus: the transcript is frozen while rehearsing: [a] during and after (REQ-FR-56)")
+    func transcriptFrozenWhileRehearsing() async {
+        let harness = SessionHarness()
+        await harness.coordinator.start()
+        _ = harness.coordinator.appendTranscript(.outgoing, "a")
+        #expect(await waitUntil { harness.session.transcript.map(\.original) == ["a"] })
+        await harness.coordinator.stop()
+
+        await harness.coordinator.start(rehearsal: true)
+        _ = harness.coordinator.appendTranscript(.outgoing, "b")
+        #expect(await waitUntil { harness.session.phase == .rehearsing })
+        #expect(harness.session.transcript.map(\.original) == ["a"])
+
+        await harness.coordinator.stop()
+        #expect(harness.session.transcript.map(\.original) == ["a"])
+    }
+
+    @Test("Review focus: an error during a rehearsal never opens the main window (REQ-FR-56)")
+    func rehearsalErrorNoWindow() async {
+        let harness = SessionHarness()
+        await harness.coordinator.start(rehearsal: true)
+        #expect(await waitUntil { harness.session.phase == .rehearsing })
+
+        harness.viewModel.errorAlert = AlertItem(title: "t", message: "m", action: nil)
+        await mainQueueHop()
+        #expect(harness.windowOpens.value == 0)
+        #expect(harness.session.panelNotice == nil)
+
+        harness.viewModel.errorAlert = nil
+        await harness.coordinator.stop()
+    }
+
+    @Test("Review focus: Stop is ignored while a rehearsal runs (REQ-FR-56)")
+    func stopIgnoredDuringRehearsal() async {
+        let harness = SessionHarness()
+        await harness.coordinator.start(rehearsal: true)
+        #expect(await waitUntil { harness.session.phase == .rehearsing })
+
+        await harness.session.stop()
+
+        #expect(harness.coordinator.isOutgoingActive, "the rehearsal keeps running")
+        await harness.coordinator.stop()
+    }
 }
 

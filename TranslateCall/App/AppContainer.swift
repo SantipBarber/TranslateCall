@@ -104,6 +104,8 @@ struct UIServices {
     let mainSetupModel: MainSetupModel
     /// The one status panel and its presenter, shown with the session (P25).
     let statusPanel: StatusPanelController
+    /// The setup assistant's step-4 checks and rehearsal (M9 UI first-run).
+    let setupServices: SetupServices
 
     /// The preloader never runs in the test host (REQ-UI-21a); outside it, it re-runs on the model
     /// triggers and when a session ends (REQ-ST-61, P11).
@@ -118,7 +120,9 @@ struct UIServices {
                                         isSessionActive: inSession)
         modelPreloader.trackDownloads(models.downloads.didFinish.eraseToAnyPublisher())
         if !AppContainer.isTestHost {
-            let sessionEnded = coordinator.$isOutgoingActive.removeDuplicates().filter { !$0 }
+            // A rehearsal's end does not count: the session it stopped was never a call.
+            let sessionEnded = coordinator.$isOutgoingActive.removeDuplicates()
+                .filter { !$0 && !coordinator.isRehearsal }
                 .map { _ in () }.eraseToAnyPublisher()
             modelPreloader.start(triggers: models.preloadTriggers(tts: tts) + [sessionEnded])
         }
@@ -134,5 +138,7 @@ struct UIServices {
                 .environmentObject(session).environmentObject(setup).environmentObject(panel))
         }
         statusPanel.bind(to: callSession)
+        setupServices = SetupServices(coordinator: coordinator, viewModel: viewModel,
+                                      callSession: callSession, tts: tts)
     }
 }

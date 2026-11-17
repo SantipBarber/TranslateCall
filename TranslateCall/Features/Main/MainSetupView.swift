@@ -95,7 +95,6 @@ struct MainSetupView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismissWindow) private var dismissWindow
     @AppStorage(UISettingsKeys.showStatusPanel) private var showStatusPanel = true
-    @State private var showSetupWizard = false
     @State private var showVoiceProfiles = false
     @State private var modelsSheet: PairModelsModel?
 
@@ -122,16 +121,15 @@ struct MainSetupView: View {
             Text("No voice is available for this language on your device. "
                  + "Enable Cloud TTS? Text will be sent to Microsoft for speech synthesis.")
         }
-        .sheet(isPresented: $showSetupWizard) {
-            SetupWizardView(setupManager: setupManager, isPresented: $showSetupWizard)
-        }
         .sheet(isPresented: $showVoiceProfiles) { voiceProfilesSheet }
         .sheet(item: $modelsSheet) { sheet in
             PairModelsSheet(model: sheet, onClose: { modelsSheet = nil })
         }
         .task {
             setupManager.checkBlackHole()
-            if !setupManager.isSetupCompleted { showSetupWizard = true }
+            // Consumed first, so the mark never outlives this launch (FR-03 relaunch after "Run setup again…").
+            let reopen = SetupReopenFlag.consume(in: .standard)
+            if reopen || !setupManager.isSetupCompleted { SetupWindowOpener.shared.open() }
             await model.refresh()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -151,7 +149,7 @@ struct MainSetupView: View {
     private var actions: MainSetupActions {
         MainSetupActions(
             select: model.select, open: { row in Task { await model.open(row) } },
-            selectOther: model.selectOther(bundleID:), setUpDriver: { showSetupWizard = true },
+            selectOther: model.selectOther(bundleID:), setUpDriver: { SetupWindowOpener.shared.open() },
             openVoiceProfiles: { showVoiceProfiles = true },
             retryVoiceDownload: { ttsSelector.enableVoiceCloning() },
             download: { session in

@@ -38,6 +38,8 @@ nonisolated struct Readiness: Sendable, Equatable {
         case opening(String)
         case starting
         case stop
+        /// A setup rehearsal runs through the real session; Start waits (M9 UI first-run REQ-FR-56).
+        case setupTestInProgress
     }
 
     /// In display order: permission cards at the top, the rest under the call-app list.
@@ -54,12 +56,7 @@ nonisolated struct Readiness: Sendable, Equatable {
 
     static func derive(permissions: PermissionState, blackHolePresent: Bool, pair: PairReadiness,
                        app: CallAppRow?, phase: SessionPhase, modelDownloading: Bool = false) -> Readiness {
-        switch phase {
-        case .running: return Readiness(primary: .stop, primaryEnabled: true, cards: [])
-        case .starting: return Readiness(primary: .starting, primaryEnabled: false, cards: [])
-        case .launching: return Readiness(primary: .opening(app?.appName ?? ""), primaryEnabled: false, cards: [])
-        case .idle: break
-        }
+        if let settled = settledPhase(phase, app: app) { return settled }
         let cards = cards(permissions: permissions, blackHolePresent: blackHolePresent, app: app)
         let micOK = permissions.microphone != .denied
         switch pair {
@@ -73,6 +70,17 @@ nonisolated struct Readiness: Sendable, Equatable {
             return Readiness(primary: .openAppAndStart(app.appName), primaryEnabled: micOK, cards: cards)
         }
         return Readiness(primary: .start, primaryEnabled: micOK, cards: cards)
+    }
+
+    /// A session phase that fixes the primary button on its own; nil keeps deriving (`.idle`).
+    private static func settledPhase(_ phase: SessionPhase, app: CallAppRow?) -> Readiness? {
+        switch phase {
+        case .running: return Readiness(primary: .stop, primaryEnabled: true, cards: [])
+        case .starting: return Readiness(primary: .starting, primaryEnabled: false, cards: [])
+        case .launching: return Readiness(primary: .opening(app?.appName ?? ""), primaryEnabled: false, cards: [])
+        case .rehearsing: return Readiness(primary: .setupTestInProgress, primaryEnabled: false, cards: [])
+        case .idle: return nil
+        }
     }
 }
 
@@ -101,6 +109,7 @@ nonisolated extension Readiness.Primary {
         case .opening(let app): String(localized: "Opening \(app)…")
         case .starting: String(localized: "Starting…")
         case .stop: String(localized: "Stop translating")
+        case .setupTestInProgress: String(localized: "Setup test in progress")
         }
     }
 }

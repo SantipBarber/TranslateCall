@@ -62,12 +62,23 @@ final class AudioCoordinator: ObservableObject {
 
     // MARK: - Shared state
 
-    @Published var errorAlert: AlertItem?
+    @Published var errorAlert: AlertItem? {
+        didSet { if isRehearsal, let errorAlert { lastRehearsalError = errorAlert } }
+    }
     /// Translation errors already alerted in this session: each kind is alerted once (F8.5.4 REQ-TR-21).
     var alertedTranslationErrors: Set<String> = []
     @Published var isSpeechActive: Bool = false
     @Published private(set) var isStarting: Bool = false
     @Published private(set) var availableCaptureApps: [SCRunningApplication] = []
+
+    // MARK: - Rehearsal mode (M9 UI first-run REQ-FR-52/56)
+
+    /// True from `start(rehearsal: true)` until the session stops; setter internal for +Rehearsal.swift.
+    @Published var isRehearsal = false
+    /// The last pipeline error during a rehearsal; shown by the wizard, not the main window.
+    @Published private(set) var lastRehearsalError: AlertItem?
+    /// The pre-rehearsal transcript, restored when the rehearsal ends (REQ-FR-56).
+    var savedTranscript: [TranscriptEntry]?
 
     // MARK: - UI session state (M9 UI core design §4.1)
     // Written by AudioCoordinator+Session.swift and +Pipeline.swift, hence internal setters.
@@ -232,17 +243,28 @@ final class AudioCoordinator: ObservableObject {
     /// A call while another start() is running is a no-op. A stop() (or the mic ending) while the
     /// outgoing pipeline is still coming up supersedes this start: it releases what it created and
     /// returns without going active.
-    func start(captureTarget: CaptureTarget? = nil, blackHoleDeviceID: AudioDeviceID? = nil) async {
+    func start(captureTarget: CaptureTarget? = nil, blackHoleDeviceID: AudioDeviceID? = nil,
+               rehearsal: Bool = false) async {
         guard !isOutgoingActive, !isStarting else { return }
+        isRehearsal = rehearsal
+        lastRehearsalError = nil
         isStarting = true
-        defer { isStarting = false }
+        defer { isStarting = false; if !isOutgoingActive { finishRehearsalIfNeeded() } }   // stop() mid-start
         sessionGeneration &+= 1
         let generation = sessionGeneration
         // The hidden bridges cannot show the download sheet: no session without the packs (REQ-TR-06).
         let packsInstalled = await translationPacksInstalled()
-        guard generation == sessionGeneration else { return }   // a Stop during the check: no alert
-        guard packsInstalled else { return errorAlert = makeAlertItem(for: TranslationError.modelNotLoaded) }
-        self.captureTarget = captureTarget
+        guard generation == sessionGeneration else {   // a Stop during the check: no alert
+            finishRehearsalIfNeeded()
+            return
+        }
+        guard packsInstalled else {
+            errorAlert = makeAlertItem(for: TranslationError.modelNotLoaded)
+            finishRehearsalIfNeeded()
+            return
+        }
+        self.captureTarget = rehearsal ? nil : captureTarget
+        if rehearsal { savedTranscript = transcript }
         micEchoGate = makeMicEchoGate()
         beginSessionUIState()
         isClauseSplitOn = clauseSplitSetting?() ?? false
@@ -257,6 +279,7 @@ final class AudioCoordinator: ObservableObject {
             errorAlert = makeAlertItem(for: error)
             releaseMicEchoGate()   // no session: the gate is nil outside one
             endSessionUIState()
+            finishRehearsalIfNeeded()
             return
         }
         guard generation == sessionGeneration, audioCapture.isCapturing else {
@@ -264,6 +287,7 @@ final class AudioCoordinator: ObservableObject {
             await teardownOutgoingServices()
             releaseMicEchoGate()
             endSessionUIState()
+            finishRehearsalIfNeeded()
             return
         }
 
@@ -306,6 +330,7 @@ final class AudioCoordinator: ObservableObject {
         endSessionUIState()
         ttsNoticeTask?.cancel()
         ttsNotice = nil
+        if !isStarting { finishRehearsalIfNeeded() }   // a superseded start() ends the rehearsal itself
 
         logger.info("AudioCoordinator stopped")
     }

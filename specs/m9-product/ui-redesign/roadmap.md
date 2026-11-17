@@ -8,7 +8,7 @@ The SwiftUI implementation of the prototype is split into four sequential SDD fe
 |---|---------|-------------|-----------------------------------------------|----------|
 | 1 | **UI core**: setup window, automatic model choice, status panel (compact + expanded), menu bar popover, pre-call and in-call states, Settings scene with General + a temporary "Advanced (legacy)" tab | `ui-core/` | Main Window — Setup; Status Panel — Compact / Expanded; In Context; Menu Bar — Idle / Translating; State — Language not downloaded / Call app not open / Permission missing / Panel: incoming audio lost / Panel: speaker mode & skipped; Settings — General | `ContentView` long stack, `MenuBarPopoverView` |
 | 2 | **Settings + "Advanced…" models sheet**: Settings Voices + Advanced (definitive), per-pair model overrides, cloud consent, model downloads | `ui-settings/` (to write) | Advanced — Models for ES ↔ DE; Settings — Voices / Advanced | the "Advanced (legacy)" tab |
-| 3 | **First-run setup assistant**: permissions, audio driver, call-app microphone (per-app copy), test | `ui-first-run/` (to write) | Setup — 1…4 | `SetupWizardView` and its steps |
+| 3 | **First-run setup assistant**: permissions, audio driver, call-app microphone (per-app copy), test | `ui-first-run/` | Setup — 1…4 | `SetupAssistantView` and its steps (was `SetupWizardView`) |
 | 4 | **Voice clone flow**: intro, teleprompter recording with live checks, listen & save | `ui-voice-clone/` (to write) | Voice Clone — 1…3 | `VoiceProfileListView` recording path |
 
 Until a feature lands, the screens it replaces stay reachable from the new entry points (feature 1 design §6).

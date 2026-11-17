@@ -6,6 +6,8 @@ import SwiftUI
 @MainActor
 enum MenuBarStart {
     static func start(setup: MainSetupModel, viewModel: AudioViewModel) {
+        // A rehearsal shows Readiness as not enabled: no main window for it, and no start.
+        guard !MenuBarStartPolicy.isBusy(phase: setup.session.phase) else { return }
         if MenuBarStartPolicy.needsMainWindow(readiness: setup.readiness,
                                               needsEdgeConsent: viewModel.needsEdgeConsentBeforeStart) {
             NSApp.showMainWindow()
@@ -212,8 +214,7 @@ struct MenuBarPopoverView: View {
         let pair = "\(languages.displayName(for: source)) ↔ \(languages.displayName(for: target))"
         let translating = session.phase == .running
         let dot = MenuBarDot.derive(phase: session.phase, title: session.title)
-        // Start and Stop are both off while the call app opens: there is no cancel path (T13 carry-over).
-        let busy = session.phase == .launching || session.phase == .starting
+        let busy = MenuBarStartPolicy.isBusy(phase: session.phase)
         MenuBarPopoverContent(
             isTranslating: translating, dot: translating ? dot : .none,
             headline: translating ? session.title.text : (setup.readiness.blockingReason ?? String(localized: "Ready")),

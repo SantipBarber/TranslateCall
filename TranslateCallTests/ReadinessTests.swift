@@ -92,6 +92,16 @@ struct ReadinessTests {
         #expect(launching.primary.title == "Opening Zoom…")
     }
 
+    @Test("rehearsing → Setup test in progress, disabled, no cards (REQ-FR-56)")
+    func rehearsingDisablesStart() {
+        let result = derive(phase: .rehearsing)
+        #expect(result.primary == .setupTestInProgress)
+        #expect(result.primary.title == "Setup test in progress")
+        #expect(!result.primaryEnabled)
+        #expect(result.cards == [])
+        #expect(result.blockingReason == "Setup test in progress")
+    }
+
     @Test("the popover's line: Ready, or the first blocking reason; informative cards never replace Ready")
     func blockingReason() {
         #expect(derive().blockingReason == nil)

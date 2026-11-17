@@ -155,7 +155,7 @@ struct AudioViewModelTests {
         await harness.coordinator.start(captureTarget: .app(bundleID: "com.test.old"))
         #expect(harness.coordinator.incomingStatus == .stopped(.targetNotFound(bundleID: "com.test.old")))
 
-        harness.viewModel.setupManager.selectCaptureApp(nil)   // user picks "None"
+        harness.viewModel.setupManager.selectCaptureApp(bundleID: nil)   // user picks "None"
 
         #expect(await waitUntil { harness.coordinator.incomingStatus == .disabled })
     }
@@ -178,6 +178,30 @@ struct AudioViewModelTests {
         #expect(await waitUntil { harness.viewModel.isCapturing })
         #expect(harness.viewModel.isSessionActive)
         harness.audioManager.stopCapture()
+    }
+
+    @Test("a rehearsal error is not forwarded to the main window's alert")
+    func rehearsalErrorNotForwarded() async {
+        let harness = ViewModelHarness()
+        await harness.coordinator.start(rehearsal: true)
+        #expect(harness.coordinator.isRehearsal)
+
+        harness.coordinator.errorAlert = AlertItem(title: "t", message: "m", action: nil)
+
+        #expect(harness.coordinator.lastRehearsalError?.message == "m")
+        await mainQueueHop()
+        #expect(harness.viewModel.errorAlert == nil)
+    }
+
+    @Test("toggleCapture during a rehearsal leaves the session running")
+    func toggleIgnoredDuringRehearsal() async {
+        let harness = ViewModelHarness()
+        await harness.coordinator.start(rehearsal: true)
+        #expect(harness.coordinator.isOutgoingActive)
+
+        await harness.viewModel.toggleCapture()
+
+        #expect(harness.coordinator.isOutgoingActive)
     }
 }
 

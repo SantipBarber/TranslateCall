@@ -207,7 +207,10 @@ final class AudioViewModel: ObservableObject {
         coordinator.$incomingStatus.assign(to: &$incomingStatus)
         coordinator.$ttsMonitorEnabled.assign(to: &$ttsMonitorEnabled)
         coordinator.$ttsMonitorRecording.assign(to: &$ttsMonitorRecording)
-        coordinator.$errorAlert.assign(to: &$errorAlert)
+        // Rehearsal errors are shown by the wizard; the main window's alert must stay quiet (REQ-FR-56).
+        coordinator.$errorAlert
+            .filter { [unowned coordinator] _ in !coordinator.isRehearsal }
+            .assign(to: &$errorAlert)
     }
 
     private func bindVoiceProfileManager() {
@@ -233,6 +236,7 @@ final class AudioViewModel: ObservableObject {
     /// start() is still loading models, and may stop on its own while the session lives on.
     /// A toggle while starting stops (start() is then superseded); the controls are disabled then.
     func toggleCapture() async {
+        guard !coordinator.isRehearsal else { return }
         if coordinator.isOutgoingActive || coordinator.isStarting {
             await coordinator.stop()
         } else {
@@ -261,9 +265,7 @@ final class AudioViewModel: ObservableObject {
     private func startPipeline() async {
         await coordinator.start(
             captureTarget: setupManager.captureTarget,
-            blackHoleDeviceID: setupManager.isBlackHolePresent
-                ? AudioDevice.deviceID(forNameContaining: "BlackHole")
-                : nil
+            blackHoleDeviceID: BlackHoleDevice.find()
         )
     }
 
