@@ -78,8 +78,10 @@ extension IntegrationTests {
             let stream = try source.start()
             defer { source.stop() }
 
-            // Bounded to 3 s: BlackHole may deliver no samples at all (the bug that hung `just pr`).
-            let baseline = await withDeadline(.seconds(3)) { () -> QuietBaseline? in
+            // Bounded to 1 s: BlackHole may deliver no samples at all while nothing plays into
+            // it. That is expected, not a failure — the app now times the 300 ms quiet baseline
+            // on the clock and plays the phrase anyway — so only a loud sample would fail here.
+            let baseline = await withDeadline(.seconds(1)) { () -> QuietBaseline? in
                 var result = QuietBaseline()
                 var total: Duration = .zero
                 for await sample in stream {
@@ -90,11 +92,7 @@ extension IntegrationTests {
                 }
                 return result
             }
-            guard let baseline else {
-                Issue.record("BlackHole delivered no samples")
-                return
-            }
-            #expect(baseline.filled)
+            guard let baseline else { return }   // no samples at all: fine, see above
             #expect(baseline.allQuiet)
         }
 

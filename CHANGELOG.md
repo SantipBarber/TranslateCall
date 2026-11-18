@@ -16,7 +16,7 @@ From 0.9.0 on, each release is also a git tag (`v0.9.0`). Add an entry with ever
 
 ### Fixed
 - Setup rehearsal: a microphone or device alert raised during the rehearsal no longer opens the main window afterwards (UI-F2).
-- Setup Test step: the route check no longer stays on "Testing…" forever when BlackHole delivers no audio; it fails after 2 s.
+- Setup Test step: the route check no longer waits forever when BlackHole delivers no audio while silent; the 300 ms quiet baseline is timed, then the phrase plays and the check passes or fails within 3 s.
 
 ### Removed
 - The old four-step setup sheet and its route test that only played a phrase without checking it arrived.

@@ -69,7 +69,6 @@ final class SetupChecks: ObservableObject {
     nonisolated private static let micSustain = Duration.milliseconds(300)
     nonisolated fileprivate static let routeSustain = Duration.milliseconds(200)
     nonisolated fileprivate static let baselineWindow = Duration.milliseconds(300)
-    nonisolated private static let baselineTimeout = Duration.seconds(2)
     nonisolated private static let routeTimeout = Duration.seconds(3)
 
     init(
@@ -237,15 +236,17 @@ final class SetupChecks: ObservableObject {
     private func routeEvents(
         deviceID: AudioDeviceID, stream: AsyncStream<LevelSample>, listener: any LevelSource
     ) async -> CheckState? {
+        let clock = clock
         let (events, sink) = AsyncStream.makeStream(of: RouteEvent.self)
         let forwarder = Task {
             for await sample in stream { sink.yield(.sample(sample)) }
             sink.finish()
         }
-        // If the listener delivers no sample at all (BlackHole not receiving audio), the baseline
-        // never completes and the 3 s playback deadline would never start: bound it (REQ-FR-42).
+        // BlackHole may deliver no samples at all while nothing plays into it, so the baseline's
+        // sample-duration completion would never happen: time the 300 ms quiet window on the
+        // clock (REQ-FR-42) and start playback when it elapses without a loud sample.
         let baselineTimer = Task {
-            if (try? await clock.sleep(for: Self.baselineTimeout)) != nil { sink.yield(.noAudio) }
+            if (try? await clock.sleep(for: Self.baselineWindow)) != nil { sink.yield(.baselineElapsed) }
         }
         var timer: Task<Void, Never>?
         var player: Task<Void, Never>?
@@ -264,15 +265,20 @@ final class SetupChecks: ObservableObject {
             switch event {
             case .sample(let sample):
                 let result = judge.feed(sample)
-                if result == .baselineDone {
+                if result == .baselineDone, !baselineDone {
                     baselineDone = true
                     baselineTimer.cancel()
                     (timer, player) = startPlayback(deviceID: deviceID, sink: sink)
                 }
                 verdict = result.state
-            case .noAudio:
-                // A stale event can race the baseline's completion; only silence without it fails.
-                if !baselineDone { verdict = .failed(.notReceived) }
+            case .baselineElapsed:
+                // Exactly once: the quiet window elapsed without samples, so playback starts
+                // anyway; a late timer after a sample-based completion is ignored.
+                if !baselineDone {
+                    baselineDone = true
+                    _ = judge.elapse()
+                    (timer, player) = startPlayback(deviceID: deviceID, sink: sink)
+                }
             case .timeout:
                 verdict = .failed(.notReceived)
             case .playerFailed(let message):
@@ -292,7 +298,7 @@ final class SetupChecks: ObservableObject {
 
 private enum RouteEvent {
     case sample(LevelSample)
-    case noAudio
+    case baselineElapsed
     case timeout
     case playerFailed(String)
 }
@@ -321,5 +327,13 @@ private struct RouteJudge {
         if sample.dbfs >= SetupChecks.routeThreshold { return .busy }
         baseline += sample.duration
         return baseline >= SetupChecks.baselineWindow ? .baselineDone : .pending
+    }
+
+    /// The clock reports the quiet window elapsed without samples: complete the baseline once,
+    /// so later samples feed the detector instead of a window that already passed.
+    mutating func elapse() -> Verdict {
+        if baseline >= SetupChecks.baselineWindow { return .pending }
+        baseline = SetupChecks.baselineWindow
+        return .baselineDone
     }
 }
