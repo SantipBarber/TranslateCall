@@ -172,7 +172,8 @@ final class CallSessionModel: ObservableObject {
     /// - a running session: an 8 s notice, never a modal (mid-call, or raised by a start that went active);
     /// - no session (a start that did not go active, or a pre-call error): it stays an alert, presented
     ///   by the main window, which is brought up once per alert (e.g. after a menu-bar Start);
-    /// - launching or starting: it waits for the outcome (the main window hides alerts while starting).
+    /// - launching or starting: it waits for the outcome (the main window hides alerts while starting);
+    /// - rehearsing: it is dropped so the rehearsal stays invisible to the rest of the app (REQ-FR-56).
     private func routeAlert() {
         guard let alert = viewModel.errorAlert else { return }
         switch phase {
@@ -185,7 +186,9 @@ final class CallSessionModel: ObservableObject {
             guard windowOpenedForAlert != alert.id else { return }
             windowOpenedForAlert = alert.id
             openMainWindow()
-        case .launching, .starting, .rehearsing:
+        case .rehearsing:
+            viewModel.errorAlert = nil
+        case .launching, .starting:
             break
         }
     }

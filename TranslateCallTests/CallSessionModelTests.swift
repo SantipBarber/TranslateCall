@@ -309,6 +309,20 @@ struct CallSessionModelTests {
         await harness.coordinator.stop()
     }
 
+    @Test("A view-model alert raised during rehearsal is dropped and never opens the main window (UI-F2, REQ-FR-56)")
+    func viewModelAlertDuringRehearsalDropped() async {
+        let harness = SessionHarness()
+        await harness.coordinator.start(rehearsal: true)
+        #expect(await waitUntil(timeout: .seconds(10)) { harness.session.phase == .rehearsing })
+
+        harness.viewModel.errorAlert = AlertItem(title: "Microphone", message: "m", action: nil)
+        #expect(await waitUntil(timeout: .seconds(10)) { harness.viewModel.errorAlert == nil })
+
+        await harness.coordinator.stop()
+        #expect(await waitUntil(timeout: .seconds(10)) { harness.session.phase == .idle })
+        #expect(harness.windowOpens.value == 0)
+    }
+
     @Test("Review focus: Stop is ignored while a rehearsal runs (REQ-FR-56)")
     func stopIgnoredDuringRehearsal() async {
         let harness = SessionHarness()

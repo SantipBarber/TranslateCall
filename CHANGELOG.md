@@ -14,6 +14,9 @@ From 0.9.0 on, each release is also a git tag (`v0.9.0`). Add an entry with ever
 ### Changed
 - BlackHole is matched exactly as "BlackHole 2ch" (name or UID); a BlackHole 16ch or aggregate device no longer counts as the audio driver.
 
+### Fixed
+- Setup rehearsal: a microphone or device alert raised during the rehearsal no longer opens the main window afterwards (UI-F2).
+
 ### Removed
 - The old four-step setup sheet and its route test that only played a phrase without checking it arrived.
 
