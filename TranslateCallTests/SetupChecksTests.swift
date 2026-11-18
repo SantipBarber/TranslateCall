@@ -157,6 +157,23 @@ struct SetupChecksTests {
         #expect(bundle.blackHole.stopCount == 1)
     }
 
+    @Test("route check fails not received when the listener never delivers a sample")
+    func routeFailsWhenListenerSilent() async {
+        let bundle = makeWorkingChecks()
+        let run = RouteRun(bundle.checks)
+        // No samples at all: the baseline timer (2 s) is the only sleeper pending.
+        #expect(await waitUntil(timeout: settle) {
+            bundle.clock.sleeperCount == 1 && bundle.clock.pendingDeadlines == [.seconds(2)]
+        })
+
+        bundle.clock.advance(by: .seconds(2))
+
+        await run.finish(bundle.checks)
+        #expect(bundle.checks.routeState == .failed(.notReceived))
+        #expect(bundle.player.playCount == 0)
+        #expect(bundle.blackHole.stopCount == 1)
+    }
+
     @Test("route check without BlackHole 2ch never builds a listener")
     func routeCheckWithoutBlackHole() async {
         let bundle = makeWorkingChecks(blackHoleDevice: nil)
