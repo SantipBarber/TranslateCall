@@ -2,6 +2,25 @@ import AVFoundation
 import Testing
 @testable import TranslateCall
 
+/// Races `body` against the deadline: when the deadline wins, `body` is cancelled and nil returned,
+/// so a wait is bounded even when no sample ever arrives (a hung CoreAudio tap must not hang tests).
+@MainActor
+private func withDeadline<T: Sendable>(
+    _ deadline: Duration,
+    _ body: @escaping @MainActor @Sendable () async -> T?
+) async -> T? {
+    await withTaskGroup(of: T?.self) { group in
+        group.addTask { await body() }
+        group.addTask {
+            try? await Task.sleep(for: deadline)
+            return nil
+        }
+        let winner = await group.next() ?? nil
+        group.cancelAll()
+        return winner
+    }
+}
+
 /// Consumes an `InputLevelSource` stream until a sustained level is reached or the deadline passes.
 @MainActor
 private func sustainedLevelPasses(
@@ -10,13 +29,19 @@ private func sustainedLevelPasses(
     minDuration: Duration,
     within timeout: Duration
 ) async -> Bool {
-    var detector = SustainedLevelDetector(threshold: threshold, minDuration: minDuration)
-    let deadline = ContinuousClock.now + timeout
-    for await sample in stream {
-        if detector.feed(sample) { return true }
-        if ContinuousClock.now >= deadline { return false }
+    let passed = await withDeadline(timeout) {
+        var detector = SustainedLevelDetector(threshold: threshold, minDuration: minDuration)
+        for await sample in stream { if detector.feed(sample) { return true } }
+        return false
     }
-    return false
+    return passed ?? false
+}
+
+/// The quiet baseline the route check needs: 300 ms of samples, all below the threshold.
+private struct QuietBaseline: Sendable {
+    var sawSample = false
+    var filled = false
+    var allQuiet = true
 }
 
 extension IntegrationTests {
@@ -53,14 +78,22 @@ extension IntegrationTests {
             let stream = try source.start()
             defer { source.stop() }
 
-            var total: Duration = .zero
-            var allQuiet = true
-            for await sample in stream {
-                if sample.dbfs >= -70 { allQuiet = false }
-                total += sample.duration
-                if total >= .milliseconds(300) { break }
+            // Bounded to 1 s: BlackHole may deliver no samples at all while nothing plays into
+            // it. That is expected, not a failure — the app now times the 300 ms quiet baseline
+            // on the clock and plays the phrase anyway — so only a loud sample would fail here.
+            let baseline = await withDeadline(.seconds(1)) { () -> QuietBaseline? in
+                var result = QuietBaseline()
+                var total: Duration = .zero
+                for await sample in stream {
+                    result.sawSample = true
+                    if sample.dbfs >= -70 { result.allQuiet = false }
+                    total += sample.duration
+                    if total >= .milliseconds(300) { result.filled = true; return result }
+                }
+                return result
             }
-            #expect(allQuiet)
+            guard let baseline else { return }   // no samples at all: fine, see above
+            #expect(baseline.allQuiet)
         }
 
         @Test("system voice phrase reaches BlackHole 2ch")

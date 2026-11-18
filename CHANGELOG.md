@@ -14,6 +14,11 @@ From 0.9.0 on, each release is also a git tag (`v0.9.0`). Add an entry with ever
 ### Changed
 - BlackHole is matched exactly as "BlackHole 2ch" (name or UID); a BlackHole 16ch or aggregate device no longer counts as the audio driver.
 
+### Fixed
+- Setup rehearsal: a microphone or device alert raised during the rehearsal no longer opens the main window afterwards (UI-F2).
+- Setup Test step: the route check no longer waits forever when BlackHole delivers no audio while silent; the 300 ms quiet baseline is timed, then the phrase plays and the check passes or fails within 3 s.
+- Setup Test step: the BlackHole listener now lets the audio-unit device switch settle before starting, so it reliably receives the phrase instead of intermittently getting no samples.
+
 ### Removed
 - The old four-step setup sheet and its route test that only played a phrase without checking it arrived.
 

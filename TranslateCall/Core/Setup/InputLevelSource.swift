@@ -89,6 +89,12 @@ final class InputLevelSource: LevelSource {
         } catch {
             throw SetupAudioError.engineStartFailed(error.localizedDescription)
         }
+        // The HAL applies CurrentDevice asynchronously. If the tap is installed and the engine
+        // started before that switch settles, the AUHAL can come up with its input IO never
+        // rendering: engine.isRunning is true and the device reports running, but the tap never
+        // fires (intermittent, no throw — the route check then fails spuriously). Give the switch
+        // a short bounded settle before touching the unit's formats or starting the engine.
+        Thread.sleep(forTimeInterval: 0.005)
         // Tap at the hardware rate, never with more channels than the hardware has.
         let clientFormat = inputNode.outputFormat(forBus: 0)
         let hardwareFormat = inputNode.inputFormat(forBus: 0)

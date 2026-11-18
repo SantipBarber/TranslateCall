@@ -209,8 +209,9 @@ final class SetupChecks: ObservableObject {
         return (timer, player)
     }
 
-    /// One event loop over the listener's samples, the 3 s deadline and the phrase player's
-    /// failure, so the verdict needs no task-group racing. All tasks run on the MainActor.
+    /// One event loop over the listener's samples, the baseline deadline, the 3 s deadline and
+    /// the phrase player's failure, so the verdict needs no task-group racing. All tasks run on
+    /// the MainActor; the listener is stopped and every task cancelled before returning.
     private func performRouteCheck(deviceID: AudioDeviceID, generation: Int) async {
         let listener: any LevelSource
         let stream: AsyncStream<LevelSample>
@@ -224,15 +225,34 @@ final class SetupChecks: ObservableObject {
         if routeState != .running { routeVerdict = routeState }
         routeState = .running
 
+        let verdict = await routeEvents(deviceID: deviceID, stream: stream, listener: listener)
+        // A cancelled run writes nothing: `cancelRouteRun` already restored the previous verdict.
+        guard generation == routeGeneration, !Task.isCancelled else { return }
+        routeState = verdict ?? .failed(.notReceived)   // the listener's stream ended on its own
+    }
+
+    /// Consumes the route events; returns the final verdict, or nil when the listener's stream
+    /// ended on its own without one.
+    private func routeEvents(
+        deviceID: AudioDeviceID, stream: AsyncStream<LevelSample>, listener: any LevelSource
+    ) async -> CheckState? {
+        let clock = clock
         let (events, sink) = AsyncStream.makeStream(of: RouteEvent.self)
         let forwarder = Task {
             for await sample in stream { sink.yield(.sample(sample)) }
             sink.finish()
         }
+        // BlackHole may deliver no samples at all while nothing plays into it, so the baseline's
+        // sample-duration completion would never happen: time the 300 ms quiet window on the
+        // clock (REQ-FR-42) and start playback when it elapses without a loud sample.
+        let baselineTimer = Task {
+            if (try? await clock.sleep(for: Self.baselineWindow)) != nil { sink.yield(.baselineElapsed) }
+        }
         var timer: Task<Void, Never>?
         var player: Task<Void, Never>?
         defer {
             forwarder.cancel()
+            baselineTimer.cancel()
             timer?.cancel()
             player?.cancel()
             listener.stop()
@@ -240,12 +260,25 @@ final class SetupChecks: ObservableObject {
 
         var judge = RouteJudge()
         var verdict: CheckState?
+        var baselineDone = false
         loop: for await event in events {
             switch event {
             case .sample(let sample):
                 let result = judge.feed(sample)
-                if result == .baselineDone { (timer, player) = startPlayback(deviceID: deviceID, sink: sink) }
+                if result == .baselineDone, !baselineDone {
+                    baselineDone = true
+                    baselineTimer.cancel()
+                    (timer, player) = startPlayback(deviceID: deviceID, sink: sink)
+                }
                 verdict = result.state
+            case .baselineElapsed:
+                // Exactly once: the quiet window elapsed without samples, so playback starts
+                // anyway; a late timer after a sample-based completion is ignored.
+                if !baselineDone {
+                    baselineDone = true
+                    _ = judge.elapse()
+                    (timer, player) = startPlayback(deviceID: deviceID, sink: sink)
+                }
             case .timeout:
                 verdict = .failed(.notReceived)
             case .playerFailed(let message):
@@ -253,9 +286,7 @@ final class SetupChecks: ObservableObject {
             }
             if verdict != nil { break loop }
         }
-        // A cancelled run writes nothing: `cancelRouteRun` already restored the previous verdict.
-        guard generation == routeGeneration, !Task.isCancelled else { return }
-        routeState = verdict ?? .failed(.notReceived)   // the listener's stream ended on its own
+        return verdict
     }
 
     nonisolated private static func message(for error: Error) -> String {
@@ -267,6 +298,7 @@ final class SetupChecks: ObservableObject {
 
 private enum RouteEvent {
     case sample(LevelSample)
+    case baselineElapsed
     case timeout
     case playerFailed(String)
 }
@@ -295,5 +327,13 @@ private struct RouteJudge {
         if sample.dbfs >= SetupChecks.routeThreshold { return .busy }
         baseline += sample.duration
         return baseline >= SetupChecks.baselineWindow ? .baselineDone : .pending
+    }
+
+    /// The clock reports the quiet window elapsed without samples: complete the baseline once,
+    /// so later samples feed the detector instead of a window that already passed.
+    mutating func elapse() -> Verdict {
+        if baseline >= SetupChecks.baselineWindow { return .pending }
+        baseline = SetupChecks.baselineWindow
+        return .baselineDone
     }
 }

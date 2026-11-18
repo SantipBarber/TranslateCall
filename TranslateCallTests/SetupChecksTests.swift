@@ -157,6 +157,51 @@ struct SetupChecksTests {
         #expect(bundle.blackHole.stopCount == 1)
     }
 
+    @Test("route check plays after the quiet baseline elapses without samples")
+    func routePlaysAfterBaselineWithoutSamples() async {
+        let bundle = makeWorkingChecks()
+        let run = RouteRun(bundle.checks)
+        // No samples: the 300 ms baseline timer is the only sleeper pending.
+        #expect(await waitUntil(timeout: settle) {
+            bundle.clock.sleeperCount == 1 && bundle.clock.pendingDeadlines == [.milliseconds(300)]
+        })
+
+        bundle.clock.advance(by: .milliseconds(300))
+        #expect(await waitUntil(timeout: settle) { bundle.player.playCount == 1 })
+
+        // The phrase reaches the listener after the timed baseline: −60 dBFS sustained 200 ms.
+        bundle.blackHole.yield(-60, milliseconds: 150)
+        bundle.blackHole.yield(-60, milliseconds: 150)
+
+        await run.finish(bundle.checks)
+        #expect(bundle.checks.routeState == .passed)
+        #expect(bundle.player.playCount == 1)
+        #expect(bundle.blackHole.stopCount == 1)
+    }
+
+    @Test("route check fails not received when nothing arrives at all")
+    func routeFailsWhenNothingArrives() async {
+        let bundle = makeWorkingChecks()
+        let run = RouteRun(bundle.checks)
+        // No samples: the 300 ms baseline timer is the only sleeper pending.
+        #expect(await waitUntil(timeout: settle) {
+            bundle.clock.sleeperCount == 1 && bundle.clock.pendingDeadlines == [.milliseconds(300)]
+        })
+
+        bundle.clock.advance(by: .milliseconds(300))
+        // The 3 s deadline is pending; its offset includes the 300 ms already advanced.
+        #expect(await waitUntil(timeout: settle) {
+            bundle.player.playCount == 1 && bundle.clock.pendingDeadlines == [.milliseconds(3300)]
+        })
+
+        bundle.clock.advance(by: .seconds(3))
+
+        await run.finish(bundle.checks)
+        #expect(bundle.checks.routeState == .failed(.notReceived))
+        #expect(bundle.player.playCount == 1)
+        #expect(bundle.blackHole.stopCount == 1)
+    }
+
     @Test("route check without BlackHole 2ch never builds a listener")
     func routeCheckWithoutBlackHole() async {
         let bundle = makeWorkingChecks(blackHoleDevice: nil)
